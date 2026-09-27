@@ -27,11 +27,18 @@ const ACTIONS: Record<string, string> = {
   'guard.login': 'Guard logged in on device',
   'guard.login_failed': 'Guard entered wrong PIN',
   'guard.locked_out': 'Guard locked out after 5 wrong PINs',
+  'attendance.duty_on': 'Duty On',
+  'attendance.duty_from': 'Duty From',
+  'attendance.declaration': 'Made declaration',
+  'attendance.duty_on_on_behalf': 'Logged Duty On for an officer',
+  'attendance.duty_from_on_behalf': 'Logged Duty From for an officer',
+  'attendance.exception': 'Approved attendance exception',
+  'attendance.selfie_view': 'Viewed declaration selfie',
 };
 
 function subject(e: Entry): string {
   const a = e.after ?? {};
-  return String(a.name ?? a.fullName ?? a.label ?? a.kind ?? '');
+  return String(a.name ?? a.fullName ?? a.officer ?? a.label ?? a.kind ?? a.siteName ?? '');
 }
 
 export default function AuditPage() {

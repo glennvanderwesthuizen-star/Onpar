@@ -6,6 +6,7 @@ import { SessionProvider, useSession } from '@/lib/session';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
+  { href: '/attendance', label: 'Attendance', permission: 'attendance.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },

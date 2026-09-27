@@ -249,6 +249,39 @@ describe('Duty On, Duty From and attendance', () => {
       expect(log[0].n).toBe(1);
     });
 
+    it('shows the registration photo of whoever worked a shift at the site, even with a different home site', async () => {
+      const elsewhere = await w
+        .http()
+        .post('/api/sites')
+        .set('Authorization', `Bearer ${admin}`)
+        .send({ name: 'Home Site', address: 'x', client: 'x', minimumGrade: 'E', armed: false,
+                shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }] });
+      const o = await enrol(w, admin, enrolmentData(elsewhere.body.id, { idNumber: '9202204720083', fullName: 'Relief Guard' }));
+      const on = await w
+        .http()
+        .post('/api/attendance/on-behalf')
+        .set('Authorization', `Bearer ${supervisor}`)
+        .send({ employeeId: o.body.officer.id, kind: 'duty_on', reason: 'Relief cover at Estate ABC' });
+      // The supervisor cannot see this officer at all: their home site is not one of the supervisor's sites.
+      expect(on.status).toBe(404);
+      const d = await w
+        .http()
+        .post('/api/devices')
+        .set('Authorization', `Bearer ${admin}`)
+        .send({ label: 'Device 003', serialOrImei: '356938035643811', siteId: w.a.siteId });
+      const l = await w.http().post('/api/device/login').set('X-Device-Token', d.body.deviceToken).send({ employeeNumber: o.body.officer.employeeNumber, pin: o.body.initialPin });
+      const g = { 'X-Device-Token': d.body.deviceToken, Authorization: `Bearer ${l.body.token}` };
+      const now = new Date().toISOString();
+      const r = await w.http().post('/api/device/duty').set(g).send({ eventId: randomUUID(), kind: 'duty_on', pin: o.body.initialPin, trustedAt: now, deviceClock: now });
+      expect(r.status).toBe(200);
+      expect(r.body.attendance.siteName).toBe('Estate ABC');
+      const photo = await w.http().get(`/api/attendance/${r.body.attendance.id}/registration-photo`).set('Authorization', `Bearer ${supervisor}`);
+      expect(photo.status).toBe(200);
+      expect(photo.headers['content-type']).toBe('image/png');
+      const other = await w.http().get(`/api/officers/${o.body.officer.id}/photos/face`).set('Authorization', `Bearer ${supervisor}`);
+      expect(other.status).toBe(404);
+    });
+
     it('lets a supervisor approve an exception with a reason', async () => {
       const r = await w
         .http()

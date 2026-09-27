@@ -142,6 +142,37 @@ export class AttendanceController {
     res.send(await this.storage.get(d.selfie_key));
   }
 
+  /**
+   * The officer's registration face photo, for comparing with the selfie
+   * (section 6.2). Access follows the site the shift was worked at, which may
+   * differ from the officer's home site. Logged like any photo view.
+   */
+  @Get(':id/registration-photo')
+  @RequirePermission('attendance.view')
+  async registrationPhoto(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const p = await this.db.withTenant(user.companyId, async (tx) => {
+      const row = (
+        await tx.query(
+          `SELECT a.site_id, a.employee_id, p.storage_key, p.content_type
+             FROM attendance a JOIN employee_photos p ON p.employee_id = a.employee_id AND p.kind = 'face'
+            WHERE a.id = $1`,
+          [id],
+        )
+      ).rows[0];
+      if (!row || (user.siteIds && !user.siteIds.includes(row.site_id))) throw new NotFoundException('Photo not found.');
+      await this.audit.byUser(tx, user, {
+        action: 'officer.photo_view',
+        entityType: 'employee',
+        entityId: row.employee_id,
+        after: { kind: 'face', attendanceId: id },
+      });
+      return row;
+    });
+    res.setHeader('Content-Type', p.content_type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await this.storage.get(p.storage_key));
+  }
+
   /** A supervisor logs Duty On or Duty From for someone, only with a reason (section 6.1). */
   @Post('on-behalf')
   @RequirePermission('attendance.manage')

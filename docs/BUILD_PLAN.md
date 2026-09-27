@@ -164,3 +164,21 @@ While you arrange the phone, I can start **Milestone 1 (foundation)** in paralle
 **Carried to later milestones, not forgotten:**
 - Sites and officers cannot yet be deactivated or have their details edited after enrolment (the prototype also lacks officer editing; see brief section 14).
 - Items for Milestone 10 (hardening): move the website sign-in token from browser session storage to a secure cookie; add rate-limiting to management sign-in; use encrypted S3 storage in place of local disk; clean up uploaded files when an enrolment is rolled back; add a platform tool for creating new companies (currently done by the seed script).
+
+### Milestone 2: Duty On, Duty From and attendance, built 27 Sep 2026
+
+- Duty On and Duty From need the PIN again. Pressing Duty On records attendance at once; the declaration (all three statements, selfie, optional comment) follows as its own step, so an unfinished one shows as "declaration pending" (section 6.2).
+- Declarations store the exact wording shown and its version. They and the duty events cannot be edited or deleted; the database refuses. A selfie sent after its text (photos sync last when offline) can be attached once.
+- Statuses: ON TIME up to 5 minutes after the start (configurable per company), LATE with minutes, EARLY DEPARTURE with minutes, APPROVED EXCEPTION with a supervisor's reason.
+- Offline (section 8): every device action carries its own ID, so retries never duplicate. The device sends its trusted time (last server time plus elapsed time); events arriving late are flagged "late-synced", a phone clock over 2 minutes out is flagged, and events over 72 hours old are refused.
+- Supervisors can log Duty On or Duty From for an officer, only with a reason, audited. The officer still owes the declaration on the device.
+- Management website: an Attendance page per day and site, and a shift page showing both declarations, the comment, and the selfie beside the registration photo (each view logged).
+- Tests: acceptance scenarios 1 (attendance part), 10 and 13, plus tenant separation for attendance.
+
+**Interim until rostering (milestone 21), flagged:** the server matches a Duty On to the site shift whose window (from 2 hours before its start to its end) contains the time. There is no roster yet, so **ABSENT cannot be shown** and "declaration pending" only covers people who logged Duty On. When rostering is built, the scheduled shift will come from the roster instead; the attendance records already store the scheduled times, so nothing needs to change in them.
+
+**Carried forward:**
+- Comments marked "raise as equipment report" are stored with that flag; milestone 5 (reports) will turn them into reports, and link injury reports to the Duty On declaration.
+- Attendance events will feed the scoring engine in milestone 4 (on time +1, late −1).
+- The guard device screens themselves are built in Kotlin once milestone 0 settles the phone and MDM. The server side they need is ready and tested.
+- The wording "Duty From" (decision D-06) is still open.
