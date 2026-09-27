@@ -16,4 +16,31 @@ A workforce performance and operational-accountability platform, starting with p
 
 ## Status
 
-Planning. No application code yet: waiting on the technology confirmation and the Milestone 0 hardware spike.
+**Milestone 1 (foundation): built.** The management website supports sign-in, sites with shift cards, officer enrolment, post devices and the audit log. The server includes guard PIN login for devices, and company data is separated by the database itself.
+Milestone 0 (the phone and kiosk test) is waiting on hardware. See [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md).
+
+## Project layout
+
+```
+apps/api        server (NestJS + PostgreSQL)
+apps/web        management website (Next.js)
+packages/rules  shared business rules, used by both
+docs/           brief, prototype, plan, decisions
+```
+
+## Running it locally (for developers)
+
+Needs Node 22, pnpm 10 and PostgreSQL 16.
+
+```bash
+pnpm install
+psql -U postgres -f scripts/db-setup.sql     # one time: database roles and databases
+cp apps/api/.env.example apps/api/.env        # then fill in JWT_SECRET and DATA_KEY
+pnpm --filter @onpar/rules build
+pnpm db:migrate
+pnpm db:seed                                  # demo company; prints the sign-in details
+pnpm dev:api                                  # http://localhost:4000/api
+pnpm dev:web                                  # http://localhost:3000
+```
+
+Run every test with `pnpm test`. The API tests use the `onpar_test` database and reset it each run.

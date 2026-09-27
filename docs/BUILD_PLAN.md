@@ -145,3 +145,22 @@ These are not problems with your idea, just small inconsistencies worth knowing 
 3. When convenient, get the phone, SIM and MDM trial for Milestone 0.
 
 While you arrange the phone, I can start **Milestone 1 (foundation)** in parallel, because it does not depend on the phone. That goes slightly against the brief's strict order ("do not start application screens before Milestone 0 is proven"). The brief's worry is wasted effort if the phone plan fails, but the server, database and website are needed whatever phone is chosen, so the risk is low. **Your call; see decision D-01.**
+
+---
+
+## 8. Progress log
+
+### Milestone 1: foundation, built 27 Sep 2026
+
+- Companies, users, roles and permissions, with site-scoped access for supervisors, site managers and clients.
+- Sites: create and edit in place with automatic saving (section 30); shift cards colour-coded Day/Night with a guards stepper that never goes below 1 (section 36); equipment per shift; approved contacts; payroll month start day, default 26 (section 41).
+- Officer enrolment (section 6.12): four tabs, SA ID check-digit test, ID encrypted at rest and shown masked, all four photos required, qualifications with certificates, issued uniform and kit, grade and firearm warnings that need confirmation and are recorded in the audit log. Viewing photos is logged.
+- Devices (section 6.1): register to a site and post (key shown once), assign, lock, disable, retire, heartbeat (battery, app version, kiosk status).
+- Guard PIN login on a device, with lockout after five wrong PINs until a supervisor resets it with a reason.
+- Audit log: append-only, enforced by the database.
+- Tenant separation: PostgreSQL row-level security. The app's database user cannot turn it off.
+- Tests: 63 automated tests, covering acceptance scenarios 11 (enrolment) and 14 (tenant separation). They run on GitHub for every change.
+
+**Carried to later milestones, not forgotten:**
+- Sites and officers cannot yet be deactivated or have their details edited after enrolment (the prototype also lacks officer editing; see brief section 14).
+- Items for Milestone 10 (hardening): move the website sign-in token from browser session storage to a secure cookie; add rate-limiting to management sign-in; use encrypted S3 storage in place of local disk; clean up uploaded files when an enrolment is rolled back; add a platform tool for creating new companies (currently done by the seed script).
