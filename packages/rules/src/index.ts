@@ -4,3 +4,4 @@ export * from './enrolment';
 export * from './roles';
 export * from './shifts';
 export * from './attendance';
+export * from './tasks';

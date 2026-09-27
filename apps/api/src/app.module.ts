@@ -15,6 +15,8 @@ import { PinService } from './device-api/pin.service';
 import { GuardController } from './device-api/guard.controller';
 import { DutyService } from './attendance/duty.service';
 import { AttendanceController } from './attendance/attendance.controller';
+import { TasksService } from './tasks/tasks.service';
+import { TasksController, GuardTasksController } from './tasks/tasks.controller';
 
 @Controller('health')
 class HealthController {
@@ -36,6 +38,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       DeviceController,
       GuardController,
       AttendanceController,
+      TasksController,
+      GuardTasksController,
       AuditController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,
@@ -44,6 +48,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardAuthGuard,
       PinService,
       DutyService,
+      TasksService,
     ],
   })
   class AppModule {}
