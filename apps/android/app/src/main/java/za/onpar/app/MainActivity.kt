@@ -22,4 +22,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // On managed phones, lock the screen to On Par (kiosk mode).
+        Kiosk.enter(this)
+    }
 }

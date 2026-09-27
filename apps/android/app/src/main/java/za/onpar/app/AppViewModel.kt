@@ -27,6 +27,10 @@ import za.onpar.core.TaskItem
 import za.onpar.core.ReportItem
 import za.onpar.core.ReorderItem
 import za.onpar.core.IssuedItem
+import za.onpar.core.Score
+import za.onpar.core.ScoreEvent
+import za.onpar.core.Qualification
+import za.onpar.core.Contact
 import za.onpar.core.LocalPatrol
 import za.onpar.core.PatrolState
 import za.onpar.app.ui.takeFix
@@ -46,6 +50,9 @@ sealed interface Page {
     data class Report(val id: String) : Page
     data object Reorders : Page
     data object NewReorder : Page
+    data object Score : Page
+    data object Training : Page
+    data object Call : Page
 }
 
 data class UiState(
@@ -65,6 +72,9 @@ data class UiState(
     val kit: List<IssuedItem> = emptyList(),
     /** Actions waiting on the phone to be sent, by label. */
     val waitingLabels: List<String> = emptyList(),
+    val score: Score? = null,
+    val training: List<Qualification> = emptyList(),
+    val contacts: List<Contact> = emptyList(),
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -102,7 +112,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun background() = withContext(Dispatchers.IO) {
         if (device.setup == null) return@withContext
-        val online = runCatching { device.heartbeat(version, battery(), "unlocked") }.isSuccess
+        val online = runCatching { device.heartbeat(version, battery(), Kiosk.status(getApplication())) }.isSuccess
+        runCatching { device.profile.contacts() }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list) } }
         runCatching { device.sync() }
         _state.update { it.copy(online = online, waiting = device.outbox.pending().size) }
         if (online && device.guardToken != null) refreshHome()
@@ -191,7 +202,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Patrols) loadPatrols()
         if (page == Page.Reports || page is Page.Report) loadReports()
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
+        if (page == Page.Score) loadScore()
+        if (page == Page.Training) loadTraining()
+        if (page == Page.Call) loadContacts()
     }
+
+    // --- Score, training, calls ----------------------------------------------
+
+    fun loadScore() = run {
+        val s = device.profile.score()
+        _state.update { it.copy(score = s) }
+    }
+
+    fun query(event: ScoreEvent, text: String) = run {
+        try {
+            val due = device.profile.query(event, text)
+            val s = device.profile.score()
+            _state.update { it.copy(score = s, message = "Query sent. Your supervisor must answer by ${due.ifEmpty { "the due date" }}.") }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun loadTraining() = run {
+        val t = device.profile.training()
+        _state.update { it.copy(training = t) }
+    }
+
+    fun loadContacts() = run {
+        val c = device.profile.contacts()
+        _state.update { it.copy(contacts = c) }
+    }
+
+    /** Only approved contacts can be called (brief section 6.10). */
+    fun canCall(number: String) = device.profile.isApproved(number)
 
     // --- Reports -------------------------------------------------------------
 

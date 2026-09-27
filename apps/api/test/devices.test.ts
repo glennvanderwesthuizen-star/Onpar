@@ -61,6 +61,14 @@ describe('devices and guard login', () => {
     expect(d.last_seen_at).not.toBeNull();
   });
 
+  it("gives the phone only its site's approved contacts to call, even before anyone logs in (section 6.10)", async () => {
+    const r = await w.http().get('/api/device/contacts').set('X-Device-Token', deviceToken);
+    expect(r.status).toBe(200);
+    expect(r.body.map((c: { label: string }) => c.label)).toEqual(['Supervisor', 'Site manager', 'Control room']);
+    expect(r.body[0]).toMatchObject({ kind: 'supervisor', phone: expect.any(String) });
+    expect((await w.http().get('/api/device/contacts')).status).toBe(401);
+  });
+
   it('rejects an unknown device', async () => {
     expect((await guardLogin(pin, 'not-a-real-token')).status).toBe(401);
   });

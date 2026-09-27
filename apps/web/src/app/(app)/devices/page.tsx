@@ -74,7 +74,7 @@ export default function DevicesPage() {
                   </td>
                   <td>
                     <Pill tone={STATUS_TONE[d.status] ?? 'grey'}>{d.status}</Pill>
-                    <div className="mute small">Kiosk: {d.kioskStatus}</div>
+                    <div className="mute small">Kiosk: {KIOSK[d.kioskStatus] ?? d.kioskStatus}</div>
                   </td>
                   <td>{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : <span className="mute">Never</span>}</td>
                   <td>{d.batteryPct != null ? `${d.batteryPct}%` : '—'}</td>
@@ -110,6 +110,14 @@ export default function DevicesPage() {
     </>
   );
 }
+
+/** The lock-in state the phone reports with every check-in. */
+const KIOSK: Record<string, string> = {
+  locked: 'locked to On Par',
+  permitted: 'allowed, not locked yet',
+  not_managed: 'not managed (test phone)',
+  unknown: 'not reported yet',
+};
 
 /** What the phone scans to set itself up: this website's address and the device key. */
 function setupCode(token: string) {

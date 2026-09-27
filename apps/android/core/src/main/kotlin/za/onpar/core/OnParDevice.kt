@@ -18,6 +18,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     val patrols = PatrolActions(this, dataDir)
     val reports = ReportActions(this, dataDir)
     val reorders = ReorderActions(this, dataDir)
+    val profile = ProfileActions(this, dataDir)
 
     val setup: DeviceSetup?
         get() {
@@ -80,6 +81,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         patrols.clear()
         reports.clear()
         reorders.clear()
+        profile.clear()
     }
 
     fun state(): GuardState = OnParJson.decodeFromJsonElement(GuardState.serializer(), api.get("/device/me", requireGuard()))

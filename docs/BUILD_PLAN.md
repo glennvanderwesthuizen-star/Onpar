@@ -365,7 +365,21 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - **No signal:** reports and re-orders made with no signal show as "waiting for signal to send".
 - **Tests:** scenarios 1, 8 and 12 were run from the phone logic against the real server.
 
-**Next stage:** score, training, calling approved contacts and kiosk lock.
+**Stage 6, score, training, calls and kiosk (27 Sep 2026):**
+- **My score:** the score and position, why it changed (each event with its evidence), and **Query this** on lost points within the query window, showing the answer or when it is due. The fairness note is shown.
+- **My training:** qualifications and PSIRA registration, marked current, expiring soon or expired.
+- **Call:** approved contacts for the site only (supervisor, site manager, control room), with no keypad.
+  - Available from the home screen, the declaration screen and the login screen (so the control room can be called before anyone logs in).
+  - The list is kept on the phone, because calls use the mobile network and work without data.
+  - New server endpoint: `GET /device/contacts` (device key only).
+- **Calls inside On Par:** On Par can become the phone's calling app (Android's dialer role). Every call, incoming or outgoing, is then shown inside On Par with Answer, Decline and End, so the guard never leaves kiosk mode.
+- **Kiosk:**
+  - When the phone-management system allows it, On Par locks itself to the screen (Android lock task mode) and becomes the home screen.
+  - On an unmanaged test phone nothing is locked.
+  - The phone reports "locked", "allowed" or "not managed" with each check-in, shown on the Devices page.
+  - Nothing is specific to a phone brand.
+
+**All six stages are built.** What remains is the hardware test (Milestone 0) on a real phone with a phone-management system: kiosk lock, calls inside On Par, QR and GPS on the actual device.
 
 **Flagged:**
 - A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).

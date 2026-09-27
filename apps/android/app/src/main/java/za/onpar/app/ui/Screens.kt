@@ -36,6 +36,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import za.onpar.app.AppViewModel
+import za.onpar.app.Calls
+import androidx.compose.runtime.collectAsState
 import za.onpar.app.Page
 import za.onpar.app.Screen
 import za.onpar.app.UiState
@@ -51,6 +53,16 @@ fun time(iso: String?): String = iso?.let { runCatching { HHMM.format(Instant.pa
 
 @Composable
 fun OnParScreens(state: UiState, vm: AppViewModel) {
+    // A call, ringing or in progress, comes before everything else (brief section 6.10).
+    val call by Calls.current.collectAsState()
+    val current = call
+    if (current != null) {
+        Column(Modifier.fillMaxSize()) {
+            StatusBar(state)
+            InCallScreen(current, state.contacts)
+        }
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         StatusBar(state)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -58,7 +70,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
             state.message?.let { Banner(it, Color(0xFFDFF3E7)) { vm.dismiss() } }
             when (state.screen) {
                 Screen.Setup -> SetupScreen(vm, state.busy)
-                Screen.Login -> LoginScreen(vm, state.busy)
+                Screen.Login -> if (state.page == Page.Call) CallScreen(vm, state) { vm.go(Page.Home) } else LoginScreen(vm, state.busy)
                 Screen.Home -> when (val page = state.page) {
                     Page.Home -> HomeScreen(vm, state)
                     Page.Tasks -> if (state.owed != null) HomeScreen(vm, state) else TasksScreen(vm, state)
@@ -71,6 +83,10 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     is Page.Report -> if (state.owed != null) HomeScreen(vm, state) else ReportScreen(vm, state, page.id)
                     Page.Reorders -> if (state.owed != null) HomeScreen(vm, state) else ReordersScreen(vm, state)
                     Page.NewReorder -> if (state.owed != null) HomeScreen(vm, state) else NewReorderScreen(vm, state)
+                    Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
+                    Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
+                    // Calling is always allowed, even with a declaration owed.
+                    Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
                 }
             }
         }
@@ -153,6 +169,7 @@ private fun LoginScreen(vm: AppViewModel, busy: Boolean) {
         pin = ""
     }
     Text("Five wrong PINs lock your login until your supervisor resets it.", color = Color.Gray, fontSize = 13.sp)
+    OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth()) { Text("Call supervisor or control room") }
 }
 
 @Composable
@@ -163,6 +180,7 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     // A declaration still owed comes first: nothing else until it is done (brief section 6.2).
     state.owed?.let {
         DeclarationScreen(vm, it, state.busy)
+        OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth()) { Text("Call supervisor or control room") }
         return
     }
     Text("Hello, ${state.guardName ?: ""}", style = MaterialTheme.typography.headlineSmall)
@@ -202,6 +220,11 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Reports) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Report", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Reorders) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Re-order", fontSize = 18.sp) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { vm.go(Page.Score) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Score", fontSize = 18.sp) }
+        OutlinedButton(onClick = { vm.go(Page.Training) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Training", fontSize = 18.sp) }
+    }
+    Button(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Call", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
     OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { CurrentDevice, DeviceAuthGuard, DevicePrincipal } from '../common/auth';
@@ -26,6 +26,22 @@ export class DeviceController {
     private readonly jwt: JwtService,
     private readonly pins: PinService,
   ) {}
+
+  /**
+   * The approved contacts for this device's site (brief section 6.10): the only numbers the
+   * phone can call. Available before anyone logs in, so the control room can always be reached.
+   */
+  @Get('contacts')
+  contacts(@CurrentDevice() device: DevicePrincipal) {
+    if (!device.siteId) return [];
+    return this.db.withTenant(device.companyId, async (tx) => {
+      const labels: Record<string, string> = { supervisor: 'Supervisor', site_manager: 'Site manager', control_room: 'Control room' };
+      const order = ['supervisor', 'site_manager', 'control_room'];
+      return (await tx.query('SELECT kind, name, phone FROM site_contacts WHERE site_id = $1', [device.siteId])).rows
+        .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+        .map((c) => ({ kind: c.kind, label: labels[c.kind] ?? c.kind, name: c.name, phone: c.phone }));
+    });
+  }
 
   @Post('heartbeat')
   @HttpCode(200)
