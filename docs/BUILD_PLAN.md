@@ -294,3 +294,30 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 **Flagged:**
 - **Absent** is interim until rostering (milestone 21): a post counts as absent when nobody logged Duty On for it once the shift has started (plus the grace period). With rostering it will name the missing person.
 - **Report overdue** uses proposed deadlines, decision D-22.
+
+### Milestone 10: hardening, built 27 Sep 2026
+
+- **Security review and fixes:**
+  - Website sign-in now uses a secure cookie that page scripts cannot read.
+  - Changes must come from the On Par website itself.
+  - Sign-in locks for 15 minutes after 5 wrong passwords (or 30 from one address).
+  - Security headers on the website and server.
+  - Uploads are checked against their real content.
+  - Every stored photo and certificate is encrypted.
+  - Optional S3 storage in Cape Town.
+  - Files are cleaned up when an enrolment fails.
+  - The dependency audit is clean.
+  - Automated tests prove row-level security is on for every table and cannot be bypassed.
+- **Users:** a Users page for the system administrator (add, change role and sites, deactivate, reset password). New and reset accounts get a temporary password that must be replaced at first sign-in (12+ characters). There is also My account and a command to create a new company with its first administrator.
+- **Backups:** encrypted backup and restore scripts. An automated test backs up, restores into an empty database and proves the copy works, with companies still separated and the audit log still locked.
+- **POPIA:**
+  - Photo retention (selfies and patrol photos, proposed 12 months), **off until switched on**. Each day it removes only the image, never the record, and logs every removal (Privacy page).
+  - docs/POPIA_CHECKLIST.md with a draft employee notice and breach procedure.
+  - docs/OPERATIONS.md for running it.
+- **Load test:** one year of data for 60 sites and 500 officers. Zero errors. About 40 times headroom over pilot traffic after fixing a slow dashboard query (docs/LOAD_TEST.md).
+
+**Flagged:**
+- POPIA actions for the owner and legal, P-1 to P-9 (decision D-24). Photo removal stays off until the retention periods are confirmed.
+- Changing `DATA_KEY` (the file and ID encryption key) needs a re-encryption run, which is not built yet.
+- The S3 storage option is tested against a stand-in, not a real bucket. Check it once the AWS account exists.
+- Run one server for the pilot; move the scheduled jobs to a single worker before running more.

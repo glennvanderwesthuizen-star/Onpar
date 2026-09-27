@@ -10,7 +10,8 @@
     "db:migrate": "ts-node --transpile-only src/db/migrate-cli.ts",
     "db:seed": "ts-node --transpile-only src/db/seed-cli.ts",
     "test": "jest --runInBand",
-    "company:create": "ts-node --transpile-only src/db/company-cli.ts"
+    "company:create": "ts-node --transpile-only src/db/company-cli.ts",
+    "load:test": "ts-node --transpile-only load/load-test.ts"
   },
   "jest": {
     "preset": "ts-jest",

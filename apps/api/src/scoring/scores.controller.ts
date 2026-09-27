@@ -89,8 +89,13 @@ export class ScoresController {
       const openQueries = (
         await tx.query(`SELECT employee_id, count(*)::int AS n FROM score_queries WHERE status = 'open' GROUP BY employee_id`)
       ).rows;
+      const byEmployee = new Map<string, typeof events>();
+      for (const e of events) {
+        if (!byEmployee.has(e.employee_id)) byEmployee.set(e.employee_id, []);
+        byEmployee.get(e.employee_id)!.push(e);
+      }
       return officers.map((o) => {
-        const r = computeScore(events.filter((e) => e.employee_id === o.id), today, c);
+        const r = computeScore(byEmployee.get(o.id) ?? [], today, c);
         return {
           ...o,
           score: r.score,

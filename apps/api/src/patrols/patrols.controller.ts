@@ -295,7 +295,7 @@ export class PatrolsController {
                   al.id AS "alertId", al.cleared_at AS "alertClearedAt"
              FROM patrol_instances p JOIN patrol_types t ON t.id = p.patrol_type_id JOIN employees e ON e.id = p.employee_id
              JOIN sites s ON s.id = p.site_id LEFT JOIN patrol_alerts al ON al.patrol_id = p.id
-            WHERE (p.window_start AT TIME ZONE 'Africa/Johannesburg')::date = $1
+            WHERE p.window_start >= $1::date::timestamptz AND p.window_start < ($1::date + 1)::timestamptz
               AND ($2::uuid IS NULL OR p.site_id = $2::uuid) AND ($3::uuid[] IS NULL OR p.site_id = ANY($3::uuid[]))
             ORDER BY p.window_start, t.code, e.full_name`,
           [day, siteId || null, user.siteIds],
@@ -316,7 +316,7 @@ export class PatrolsController {
           `SELECT sc.id, sc.result, sc.official_at AS "at", sc.distance_m AS "distanceM", sc.accuracy_m AS "accuracyM", e.full_name AS "employeeName",
                   pt.name AS "pointName"
              FROM patrol_scans sc JOIN employees e ON e.id = sc.employee_id LEFT JOIN patrol_points pt ON pt.id = sc.point_id
-            WHERE sc.patrol_id IS NULL AND (sc.official_at AT TIME ZONE 'Africa/Johannesburg')::date = $1
+            WHERE sc.patrol_id IS NULL AND sc.official_at >= $1::date::timestamptz AND sc.official_at < ($1::date + 1)::timestamptz
               AND ($2::uuid[] IS NULL OR pt.site_id = ANY($2::uuid[]))
             ORDER BY sc.official_at DESC`,
           [day, user.siteIds],

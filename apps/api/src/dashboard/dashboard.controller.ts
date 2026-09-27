@@ -20,6 +20,18 @@ import { DbService, Tx } from '../db/db.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { currentItems } from '../training/training.controller';
 
+/** Groups rows by a key once, rather than searching the whole list for each key. */
+function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    const list = m.get(k);
+    if (list) list.push(r);
+    else m.set(k, [r]);
+  }
+  return m;
+}
+
 /** A device counts as offline when it has not been in touch for an hour. */
 const DEVICE_OFFLINE_MS = 60 * 60 * 1000;
 
@@ -126,13 +138,13 @@ export class DashboardController {
       ).rows;
       const patrols = (
         await tx.query(
-          `SELECT employee_id, state FROM patrol_instances WHERE site_id = $1 AND (window_start AT TIME ZONE 'Africa/Johannesburg')::date = $2`,
+          `SELECT employee_id, state FROM patrol_instances WHERE site_id = $1 AND window_start >= $2::date::timestamptz AND window_start < ($2::date + 1)::timestamptz`,
           [id, day],
         )
       ).rows;
       const reports = (
         await tx.query(
-          `SELECT reported_by_employee FROM reports WHERE site_id = $1 AND (reported_at AT TIME ZONE 'Africa/Johannesburg')::date = $2`,
+          `SELECT reported_by_employee FROM reports WHERE site_id = $1 AND reported_at >= $2::date::timestamptz AND reported_at < ($2::date + 1)::timestamptz`,
           [id, day],
         )
       ).rows;
@@ -183,7 +195,7 @@ export class DashboardController {
                   r.out_of_limit AS "outOfLimit", r.report_id AS "reportId", r.at, pt.name AS "pointName", e.full_name AS "employeeName"
              FROM patrol_readings r JOIN patrol_points pt ON pt.id = r.point_id JOIN patrol_instances p ON p.id = r.patrol_id
              JOIN employees e ON e.id = p.employee_id
-            WHERE pt.site_id = $1 AND (r.at AT TIME ZONE 'Africa/Johannesburg')::date = $2 ORDER BY r.at DESC LIMIT 200`,
+            WHERE pt.site_id = $1 AND r.at >= $2::date::timestamptz AND r.at < ($2::date + 1)::timestamptz ORDER BY r.at DESC LIMIT 200`,
           [id, day],
         )
       ).rows;
@@ -192,7 +204,7 @@ export class DashboardController {
           `SELECT sc.id, sc.patrol_id AS "patrolId", sc.result, sc.official_at AS "at", sc.distance_m AS "distanceM", pt.name AS "pointName",
                   e.full_name AS "employeeName"
              FROM patrol_scans sc JOIN employees e ON e.id = sc.employee_id LEFT JOIN patrol_points pt ON pt.id = sc.point_id
-            WHERE pt.site_id = $1 AND sc.result LIKE 'rejected%' AND (sc.official_at AT TIME ZONE 'Africa/Johannesburg')::date = $2
+            WHERE pt.site_id = $1 AND sc.result LIKE 'rejected%' AND sc.official_at >= $2::date::timestamptz AND sc.official_at < ($2::date + 1)::timestamptz
             ORDER BY sc.official_at DESC LIMIT 100`,
           [id, day],
         )
@@ -283,7 +295,7 @@ export class DashboardController {
                   p.finished_at AS "finishedAt", p.points_earned::float AS "pointsEarned", p.partial_reason AS "partialReason", p.review,
                   t.code AS "typeCode", t.name AS "typeName", s.name AS "siteName"
              FROM patrol_instances p JOIN patrol_types t ON t.id = p.patrol_type_id JOIN sites s ON s.id = p.site_id
-            WHERE p.employee_id = $1 AND (p.window_start AT TIME ZONE 'Africa/Johannesburg')::date = $2
+            WHERE p.employee_id = $1 AND p.window_start >= $2::date::timestamptz AND p.window_start < ($2::date + 1)::timestamptz
               AND ($3::uuid[] IS NULL OR p.site_id = ANY($3::uuid[]))
             ORDER BY p.window_start, t.code`,
           [id, day, scope],
@@ -293,7 +305,7 @@ export class DashboardController {
         await tx.query(
           `SELECT r.id, r.number, r.category, r.priority, r.stage, r.description, r.reported_at AS "reportedAt", s.name AS "siteName"
              FROM reports r JOIN sites s ON s.id = r.site_id
-            WHERE r.reported_by_employee = $1 AND (r.reported_at AT TIME ZONE 'Africa/Johannesburg')::date = $2
+            WHERE r.reported_by_employee = $1 AND r.reported_at >= $2::date::timestamptz AND r.reported_at < ($2::date + 1)::timestamptz
               AND ($3::uuid[] IS NULL OR r.site_id = ANY($3::uuid[]))
             ORDER BY r.reported_at`,
           [id, day, scope],
@@ -305,7 +317,7 @@ export class DashboardController {
           `SELECT h.id, h.report_id AS "reportId", r.number AS "reportNumber", h.action, h.outcome, h.note, h.at, h.stage_after AS "stageAfter"
              FROM report_history h JOIN reports r ON r.id = h.report_id
             WHERE h.actor_type = 'employee' AND h.actor_id = $1 AND h.action <> 'reported'
-              AND (h.at AT TIME ZONE 'Africa/Johannesburg')::date = $2 AND ($3::uuid[] IS NULL OR r.site_id = ANY($3::uuid[]))
+              AND h.at >= $2::date::timestamptz AND h.at < ($2::date + 1)::timestamptz AND ($3::uuid[] IS NULL OR r.site_id = ANY($3::uuid[]))
             ORDER BY h.at`,
           [id, day, scope],
         )
@@ -430,7 +442,7 @@ export class DashboardController {
         await tx.query(
           `SELECT p.site_id, p.state, t.code, t.name, s.name AS site_name
              FROM patrol_instances p JOIN patrol_types t ON t.id = p.patrol_type_id JOIN sites s ON s.id = p.site_id
-            WHERE (p.window_start AT TIME ZONE 'Africa/Johannesburg')::date = $1 AND p.site_id = ANY($2::uuid[])
+            WHERE p.window_start >= $1::date::timestamptz AND p.window_start < ($1::date + 1)::timestamptz AND p.site_id = ANY($2::uuid[])
             ORDER BY s.name, t.code`,
           [day, siteIds],
         )
@@ -494,9 +506,10 @@ export class DashboardController {
         [from, day, employeeIds],
       )
     ).rows;
+    const byEmployee = groupBy(events, (e) => e.employee_id as string);
     return new Map(
       employeeIds.map((id) => {
-        const r = computeScore(events.filter((e) => e.employee_id === id), day, c);
+        const r = computeScore(byEmployee.get(id) ?? [], day, c);
         return [id, { score: r.score, position: r.position as string }];
       }),
     );
