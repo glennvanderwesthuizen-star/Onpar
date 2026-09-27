@@ -201,3 +201,21 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 **Interim, flagged:** a task's day is the calendar day (midnight to midnight). A night shift crosses midnight, so a daily task for night-shift posts may be better tied to the shift than the date. Worth deciding once real tasks are set up; the scheduler can change without affecting stored records.
 
 **Noticed while testing:** a site supervisor can only choose officers registered at their own site, so they cannot assign a task to a relief guard from another site. That is decision D-19 (home site vs working site).
+
+### Milestone 4: scoring engine, built 27 Sep 2026
+
+- One module decides all points (section 6.8). Other parts of the system only report what happened.
+- Score = 80 + the points from the last 30 days, each day held within ±5, and the result kept between 0 and 120. Above Par 90+, On Par 70–89, Needs Attention below 70. All of these, and the points per event, are company settings a manager can change; a change affects only events from then on (scenario 15).
+- Events so far: on time (+1) and late (−1) from Duty On; task completed (+1); missed task (−1) for tasks assigned to a person; "could not complete" costs nothing unless a supervisor does not accept the reason. Report closed, training completed, missed shift and patrol points are ready in the rules and will start once those milestones exist.
+- Events are append-only; the database refuses edits and deletions. A correction is a reversal: an offsetting entry on the same day, with who and why.
+- Every lost point shows its evidence (with a link to the attendance or task record) and can be queried by the officer within 7 days from the device. A supervisor answers within 3 working days (South African public holidays are skipped). A supervisor can uphold; only a manager can reverse.
+- Supervisors can award up to +2, managers up to +5 at a time. Points can never be taken away by hand.
+- When a manager approves an attendance exception, the late point is reversed automatically. When a supervisor approves one, the point stays for a manager to reverse, because every reversal needs a manager.
+- Management website: a Scores page (positions, queries to answer), an officer score page (why, award, reverse), and a scoring rules page.
+- Tests: scenarios 1 (score part) and 15.
+
+**Flagged:**
+- Decision D-21: who loses the point when a task assigned to a post is missed. Until decided, nobody does.
+- Holidays the President declares ad hoc (for example election days) are not in the working-day calculation.
+- The guard's own score screen on the phone is part of the Kotlin app; the server side it needs is ready.
+- As the brief says, have an employment lawyer review the scoring rules before real use (L-01).

@@ -8,6 +8,7 @@ const NAV = [
   { href: '/', label: 'Overview', permission: null },
   { href: '/attendance', label: 'Attendance', permission: 'attendance.view' },
   { href: '/tasks', label: 'Tasks', permission: 'tasks.view' },
+  { href: '/scores', label: 'Scores', permission: 'scores.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },

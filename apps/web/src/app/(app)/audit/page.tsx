@@ -38,6 +38,10 @@ const ACTIONS: Record<string, string> = {
   'task.update': 'Edited task',
   'task.stop': 'Stopped task',
   'task.review': 'Reviewed "could not complete"',
+  'score.award': 'Awarded points',
+  'score.reverse': 'Reversed points',
+  'score.query_answer': 'Answered a score query',
+  'score.rules': 'Changed scoring rules',
 };
 
 function subject(e: Entry): string {
