@@ -335,7 +335,14 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - **Declarations:** owed straight after Duty On or Duty From, even with no signal. Every statement must be ticked and a selfie taken. An optional comment can be raised as an equipment report. The text goes first, the photo after.
 - QR codes are read with ZXing, which works on any Android phone without Google services.
 
-**Next stages:** tasks, then patrols (QR with location lock), reports and re-orders, then score, training, calling approved contacts and kiosk lock.
+**Stage 3, tasks (27 Sep 2026):**
+- **Today's list:** the guard's own tasks and the post's tasks, kept on the phone for when there is no signal and cleared at log-out. Untimed tasks show as "any time during the shift"; timed ones show as due or overdue.
+- **Done:** with a photo when the task needs one, plus an optional comment. The photo is sent after the task.
+- **Could not complete:** the guard gives a reason (and an explanation for "Other"). There is no penalty until a supervisor reviews it.
+- **Offline and refusals:** a task done offline shows as "waiting to send". A refusal (for example, not on duty yet) shows the server's reason.
+- **Inspection tasks** point to the report, where they will be recorded in stage 5.
+
+**Next stages:** patrols (QR with location lock), reports and re-orders, then score, training, calling approved contacts and kiosk lock.
 
 **Flagged:**
 - A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).
