@@ -69,7 +69,7 @@ export default function RulesPage() {
             </tr>
           </thead>
           <tbody>
-            {(Object.keys(data.eventTypes) as EventType[]).map((t) => (
+            {(Object.keys(data.eventTypes) as EventType[]).filter((t) => t !== 'patrol_completed').map((t) => (
               <tr key={t}>
                 <td>{data.eventTypes[t].label}</td>
                 <td style={{ width: 160 }}>
@@ -89,7 +89,10 @@ export default function RulesPage() {
             ))}
           </tbody>
         </table>
-        <p className="mute small">Missed patrols are 0 by default because patrol points are earned per completed patrol (section 6.5).</p>
+        <p className="mute small">
+          Completed patrols earn a share of each shift&apos;s patrol points allocation, set in Patrol setup. Missed patrols are 0 by default for
+          that reason (section 6.5).
+        </p>
       </div>
       <div className="card">
         <h2>Score settings</h2>

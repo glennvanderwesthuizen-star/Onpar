@@ -237,3 +237,22 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Declaration equipment reports: the guard picks the priority when raising it, like any report (owner, 27 Sep 2026); Green if none is chosen.
 - Contractors do not have their own login yet (decision D-10); the supervisor records their work.
 - Reports raised automatically from failed patrol checks arrive with milestone 6.
+
+### Milestone 6: patrols, built 27 Sep 2026
+
+- Patrol types per site (for example A internal, B perimeter, C guard-room check-in as a single scan), each with its own three rules **per shift**, so day and night can differ: patrols per shift (the shift split into equal windows), minimum gap, maximum duration. The setup page warns when the gap plus the duration cannot fit a window.
+- Patrol points with a printable QR code each (Print QR codes on the setup page), a location and radius (30 m default; "use my current location" when standing at the point), a special instruction, photo and note (off, optional or required), and checks: a number with a unit and limit, OK/Problem, or a photo.
+- A scan counts only with a GPS fix of 25 m or better within the point's radius. Rejected scans (too far, poor GPS, unknown code, not open yet) are logged and shown to supervisors. Repeat scans within 2 minutes are ignored. Location is captured only at a scan.
+- The first accepted scan starts the patrol and its clock. Points may be scanned in any order. A point counts once its required photo, note and readings are saved. A reading outside its limit, or Problem, raises an Amber report automatically. Readings are stored as data for trends later.
+- Only one patrol at a time; one per window; the next of a type waits for the minimum gap (the device is told when the next one opens).
+- Overdue alert when a patrol passes its maximum duration; escalated to the control room if nobody acknowledges within 10 minutes; cleared when the patrol completes or a supervisor confirms the guard is safe. The server checks every minute.
+- A guard who cannot finish gives a reason: "ended early", no penalty until a supervisor reviews it (not accepted counts as a missed patrol).
+- Patrol points: each shift's allocation is shared across all its required patrols with cumulative rounding, so completing all of them earns exactly the allocation. Windows with no patrol are recorded as missed patrols (0 points by default, a company setting).
+- Management website: Patrols page (live alerts, compliance per type, the day's patrols, rejected scans), patrol detail (every scan, points, readings, photos, the alert's history, review), and Patrol setup.
+- Tests: scenarios 2, 3, 4, 5, 6 and 7.
+
+**Flagged:**
+- Push notifications and the SMS to the control room need the notification service (Firebase and an SMS provider, section 4), not yet connected. Until then alerts show on the website, refreshed every 30 seconds, with the officer's and control room's numbers to call.
+- The phone's own countdown and local alarm when there is no signal are part of the Kotlin app (Milestone 0 onwards).
+- Importing codes from your current QR product (decision D-08) is still open; tell me the product name when you can.
+- The MDM must block mock-location apps and developer options (Milestone 0).

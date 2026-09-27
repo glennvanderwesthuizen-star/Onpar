@@ -49,6 +49,16 @@ const ACTIONS: Record<string, string> = {
   'report.close': 'Closed a report',
   'people.create': 'Added to people directory',
   'people.update': 'Changed people directory',
+  'patrol.type_create': 'Added a patrol type',
+  'patrol.type_update': 'Changed a patrol type',
+  'patrol.rules': 'Set patrol rules',
+  'patrol.rules_remove': 'Removed patrol rules',
+  'patrol.allocation': 'Set patrol points allocation',
+  'patrol.point_create': 'Added a patrol point',
+  'patrol.point_update': 'Changed a patrol point',
+  'patrol.alert_ack': 'Acknowledged a patrol alert',
+  'patrol.alert_safe': 'Confirmed a guard is safe',
+  'patrol.review': 'Reviewed a patrol ended early',
 };
 
 function subject(e: Entry): string {
