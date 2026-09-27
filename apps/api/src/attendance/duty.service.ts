@@ -21,6 +21,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
+import { ReportsService } from '../reports/reports.service';
 
 export interface DutyInput {
   eventId: string;
@@ -56,6 +57,7 @@ export class DutyService {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly scoring: ScoringService,
+    private readonly reports: ReportsService,
   ) {}
 
   /**
@@ -209,6 +211,28 @@ export class DutyService {
           throw new ConflictException('A declaration for this Duty On or Duty From has already been made.');
         }
         throw e;
+      }
+      // A comment raised as an equipment report enters the normal report workflow (section 6.2).
+      if (input.raiseEquipmentReport) {
+        const name = (await tx.query('SELECT full_name FROM employees WHERE id = $1', [guard.employeeId])).rows[0].full_name;
+        const site = (await tx.query('SELECT site_id FROM attendance WHERE id = $1', [duty.attendance_id])).rows[0].site_id;
+        await this.reports.create(
+          tx,
+          guard.companyId,
+          {
+            siteId: site,
+            category: 'equipment',
+            priority: 'green',
+            description: input.comment.trim(),
+            source: 'declaration',
+            sourceId: input.eventId,
+            employeeId: guard.employeeId,
+            deviceId: guard.deviceId,
+            reportedAt: time.officialAt,
+            lateSynced: time.lateSynced,
+          },
+          { type: 'employee', id: guard.employeeId, name },
+        );
       }
       await this.audit.record(tx, {
         actorType: 'employee',

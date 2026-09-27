@@ -43,6 +43,10 @@ export const PERMISSIONS = {
   'scores.answer': ['company_manager', 'site_manager', 'site_supervisor'],
   'scores.reverse': ['company_manager'],
   'scores.rules': ['company_manager'],
+  'reports.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'reports.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'reports.close': ['company_manager'],
+  'people.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

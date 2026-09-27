@@ -171,8 +171,9 @@ export class TasksService implements OnModuleDestroy {
       return (
         await tx.query(
           `SELECT o.id, o.occurrence_date AS "date", o.title, o.instructions, to_char(o.due_time, 'HH24:MI') AS "dueTime",
-                  o.photo_required AS "photoRequired", o.state, o.done_at AS "doneAt", o.photo_pending AS "photoPending"
-             FROM task_occurrences o
+                  o.photo_required AS "photoRequired", o.state, o.done_at AS "doneAt", o.photo_pending AS "photoPending",
+                  t.report_id AS "reportId"
+             FROM task_occurrences o JOIN tasks t ON t.id = o.task_id
             WHERE o.occurrence_date = $1
               AND ((o.assignee_type = 'employee' AND o.assignee_employee_id = $2)
                 OR (o.assignee_type = 'post' AND o.assignee_device_id = $3))
@@ -263,6 +264,8 @@ export class TasksService implements OnModuleDestroy {
       const mine =
         o && ((o.assignee_type === 'employee' && o.assignee_employee_id === guard.employeeId) || (o.assignee_type === 'post' && o.assignee_device_id === guard.deviceId));
       if (!mine) throw new NotFoundException('Task not found.');
+      const reportId = (await tx.query('SELECT report_id FROM tasks WHERE id = $1', [o.task_id])).rows[0].report_id;
+      if (reportId) throw new ConflictException('Record this inspection on the report: Job done or Not fixed.');
 
       const { closesAt } = occurrenceDeadline(o.occurrence_date, null);
       if (at.getTime() < sastInstant(o.occurrence_date, '00:00').getTime()) throw new ConflictException('This task is not due yet.');
