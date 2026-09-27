@@ -50,6 +50,10 @@ export const PERMISSIONS = {
   'patrols.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'patrols.setup': ['system_admin', 'company_manager', 'site_manager'],
   'patrols.alerts': ['company_manager', 'site_manager', 'site_supervisor'],
+  'reorders.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'reorders.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'kit.manage': ['system_admin', 'company_manager'],
+  'kit.issue': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

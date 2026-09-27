@@ -254,5 +254,5 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 **Flagged:**
 - Push notifications and the SMS to the control room need the notification service (Firebase and an SMS provider, section 4), not yet connected. Until then alerts show on the website, refreshed every 30 seconds, with the officer's and control room's numbers to call.
 - The phone's own countdown and local alarm when there is no signal are part of the Kotlin app (Milestone 0 onwards).
-- Importing codes from your current QR product (decision D-08) is still open; tell me the product name when you can.
+- Decision D-08: there is no existing QR product; On Par's own printed codes are used.
 - The MDM must block mock-location apps and developer options (Milestone 0).

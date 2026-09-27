@@ -23,6 +23,7 @@ import { ReportsService } from './reports/reports.service';
 import { ReportsController, GuardReportsController } from './reports/reports.controller';
 import { PatrolsService } from './patrols/patrols.service';
 import { PatrolsController, GuardPatrolsController } from './patrols/patrols.controller';
+import { ReordersController, GuardReordersController } from './reorders/reorders.controller';
 
 @Controller('health')
 class HealthController {
@@ -52,6 +53,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardReportsController,
       PatrolsController,
       GuardPatrolsController,
+      ReordersController,
+      GuardReordersController,
       AuditController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,

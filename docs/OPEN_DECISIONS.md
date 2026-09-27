@@ -21,7 +21,7 @@ Legend for "Needed by": **M0** = before the hardware spike, **M1** = before the 
 | ID | Question | Recommendation | Needed by | Decision |
 |---|---|---|---|---|
 | D-07 | Should patrol types be weighted differently when sharing patrol points? | Equal shares for now (as the brief says); weighting can be added later without changing stored data. | M6 | *open* |
-| D-08 | Can the existing QR product export its codes, so they can be imported as patrol points? | Find out the product name; if it exports CSV, I will build an import. | M6 | *open* |
+| D-08 | Can the existing QR product export its codes, so they can be imported as patrol points? | Find out the product name; if it exports CSV, I will build an import. | M6 | **Decided 27 Sep 2026: there is no existing QR system. On Par makes and prints its own codes (weatherproof stickers or engraved plates recommended).** |
 | D-09 | Re-orders: does "Assigned" mean assigned to a person to deliver? | Yes (the brief's assumption). | M7 | *open* |
 | D-10 | When do contractors get their own login? | After the pilot. | After M11 | *open* |
 | D-11 | When is a management mode added inside the device app? | After the pilot. | After M11 | *open* |
