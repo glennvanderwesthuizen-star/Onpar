@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDateTime, useLoad } from '@/components/ui';
+import { QrCard } from '@/components/patrols';
 
 interface Device {
   id: string;
@@ -110,6 +111,11 @@ export default function DevicesPage() {
   );
 }
 
+/** What the phone scans to set itself up: this website's address and the device key. */
+function setupCode(token: string) {
+  return `onpar://setup?server=${encodeURIComponent(window.location.origin)}&token=${encodeURIComponent(token)}`;
+}
+
 function RegisterDevice({ sites, onRegistered }: { sites: Site[]; onRegistered: () => void }) {
   const [f, setF] = useState({ label: '', serialOrImei: '', siteId: '', postName: '' });
   const [busy, setBusy] = useState(false);
@@ -142,14 +148,18 @@ function RegisterDevice({ sites, onRegistered }: { sites: Site[]; onRegistered: 
       {token && (
         <div className="banner ok">
           <p>
-            <b>{token.label}</b> is registered. Its device key is:
+            <b>{token.label}</b> is registered. Open On Par on the phone and scan this code:
+          </p>
+          <QrCard code={setupCode(token.token)} name={token.label} sub="On Par phone setup" />
+          <p className="small">
+            Or type the details on the phone: server <b>{typeof window === 'undefined' ? '' : window.location.origin}</b>, device key:
           </p>
           <p>
             <span className="secret long">{token.token}</span>
           </p>
           <p className="small">
-            Enter this on the phone (or push it through the phone-management system). It will not be shown again. If it is
-            lost, retire the device and register it again.
+            The code and key are shown only now. Anyone with them can set up a phone as this device, so do not photograph or share them. If
+            they are lost, retire the device and register it again.
           </p>
           <button className="btn ghost sm" onClick={() => setToken(null)}>
             I have saved it

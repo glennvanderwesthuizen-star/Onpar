@@ -9,3 +9,9 @@ coverage/
 uploads/
 next-env.d.ts
 *.tsbuildinfo
+# Android
+apps/android/.gradle/
+apps/android/**/build/
+apps/android/local.properties
+apps/android/.kotlin/
+*.apk
