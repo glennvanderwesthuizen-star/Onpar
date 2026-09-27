@@ -54,6 +54,8 @@ export const PERMISSIONS = {
   'reorders.manage': ['company_manager', 'site_manager', 'site_supervisor'],
   'kit.manage': ['system_admin', 'company_manager'],
   'kit.issue': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'training.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'hr_admin'],
+  'training.record': ['system_admin', 'company_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

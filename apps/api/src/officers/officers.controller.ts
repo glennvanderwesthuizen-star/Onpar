@@ -21,6 +21,7 @@ import {
   enrolmentErrors,
   maskIdNumber,
   qualificationStatus,
+  currentQualifications,
   siteFitWarnings,
   validateSaId,
   REQUIRED_PHOTO_KINDS,
@@ -247,9 +248,10 @@ export class OfficersController {
           ? await this.storage.put(user.companyId, `employees/${employeeId}`, f.buffer, CERTIFICATE_TYPES[f.mimetype])
           : null;
         await tx.query(
-          `INSERT INTO qualifications (company_id, employee_id, type, name, completion_date, expiry_date, certificate_key)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6)`,
-          [employeeId, q.type, q.name, q.completionDate || null, q.expiryDate || null, key],
+          `INSERT INTO qualifications (company_id, employee_id, type, name, completion_date, expiry_date, certificate_key,
+                                       certificate_content_type, recorded_by)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8)`,
+          [employeeId, q.type, q.name, q.completionDate || null, q.expiryDate || null, key, f?.mimetype ?? null, user.userId],
         );
       }
       for (const it of input.issuedItems) {
@@ -330,6 +332,9 @@ export class OfficersController {
         [id],
       )
     ).rows.map((q) => ({ ...q, status: qualificationStatus(q.expiryDate, today) }));
+    // A renewal adds a record; only the latest of each counts, older ones are history.
+    const current = new Set(currentQualifications(qualifications).map((q) => q.id));
+    for (const q of qualifications) q.current = current.has(q.id);
     const issuedItems = (
       await tx.query(
         `SELECT id, item, size, asset_number AS "assetNumber", issue_date AS "issueDate"
