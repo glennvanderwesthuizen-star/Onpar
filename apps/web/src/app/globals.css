@@ -51,12 +51,12 @@ p { margin: 0 0 8px; }
 .small { font-size: 13px; }
 
 /* Header */
-.top { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.top { display: flex; align-items: center; gap: 8px 12px; padding: 8px 20px 0; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand img { height: 36px; width: 36px; border-radius: 6px; }
 .logo { font-weight: 800; font-size: 20px; letter-spacing: .02em; }
 .logo i { font-style: normal; color: var(--green); }
-.nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.nav { display: flex; gap: 2px; flex-wrap: wrap; order: 3; flex-basis: 100%; margin: 0 -9px; }
 .nav a { padding: 8px 9px; font-size: 14px; text-decoration: none; color: var(--mute); border-bottom: 2px solid transparent; }
 .nav a.on { color: var(--ink); font-weight: 700; border-color: var(--green); }
 .who { margin-left: auto; text-align: right; font-size: 12px; line-height: 1.35; }
@@ -141,8 +141,8 @@ details.eq .grid { margin-top: 10px; }
 .login form { text-align: left; margin-top: 16px; }
 
 @media (max-width: 640px) {
-  .top { padding: 10px 16px; }
-  .who { margin-left: 0; text-align: left; width: 100%; }
+  .top { padding: 8px 16px 0; }
+  .who { margin-left: auto; }
 }
 
 /* Reports (section 24): colour badge and flat traffic light */

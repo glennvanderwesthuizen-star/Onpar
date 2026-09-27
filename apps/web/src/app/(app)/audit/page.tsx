@@ -64,6 +64,9 @@ const ACTIONS: Record<string, string> = {
   'reorder.delivered': 'Marked a re-order as delivered',
   'kit.catalogue': 'Changed the kit list',
   'kit.issue': 'Issued kit to an officer',
+  'training.record': 'Recorded a qualification',
+  'training.correct': 'Corrected a qualification',
+  'officer.psira_update': 'Updated PSIRA details',
 };
 
 function subject(e: Entry): string {

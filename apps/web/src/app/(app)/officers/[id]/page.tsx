@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { PHOTO_LABELS, REQUIRED_PHOTO_KINDS, PhotoKind } from '@onpar/rules';
-import { api, imageUrl } from '@/lib/api';
+import { api, imageUrl, openFile } from '@/lib/api';
+import { QUALIFICATION_TYPES, PSIRA_GRADES } from '@onpar/rules';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
 
@@ -26,7 +27,7 @@ interface Officer {
   siteName: string;
   photos: PhotoKind[];
   siteWarnings: string[];
-  qualifications: { id: string; name: string; completionDate: string | null; expiryDate: string | null; status: string; hasCertificate: boolean }[];
+  qualifications: { id: string; type: string; name: string; completionDate: string | null; expiryDate: string | null; status: string; hasCertificate: boolean; current: boolean }[];
   issuedItems: { id: string; item: string; size: string | null; assetNumber: string | null; issueDate: string }[];
 }
 
@@ -78,6 +79,7 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
           <Detail label="Number" value={o.psiraNumber} />
           <Detail label="Grade" value={`Grade ${o.psiraGrade}`} />
           <Detail label="Expiry" value={<>{formatDate(o.psiraExpiry)} <StatusPill status={o.psiraStatus} /></>} />
+          {can('training.record') && <UpdatePsira officer={o} onDone={reload} />}
         </div>
       </div>
 
@@ -97,17 +99,28 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
               </tr>
             </thead>
             <tbody>
-              {o.qualifications.map((q) => (
-                <tr key={q.id}>
-                  <td>{q.name}</td>
-                  <td>{formatDate(q.completionDate)}</td>
-                  <td>{formatDate(q.expiryDate)}</td>
-                  <td>
-                    <StatusPill status={q.status} />
-                  </td>
-                  <td>{q.hasCertificate ? 'Uploaded' : <span className="mute">None</span>}</td>
-                </tr>
-              ))}
+              {[...o.qualifications]
+                .sort((a, b) => Number(b.current) - Number(a.current) || (b.expiryDate ?? '9999').localeCompare(a.expiryDate ?? '9999'))
+                .map((q) => (
+                  <tr key={q.id} style={{ opacity: q.current ? 1 : 0.55 }}>
+                    <td>
+                      {q.name}
+                      {!q.current && <div className="mute small">Earlier record, replaced by a renewal</div>}
+                    </td>
+                    <td>{formatDate(q.completionDate)}</td>
+                    <td>{formatDate(q.expiryDate)}</td>
+                    <td>{q.current ? <StatusPill status={q.status} /> : <span className="mute small">History</span>}</td>
+                    <td>
+                      {q.hasCertificate ? (
+                        <button className="btn ghost sm" onClick={() => openFile(`/qualifications/${q.id}/certificate`)}>
+                          Open
+                        </button>
+                      ) : (
+                        <span className="mute">None</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         )}
@@ -138,6 +151,8 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
           </table>
         )}
       </div>
+
+      {can('training.record') && <RecordQualification officerId={o.id} onDone={reload} />}
 
       {can('kit.issue') && <IssueKit officerId={o.id} onDone={reload} />}
 
@@ -300,6 +315,133 @@ function IssueKit({ officerId, onDone }: { officerId: string; onDone: () => void
       >
         Issue
       </button>
+    </div>
+  );
+}
+
+function RecordQualification({ officerId, onDone }: { officerId: string; onDone: () => void }) {
+  const [f, setF] = useState({ type: 'first_aid', name: '', completionDate: '', expiryDate: '' });
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [ok, setOk] = useState(false);
+  return (
+    <div className="card">
+      <h2>Record a qualification or renewal</h2>
+      <p className="mute small">A renewal is recorded as a new entry; the earlier one is kept as history. Completed training earns the officer a point.</p>
+      {ok && <div className="banner ok">Recorded.</div>}
+      <ErrorBanner error={error} />
+      <div className="grid g3">
+        <Field label="Type">
+          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, name: f.name || QUALIFICATION_TYPES[e.target.value as keyof typeof QUALIFICATION_TYPES] })}>
+            {Object.entries(QUALIFICATION_TYPES).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Course or qualification">
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. First aid level 1" />
+        </Field>
+        <Field label="Completed">
+          <input type="date" value={f.completionDate} onChange={(e) => setF({ ...f, completionDate: e.target.value })} />
+        </Field>
+        <Field label="Expires">
+          <input type="date" value={f.expiryDate} onChange={(e) => setF({ ...f, expiryDate: e.target.value })} />
+        </Field>
+        <Field label="Certificate (PDF or photo)">
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </Field>
+      </div>
+      <button
+        className="btn"
+        disabled={busy || f.name.trim().length < 2}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          setOk(false);
+          const form = new FormData();
+          form.set('data', JSON.stringify({ type: f.type, name: f.name, completionDate: f.completionDate || null, expiryDate: f.expiryDate || null }));
+          if (file) form.set('certificate', file);
+          try {
+            await api(`/officers/${officerId}/qualifications`, { method: 'POST', body: form });
+            setF({ type: 'first_aid', name: '', completionDate: '', expiryDate: '' });
+            setFile(null);
+            setOk(true);
+            onDone();
+          } catch (e) {
+            setError(e);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Record
+      </button>
+    </div>
+  );
+}
+
+function UpdatePsira({ officer, onDone }: { officer: Officer; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ psiraNumber: officer.psiraNumber, psiraGrade: officer.psiraGrade, psiraExpiry: officer.psiraExpiry, reason: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  if (!open) {
+    return (
+      <button className="btn ghost sm" onClick={() => setOpen(true)}>
+        Update PSIRA details
+      </button>
+    );
+  }
+  return (
+    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+      <ErrorBanner error={error} />
+      <Field label="PSIRA number">
+        <input value={f.psiraNumber} onChange={(e) => setF({ ...f, psiraNumber: e.target.value })} />
+      </Field>
+      <div className="grid g2">
+        <Field label="Grade">
+          <select value={f.psiraGrade} onChange={(e) => setF({ ...f, psiraGrade: e.target.value })}>
+            {PSIRA_GRADES.map((g) => (
+              <option key={g} value={g}>
+                Grade {g}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Expiry">
+          <input type="date" value={f.psiraExpiry} onChange={(e) => setF({ ...f, psiraExpiry: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="What changed" hint="Check it against PSIRA's official records first.">
+        <input value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="e.g. Renewed, checked on the PSIRA website" />
+      </Field>
+      <div className="row">
+        <button
+          className="btn sm"
+          disabled={busy || f.reason.trim().length < 3}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await api(`/officers/${officer.id}/psira`, { method: 'PUT', json: f });
+              setOpen(false);
+              onDone();
+            } catch (e) {
+              setError(e);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Save
+        </button>
+        <button className="btn ghost sm" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

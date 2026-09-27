@@ -14,6 +14,7 @@ const NAV = [
   { href: '/scores', label: 'Scores', permission: 'scores.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
+  { href: '/training', label: 'Training', permission: 'training.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },
   { href: '/audit', label: 'Audit', permission: 'audit.view' },
 ];

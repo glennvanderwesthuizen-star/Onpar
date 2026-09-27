@@ -73,3 +73,16 @@ export async function imageUrl(path: string): Promise<string> {
   if (!res.ok) throw new ApiError(res.status, 'Could not load the photo.');
   return URL.createObjectURL(await res.blob());
 }
+
+/** Opens an authenticated file (for example a certificate PDF) in a new tab. */
+export async function openFile(path: string) {
+  const tab = window.open('', '_blank');
+  try {
+    const url = await imageUrl(path);
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+  } catch {
+    tab?.close();
+    alert('Could not open the file.');
+  }
+}

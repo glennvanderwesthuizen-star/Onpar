@@ -267,3 +267,19 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Tests: scenario 12.
 
 **Later, as the brief says:** approval limits, stock levels, supplier orders and cost tracking.
+
+### Milestone 8: qualifications and training, built 27 Sep 2026
+
+- Qualifications per officer: firearm competency, first aid, fire fighting and other, each with a completion date, an expiry date and a certificate (PDF or photo). A renewal is recorded as a new record; the old one stays as history and the latest one counts.
+- Status: Compliant, Expiring (within 30 days) or Expired. PSIRA registration is shown alongside and can be updated by a manager (number, grade, expiry and a reason), with an audit trail.
+- Training page on the website: compliant percentage, expiring, expired and items tracked, with tabs (Needs attention, Expired, Expiring, All) and a site filter. The officer's page shows current qualifications first, history greyed out, and forms to record a qualification or renewal and to update PSIRA.
+- Recording completed training earns +1 on the officer's score, once per record. Corrections to a record are audited with before and after.
+- Officers can see their own qualifications on the device.
+- Supervisors can view; only company managers, HR and system admins can record.
+- The website header is now two rows (logo and user on top, menu below) so the growing menu stays tidy.
+- Tests: qualification status and renewals, the +1 point, date checks, corrections, PSIRA updates, the device view and company separation (scenario 14).
+
+**Flagged:**
+- The 30-day "expiring" window is a fixed default for now; it is written to become a company setting.
+- PSIRA registration is checked by hand against PSIRA's records. An automatic PSIRA check is not built (no official interface is known; a question for the owner).
+- Reminder messages before expiry need the notification service (section 4), not yet connected.
