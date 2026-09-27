@@ -5,3 +5,4 @@ export * from './roles';
 export * from './shifts';
 export * from './attendance';
 export * from './tasks';
+export * from './scoring';

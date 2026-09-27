@@ -34,6 +34,7 @@ Legend for "Needed by": **M0** = before the hardware spike, **M1** = before the 
 | D-18 | How franchisees are charged (per guard, per device, flat fee). | Business decision; does not affect the build until billing is wanted. | M14 | *open* |
 | D-19 | Separate an employee's "home site" from their "currently rostered site" (for relief cover)? | Yes, build them as two separate fields from the start; it is cheap now and expensive later. | M21 | *open* |
 | D-20 | Different guard requirements on weekends and public holidays? | Build the data model to allow it (per day-of-week plus holiday override), show it simply at first. | M21 | *open* |
+| D-21 | A missed task assigned to a **post** (not a person): who loses the point? Several guards may have worked that post that day. | Until decided, nobody loses a point for it; it still shows as missed on the Tasks page. Options: every guard who did Duty On at that post that day, or only the guard on duty at the task's due time. | M4 | *open* |
 
 ## Needs a specialist (the brief says: flag, never decide)
 

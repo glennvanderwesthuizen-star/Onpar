@@ -160,3 +160,13 @@ export const DECLARATIONS = {
 } as const;
 
 export type DutyKind = keyof typeof DECLARATIONS;
+
+/** HH:MM in South African time. */
+export function sastTime(at: Date): string {
+  return new Date(at.getTime() + SAST_OFFSET_MINUTES * MINUTE).toISOString().slice(11, 16);
+}
+
+/** A date like "27 Sep 2026". */
+export function sastLongDate(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}

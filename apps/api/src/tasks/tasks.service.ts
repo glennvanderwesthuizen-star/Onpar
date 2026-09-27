@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   addDays,
+  sastLongDate,
   occurrenceDates,
   occurrenceDeadline,
   reconcileTime,
@@ -21,6 +22,7 @@ import {
 import type { GuardPrincipal } from '../common/auth';
 import { DbService, Tx } from '../db/db.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
+import { ScoringService } from '../scoring/scoring.service';
 
 export interface Upload {
   mimetype: string;
@@ -47,6 +49,7 @@ export class TasksService implements OnModuleDestroy {
   constructor(
     private readonly db: DbService,
     private readonly storage: StorageService,
+    private readonly scoring: ScoringService,
   ) {}
 
   /** Runs the scheduler every few minutes while the server is up. */
@@ -115,7 +118,7 @@ export class TasksService implements OnModuleDestroy {
                 missed_at = ((occurrence_date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg')
           WHERE state = 'open'
             AND ((occurrence_date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg') <= $1
-          RETURNING id, missed_at`,
+          RETURNING id, missed_at, title, occurrence_date, site_id, assignee_type, assignee_employee_id`,
         [now],
       )
     ).rows;
@@ -125,6 +128,19 @@ export class TasksService implements OnModuleDestroy {
          VALUES (app_company_id(), $1, $2, 'system', 'missed', 'Not done by the end of the day.')`,
         [r.id, r.missed_at],
       );
+      // A task for a post has no single responsible officer, so it costs nobody points
+      // until the owner decides who is accountable (decision D-21).
+      if (r.assignee_type === 'employee') {
+        await this.scoring.record(tx, {
+          employeeId: r.assignee_employee_id,
+          siteId: r.site_id,
+          date: r.occurrence_date,
+          type: 'missed_task',
+          sourceType: 'task',
+          sourceId: r.id,
+          evidence: `“${r.title}” was not done by the end of ${sastLongDate(r.occurrence_date)}.`,
+        });
+      }
     }
     return rows.length;
   }
@@ -159,6 +175,16 @@ export class TasksService implements OnModuleDestroy {
           WHERE id = $1`,
         [o.id, guard.employeeId, at, a.comment, key, photo?.mimetype ?? null, !photo && a.photoToFollow],
       );
+      await this.scoring.reverseFor(tx, 'task', o.id, 'missed_task', 'Done before the day ended; the device synced afterwards.', { type: 'system' });
+      await this.scoring.record(tx, {
+        employeeId: guard.employeeId,
+        siteId: o.site_id,
+        date: o.occurrence_date,
+        type: 'task_completed',
+        sourceType: 'task',
+        sourceId: o.id,
+        evidence: `Completed “${o.title}” on ${sastLongDate(o.occurrence_date)}.`,
+      });
       return { action: 'completed', note: a.comment };
     });
   }
@@ -174,6 +200,8 @@ export class TasksService implements OnModuleDestroy {
           WHERE id = $1`,
         [o.id, guard.employeeId, at, a.comment, a.reason, key, photo?.mimetype ?? null, !photo && a.photoToFollow],
       );
+      // No penalty until a supervisor reviews it; undo a missed event if it was reported in time but synced late.
+      await this.scoring.reverseFor(tx, 'task', o.id, 'missed_task', 'Reported as could not complete before the day ended; the device synced afterwards.', { type: 'system' });
       return { action: 'could_not_complete', note: [a.reason, a.comment].filter(Boolean).join(': ') };
     });
   }

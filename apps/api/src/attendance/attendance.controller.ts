@@ -13,13 +13,14 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { sastDate } from '@onpar/rules';
+import { can, sastDate } from '@onpar/rules';
 import { CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { DutyService } from './duty.service';
+import { ScoringService } from '../scoring/scoring.service';
 
 const OnBehalfBody = z.object({
   employeeId: z.string().uuid(),
@@ -39,6 +40,7 @@ export class AttendanceController {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly duty: DutyService,
+    private readonly scoring: ScoringService,
   ) {}
 
   /** One day's attendance, by the date each shift started. */
@@ -201,7 +203,17 @@ export class AttendanceController {
         after: { exceptionReason: reason },
         reason,
       });
-      return { ok: true };
+      // Reversing points needs a manager (section 6.8). A supervisor's approval leaves the
+      // late event in place for a manager to reverse from the officer's score page.
+      let pointsReversed = false;
+      if (can(user.role, 'scores.reverse')) {
+        pointsReversed = !!(await this.scoring.reverseFor(tx, 'attendance', id, 'late', `Approved exception: ${reason}`, {
+          type: 'user',
+          id: user.userId,
+          label: user.name,
+        }));
+      }
+      return { ok: true, pointsReversed };
     });
   }
 }

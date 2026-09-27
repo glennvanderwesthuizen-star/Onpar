@@ -38,6 +38,11 @@ export const PERMISSIONS = {
   'attendance.manage': ['company_manager', 'site_manager', 'site_supervisor'],
   'tasks.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'tasks.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'scores.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'scores.award': ['company_manager', 'site_manager', 'site_supervisor'],
+  'scores.answer': ['company_manager', 'site_manager', 'site_supervisor'],
+  'scores.reverse': ['company_manager'],
+  'scores.rules': ['company_manager'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

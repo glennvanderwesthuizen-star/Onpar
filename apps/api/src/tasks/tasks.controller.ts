@@ -34,6 +34,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 import { TasksService, Upload } from './tasks.service';
+import { ScoringService } from '../scoring/scoring.service';
 
 const TaskBody = z.object({
   title: z.string().trim(),
@@ -98,6 +99,7 @@ export class TasksController {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly tasks: TasksService,
+    private readonly scoring: ScoringService,
   ) {}
 
   @Get()
@@ -311,7 +313,12 @@ export class TasksController {
   review(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const r = parseBody(ReviewBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
-      const o = (await tx.query('SELECT site_id, state, review FROM task_occurrences WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      const o = (
+        await tx.query(
+          'SELECT site_id, state, review, done_by, title, occurrence_date, cannot_reason FROM task_occurrences WHERE id = $1 FOR UPDATE',
+          [id],
+        )
+      ).rows[0];
       if (!o || (user.siteIds && !user.siteIds.includes(o.site_id))) throw new NotFoundException('Task not found.');
       if (o.state !== 'could_not_complete') throw new ConflictException('Only "could not complete" can be reviewed.');
       if (o.review) throw new ConflictException('This has already been reviewed.');
@@ -320,6 +327,18 @@ export class TasksController {
         [id, r.decision, user.userId, r.note],
       );
       await this.history(tx, id, user, r.decision === 'accepted' ? 'review_accepted' : 'review_not_accepted', r.note);
+      if (r.decision === 'not_accepted') {
+        const reason = COULD_NOT_COMPLETE_REASONS[o.cannot_reason as keyof typeof COULD_NOT_COMPLETE_REASONS];
+        await this.scoring.record(tx, {
+          employeeId: o.done_by,
+          siteId: o.site_id,
+          date: o.occurrence_date,
+          type: 'missed_task',
+          sourceType: 'task',
+          sourceId: id,
+          evidence: `“${o.title}” was reported as could not complete (${reason}); ${user.name} did not accept the reason: ${r.note}`,
+        });
+      }
       await this.audit.byUser(tx, user, { action: 'task.review', entityType: 'task_occurrence', entityId: id, after: r });
       return { ok: true };
     });

@@ -6,6 +6,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  sastLongDate,
+  sastTime,
   arrivalStatus,
   departureStatus,
   matchShift,
@@ -18,6 +20,7 @@ import type { GuardPrincipal, UserPrincipal } from '../common/auth';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
+import { ScoringService } from '../scoring/scoring.service';
 
 export interface DutyInput {
   eventId: string;
@@ -52,6 +55,7 @@ export class DutyService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly scoring: ScoringService,
   ) {}
 
   /**
@@ -301,8 +305,9 @@ export class DutyService {
     const match = matchShift(shifts, at);
     const arrival = arrivalStatus(match?.scheduledStart ?? null, at, grace);
     const shiftName = match ? shifts.find((s) => s.id === match.shiftId)?.name : null;
+    let attendanceId: string;
     try {
-      return (
+      attendanceId = (
         await tx.query(
           `INSERT INTO attendance (company_id, employee_id, site_id, shift_id, shift_name, shift_date, scheduled_start,
                                    scheduled_end, duty_on_at, arrival_status, late_minutes)
@@ -327,6 +332,23 @@ export class DutyService {
       }
       throw e;
     }
+    if (match && arrival.status !== 'UNSCHEDULED') {
+      const site = (await tx.query('SELECT name FROM sites WHERE id = $1', [siteId])).rows[0].name;
+      const shift = `the ${sastTime(match.scheduledStart)} ${shiftName ?? ''} shift at ${site} on ${sastLongDate(match.shiftDate)}`.replace(/\s+/g, ' ');
+      await this.scoring.record(tx, {
+        employeeId,
+        siteId,
+        date: match.shiftDate,
+        type: arrival.status === 'LATE' ? 'late' : 'on_time',
+        sourceType: 'attendance',
+        sourceId: attendanceId,
+        evidence:
+          arrival.status === 'LATE'
+            ? `Duty On at ${sastTime(at)} for ${shift}: ${arrival.lateMinutes} minutes late.`
+            : `Duty On at ${sastTime(at)} for ${shift}.`,
+      });
+    }
+    return attendanceId;
   }
 
   private async closeShift(tx: Tx, employeeId: string, at: Date): Promise<string> {

@@ -17,6 +17,8 @@ import { DutyService } from './attendance/duty.service';
 import { AttendanceController } from './attendance/attendance.controller';
 import { TasksService } from './tasks/tasks.service';
 import { TasksController, GuardTasksController } from './tasks/tasks.controller';
+import { ScoringService } from './scoring/scoring.service';
+import { ScoresController, GuardScoreController } from './scoring/scores.controller';
 
 @Controller('health')
 class HealthController {
@@ -40,6 +42,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       AttendanceController,
       TasksController,
       GuardTasksController,
+      ScoresController,
+      GuardScoreController,
       AuditController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,
@@ -49,6 +53,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       PinService,
       DutyService,
       TasksService,
+      ScoringService,
     ],
   })
   class AppModule {}
