@@ -342,7 +342,17 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - **Offline and refusals:** a task done offline shows as "waiting to send". A refusal (for example, not on duty yet) shows the server's reason.
 - **Inspection tasks** point to the report, where they will be recorded in stage 5.
 
-**Next stages:** patrols (QR with location lock), reports and re-orders, then score, training, calling approved contacts and kiosk lock.
+**Stage 4, patrols (27 Sep 2026):**
+- **Patrols screen:** each patrol type with how many are done and whether it is ready or when it opens. The patrol in progress shows its points and a countdown that runs on the phone, with an alarm (tone and vibration) when it runs over, even with no signal.
+- **Scanning:** the QR code, then one GPS reading taken at that moment only, waiting for 25 m accuracy. Fake-GPS readings are refused.
+  - The first accepted scan starts the patrol, and points can be scanned in any order.
+  - A point of another patrol is refused while one is in progress.
+- **Checks at each point:** the special instruction, photo and note (off, optional or required), numbers with limits (the phone warns when out of limit), OK/Problem and photo checks. The server raises the report automatically.
+- **No signal:** scans and checks wait on the phone and are validated when sent. The phone recognises points from a fingerprint of their QR code; the codes themselves never leave the server, so they cannot be copied from a phone.
+- **Ending early:** a patrol can be ended early with a reason.
+- **Tests:** scenarios 4, 5 and 7 were run from the phone logic against the real server.
+
+**Next stages:** reports and re-orders, then score, training, calling approved contacts and kiosk lock.
 
 **Flagged:**
 - A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).
