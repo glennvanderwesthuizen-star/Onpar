@@ -17,6 +17,12 @@ interface Entry {
 const ACTIONS: Record<string, string> = {
   'auth.login': 'Signed in',
   'auth.login_failed': 'Failed sign-in',
+  'auth.locked': 'Sign-in locked (too many attempts)',
+  'company.create': 'Company created',
+  'user.create': 'Added user',
+  'user.update': 'Edited user',
+  'user.password_reset': 'Reset password',
+  'user.password_change': 'Changed own password',
   'site.create': 'Created site',
   'site.update': 'Edited site',
   'officer.enrol': 'Enrolled officer',

@@ -28,6 +28,12 @@ export interface Config {
   uploadDir: string;
   port: number;
   webOrigin: string;
+  /** Send the sign-in cookie over HTTPS only. Browsers treat localhost as secure, so this stays on in development. */
+  cookieSecure: boolean;
+  /** Which proxies to trust for the caller's IP address (Express 'trust proxy'). */
+  trustProxy: string;
+  /** File storage. Local disk unless STORAGE_DRIVER=s3. Files are encrypted by the app either way. */
+  storage?: { driver: 'local' } | { driver: 's3'; bucket: string; region: string; kmsKeyId?: string };
 }
 
 export function loadConfig(): Config {
@@ -43,6 +49,12 @@ export function loadConfig(): Config {
     uploadDir: process.env.UPLOAD_DIR ?? './uploads',
     port: Number(process.env.PORT ?? 4000),
     webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    cookieSecure: process.env.COOKIE_SECURE !== 'false',
+    trustProxy: process.env.TRUST_PROXY ?? 'loopback',
+    storage:
+      process.env.STORAGE_DRIVER === 's3'
+        ? { driver: 's3', bucket: required('S3_BUCKET'), region: process.env.S3_REGION ?? 'af-south-1', kmsKeyId: process.env.S3_KMS_KEY_ID || undefined }
+        : { driver: 'local' },
   };
 }
 

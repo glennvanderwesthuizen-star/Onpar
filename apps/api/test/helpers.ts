@@ -11,7 +11,7 @@ import { migrate } from '../src/db/migrate';
 import { seedDemo, SeedResult } from '../src/db/seed';
 import type { Config } from '../src/config';
 
-const OWNER_URL = process.env.TEST_DATABASE_OWNER_URL ?? 'postgres://onpar_owner:onpar_owner_dev@localhost:5432/onpar_test';
+export const OWNER_URL = process.env.TEST_DATABASE_OWNER_URL ?? 'postgres://onpar_owner:onpar_owner_dev@localhost:5432/onpar_test';
 const APP_URL = process.env.TEST_DATABASE_URL ?? 'postgres://onpar_app:onpar_app_dev@localhost:5432/onpar_test';
 
 export const TEST_CONFIG: Config = {
@@ -22,6 +22,8 @@ export const TEST_CONFIG: Config = {
   uploadDir: mkdtempSync(join(tmpdir(), 'onpar-uploads-')),
   port: 0,
   webOrigin: 'http://localhost:3000',
+  cookieSecure: true,
+  trustProxy: 'loopback',
 };
 
 /** Drops everything and re-runs all migrations, so each test file starts clean. */

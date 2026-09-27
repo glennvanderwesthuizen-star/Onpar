@@ -26,6 +26,7 @@ import { PatrolsController, GuardPatrolsController } from './patrols/patrols.con
 import { ReordersController, GuardReordersController } from './reorders/reorders.controller';
 import { TrainingController, GuardTrainingController } from './training/training.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
+import { UsersController } from './users/users.controller';
 
 @Controller('health')
 class HealthController {
@@ -60,6 +61,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       TrainingController,
       GuardTrainingController,
       DashboardController,
+      UsersController,
       AuditController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,

@@ -174,7 +174,7 @@ export class OfficersController {
     const pin = newPin(6);
     const pinHash = await hashSecret(pin);
 
-    const officer = await this.db.withTenant(user.companyId, async (tx) => {
+    const officer = await this.storage.together((put) => this.db.withTenant(user.companyId, async (tx) => {
       const site = (await tx.query('SELECT id, name, minimum_grade, armed FROM sites WHERE id = $1', [input.siteId])).rows[0];
       if (!site) throw new BadRequestException({ message: 'Please fix the highlighted fields.', errors: { siteId: 'Choose a site.' } });
       assertSiteAccess(user, site.id);
@@ -235,7 +235,7 @@ export class OfficersController {
 
       for (const k of REQUIRED_PHOTO_KINDS) {
         const f = byField.get(`photo_${k}`)!;
-        const key = await this.storage.put(user.companyId, `employees/${employeeId}`, f.buffer, IMAGE_TYPES[f.mimetype]);
+        const key = await put(user.companyId, `employees/${employeeId}`, f.buffer, IMAGE_TYPES[f.mimetype]);
         await tx.query(
           `INSERT INTO employee_photos (company_id, employee_id, kind, storage_key, content_type, size_bytes, uploaded_by)
            VALUES (app_company_id(), $1, $2, $3, $4, $5, $6)`,
@@ -245,7 +245,7 @@ export class OfficersController {
       for (const [i, q] of input.qualifications.entries()) {
         const f = byField.get(`certificate_${i}`);
         const key = f
-          ? await this.storage.put(user.companyId, `employees/${employeeId}`, f.buffer, CERTIFICATE_TYPES[f.mimetype])
+          ? await put(user.companyId, `employees/${employeeId}`, f.buffer, CERTIFICATE_TYPES[f.mimetype])
           : null;
         await tx.query(
           `INSERT INTO qualifications (company_id, employee_id, type, name, completion_date, expiry_date, certificate_key,
@@ -271,7 +271,7 @@ export class OfficersController {
         reason: warnings.length ? `Enrolled despite warnings: ${warnings.join(' ')}` : null,
       });
       return after;
-    });
+    }));
     return { officer, initialPin: pin };
   }
 

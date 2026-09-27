@@ -2,11 +2,13 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, getToken, setToken } from './api';
+import { api } from './api';
 
 export interface Me {
   id: string;
   name: string;
+  email: string;
+  mustChangePassword: boolean;
   role: string;
   roleLabel: string;
   company: { id: string; name: string };
@@ -14,28 +16,28 @@ export interface Me {
   permissions: string[];
 }
 
-const Ctx = createContext<{ me: Me; can: (p: string) => boolean; signOut: () => void } | null>(null);
+const Ctx = createContext<{ me: Me; can: (p: string) => boolean; signOut: () => void; refresh: () => Promise<void> } | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
 
-  useEffect(() => {
-    if (!getToken()) {
-      router.replace('/login');
-      return;
-    }
+  const refresh = () =>
     api<Me>('/auth/me')
       .then(setMe)
       .catch(() => router.replace('/login'));
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   if (!me) return <div className="page mute">Loading…</div>;
   const signOut = () => {
-    setToken(null);
-    router.replace('/login');
+    api('/auth/logout', { method: 'POST' })
+      .catch(() => undefined)
+      .finally(() => router.replace('/login'));
   };
-  return <Ctx.Provider value={{ me, can: (p) => me.permissions.includes(p), signOut }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ me, can: (p) => me.permissions.includes(p), signOut, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useSession() {

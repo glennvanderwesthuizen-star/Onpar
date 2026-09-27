@@ -2,7 +2,9 @@
   "name": "onpar",
   "private": true,
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
@@ -11,5 +13,10 @@
     "db:seed": "pnpm --filter @onpar/api db:seed",
     "dev:api": "pnpm --filter @onpar/api dev",
     "dev:web": "pnpm --filter @onpar/web dev"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "^8.5.23"
+    }
   }
 }

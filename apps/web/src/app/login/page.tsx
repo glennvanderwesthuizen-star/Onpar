@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, setToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import { ErrorBanner, Field } from '@/components/ui';
 
 export default function LoginPage() {
@@ -17,8 +17,7 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api<{ token: string }>('/auth/login', { method: 'POST', json: { email, password } });
-      setToken(token);
+      await api('/auth/login', { method: 'POST', json: { email, password } });
       router.replace('/');
     } catch (err) {
       setError(err);

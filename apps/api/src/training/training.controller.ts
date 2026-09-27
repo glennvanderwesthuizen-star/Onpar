@@ -147,9 +147,9 @@ export class TrainingController {
     if (q.completionDate && q.expiryDate && q.expiryDate < q.completionDate) {
       throw new BadRequestException({ message: 'The expiry date must be after completion.', errors: { expiryDate: 'After the completion date.' } });
     }
-    return this.db.withTenant(user.companyId, async (tx) => {
+    return this.storage.together((put) => this.db.withTenant(user.companyId, async (tx) => {
       const e = await this.officer(tx, user, id);
-      const key = file ? await this.storage.put(user.companyId, `employees/${id}`, file.buffer, CERTIFICATE_TYPES[file.mimetype]) : null;
+      const key = file ? await put(user.companyId, `employees/${id}`, file.buffer, CERTIFICATE_TYPES[file.mimetype]) : null;
       const { id: qid } = (
         await tx.query(
           `INSERT INTO qualifications (company_id, employee_id, type, name, completion_date, expiry_date, certificate_key, certificate_content_type, recorded_by)
@@ -160,7 +160,7 @@ export class TrainingController {
       await this.scoreCompletion(tx, qid, id, e.home_site_id, q.name, q.completionDate ?? null);
       await this.audit.byUser(tx, user, { action: 'training.record', entityType: 'employee', entityId: id, after: { ...q, certificate: !!file } });
       return { id: qid };
-    });
+    }));
   }
 
   /** Corrects a record (for example a typing mistake in a date). Audited with before and after. */

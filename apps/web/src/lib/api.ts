@@ -1,21 +1,9 @@
-const TOKEN_KEY = 'onpar.token';
-
-export function getToken(): string | null {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setToken(token: string | null) {
-  try {
-    if (token) sessionStorage.setItem(TOKEN_KEY, token);
-    else sessionStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* storage unavailable: the session lasts until reload */
-  }
-}
+/**
+ * Sign-in lives in an httpOnly cookie set by the server, which page scripts cannot
+ * read. Every request carries the On Par header, which the server requires for
+ * changes, so another website cannot make them on the user's behalf.
+ */
+const HEADERS = { 'X-Requested-With': 'OnPar' };
 
 /** An error from the API, with per-field messages and site-fit warnings when present. */
 export class ApiError extends Error {
@@ -31,8 +19,7 @@ export class ApiError extends Error {
 
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  for (const [k, v] of Object.entries(HEADERS)) headers.set(k, v);
   let body = init.body;
   if (init.json !== undefined) {
     headers.set('Content-Type', 'application/json');
@@ -45,7 +32,6 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
     throw new ApiError(0, 'Could not reach the server. Check your connection and try again.');
   }
   if (res.status === 401 && path !== '/auth/login') {
-    setToken(null);
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = '/login';
     }
@@ -69,7 +55,7 @@ function safeJson(text: string) {
 
 /** Fetches an authenticated image and returns an object URL for an <img>. */
 export async function imageUrl(path: string): Promise<string> {
-  const res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  const res = await fetch(`/api${path}`, { headers: HEADERS });
   if (!res.ok) throw new ApiError(res.status, 'Could not load the photo.');
   return URL.createObjectURL(await res.blob());
 }

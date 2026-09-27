@@ -1,37 +1,153 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { CONFIG, Config } from '../config';
 
-/**
- * Stores photos and certificates. Local disk for development; production will
- * swap this for encrypted S3 storage in the Cape Town region behind the same methods.
- */
-@Injectable()
-export class StorageService {
+/** Where the encrypted bytes live: the server's disk in development, S3 in production. */
+export interface StorageDriver {
+  write(key: string, data: Buffer): Promise<void>;
+  read(key: string): Promise<Buffer>;
+  remove(key: string): Promise<void>;
+}
+
+export class LocalDriver implements StorageDriver {
   private readonly root: string;
-
-  constructor(@Inject(CONFIG) config: Config) {
-    this.root = resolve(config.uploadDir);
+  constructor(dir: string) {
+    this.root = resolve(dir);
   }
-
-  async put(companyId: string, folder: string, data: Buffer, ext: string): Promise<string> {
-    const key = `${companyId}/${folder}/${randomUUID()}${ext}`;
+  async write(key: string, data: Buffer) {
     const path = this.pathFor(key);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, data);
-    return key;
   }
-
-  get(key: string): Promise<Buffer> {
+  read(key: string) {
     return readFile(this.pathFor(key));
   }
-
+  async remove(key: string) {
+    await unlink(this.pathFor(key)).catch((e) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+  }
   private pathFor(key: string): string {
     const path = resolve(join(this.root, key));
     if (!path.startsWith(this.root + '/')) throw new Error('Invalid storage key');
     return path;
+  }
+}
+
+/** Amazon S3 (Cape Town region for POPIA), with the bucket's own server-side encryption on top. */
+export class S3Driver implements StorageDriver {
+  constructor(
+    private readonly client: Pick<S3Client, 'send'>,
+    private readonly bucket: string,
+    private readonly kmsKeyId?: string,
+  ) {}
+  async write(key: string, data: Buffer) {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: data,
+        ContentType: 'application/octet-stream',
+        ...(this.kmsKeyId ? { ServerSideEncryption: 'aws:kms', SSEKMSKeyId: this.kmsKeyId } : { ServerSideEncryption: 'AES256' }),
+      }),
+    );
+  }
+  async read(key: string) {
+    const r = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    return Buffer.from(await r.Body!.transformToByteArray());
+  }
+  async remove(key: string) {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+}
+
+/** Files written by On Par start with this marker, then the IV, the tag and the encrypted bytes. */
+const MAGIC = Buffer.from('OPF1');
+
+/** What the first bytes of each allowed file type must be, so a renamed file cannot pass as a photo. */
+const SIGNATURES: Record<string, (b: Buffer) => boolean> = {
+  '.jpg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  '.png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  '.webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+  '.pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
+};
+
+export function matchesType(data: Buffer, ext: string): boolean {
+  return !!SIGNATURES[ext]?.(data);
+}
+
+/**
+ * Stores photos and certificates, encrypted with AES-256-GCM before they leave
+ * the application, so neither the disk nor the bucket ever holds a readable copy.
+ */
+@Injectable()
+export class StorageService {
+  private readonly key: Buffer;
+  private driver: StorageDriver;
+
+  constructor(@Inject(CONFIG) config: Config) {
+    this.key = Buffer.from(hkdfSync('sha256', config.dataKey, Buffer.alloc(0), 'onpar-files', 32));
+    this.driver =
+      config.storage?.driver === 's3'
+        ? new S3Driver(new S3Client({ region: config.storage.region }), config.storage.bucket, config.storage.kmsKeyId)
+        : new LocalDriver(config.uploadDir);
+  }
+
+  /** Replaces the driver (used by tests). */
+  useDriver(driver: StorageDriver) {
+    this.driver = driver;
+  }
+
+  async put(companyId: string, folder: string, data: Buffer, ext: string): Promise<string> {
+    if (!matchesType(data, ext)) throw new BadRequestException('This file is not the kind it claims to be. Please choose the original photo or PDF.');
+    const key = `${companyId}/${folder}/${randomUUID()}${ext}`;
+    await this.driver.write(key, this.seal(data));
+    return key;
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const raw = await this.driver.read(key);
+    // Files stored before encryption was added (development only) are returned as they are.
+    return raw.subarray(0, 4).equals(MAGIC) ? this.open(raw) : raw;
+  }
+
+  /**
+   * Runs work that stores files and writes the database together. If the work
+   * fails (so the database rolls back), the files it stored are removed again.
+   */
+  async together<T>(work: (put: StorageService['put']) => Promise<T>): Promise<T> {
+    const stored: string[] = [];
+    const put: StorageService['put'] = async (...args) => {
+      const key = await this.put(...args);
+      stored.push(key);
+      return key;
+    };
+    try {
+      return await work(put);
+    } catch (e) {
+      await Promise.all(stored.map((k) => this.remove(k).catch(() => undefined)));
+      throw e;
+    }
+  }
+
+  remove(key: string): Promise<void> {
+    return this.driver.remove(key);
+  }
+
+  private seal(data: Buffer): Buffer {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.key, iv);
+    const ct = Buffer.concat([cipher.update(data), cipher.final()]);
+    return Buffer.concat([MAGIC, iv, cipher.getAuthTag(), ct]);
+  }
+
+  private open(blob: Buffer): Buffer {
+    const decipher = createDecipheriv('aes-256-gcm', this.key, blob.subarray(4, 16));
+    decipher.setAuthTag(blob.subarray(16, 32));
+    return Buffer.concat([decipher.update(blob.subarray(32)), decipher.final()]);
   }
 }
 

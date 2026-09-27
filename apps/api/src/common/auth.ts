@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { can, Permission, Role, SITE_SCOPED_ROLES } from '@onpar/rules';
 import { hashToken } from './crypto';
 import { DbService } from '../db/db.service';
+import { userToken } from './session';
 
 /** A signed-in management user. */
 export interface UserPrincipal {
@@ -37,6 +38,10 @@ export interface DevicePrincipal {
 const PERMISSION_KEY = 'onpar:permission';
 export const RequirePermission = (p: Permission) => SetMetadata(PERMISSION_KEY, p);
 
+/** Routes a user with a temporary password may still use (to see who they are and choose a new one). */
+const TEMPORARY_OK_KEY = 'onpar:temporary-ok';
+export const AllowTemporaryPassword = () => SetMetadata(TEMPORARY_OK_KEY, true);
+
 export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionContext): UserPrincipal => {
   return ctx.switchToHttp().getRequest().principal;
 });
@@ -45,7 +50,7 @@ export const CurrentDevice = createParamDecorator((_: unknown, ctx: ExecutionCon
   return ctx.switchToHttp().getRequest().principal;
 });
 
-/** Requires `Authorization: Bearer <jwt>` for a management user, and the route's permission if any. */
+/** Requires a management user's session (the website's cookie, or a Bearer token), and the route's permission if any. */
 @Injectable()
 export class UserAuthGuard implements CanActivate {
   constructor(
@@ -56,21 +61,22 @@ export class UserAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
-    const header: string = req.headers.authorization ?? '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    const token = userToken(req);
     if (!token) throw new UnauthorizedException('Please sign in.');
     let payload: { sub: string; cid: string; typ: string };
     try {
-      payload = await this.jwt.verifyAsync(token);
+      payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
       throw new UnauthorizedException('Your session has expired. Please sign in again.');
     }
     if (payload.typ !== 'user') throw new UnauthorizedException('Please sign in.');
 
     // Re-read the user so a deactivated account or changed role takes effect immediately.
+    let mustChange = false;
     const principal = await this.db.withTenant(payload.cid, async (tx) => {
-      const u = (await tx.query('SELECT id, role, active, full_name FROM users WHERE id = $1', [payload.sub])).rows[0];
+      const u = (await tx.query('SELECT id, role, active, full_name, must_change_password FROM users WHERE id = $1', [payload.sub])).rows[0];
       if (!u || !u.active) return null;
+      mustChange = u.must_change_password;
       let siteIds: string[] | null = null;
       if (SITE_SCOPED_ROLES.includes(u.role)) {
         siteIds = (await tx.query('SELECT site_id FROM user_sites WHERE user_id = $1', [u.id])).rows.map(
@@ -81,6 +87,9 @@ export class UserAuthGuard implements CanActivate {
     });
     if (!principal) throw new UnauthorizedException('This account is no longer active.');
     req.principal = principal;
+    if (mustChange && !this.reflector.getAllAndOverride<boolean>(TEMPORARY_OK_KEY, [ctx.getHandler(), ctx.getClass()])) {
+      throw new ForbiddenException('Please choose your own password first.');
+    }
 
     const permission = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION_KEY, [
       ctx.getHandler(),
@@ -154,7 +163,7 @@ export class GuardAuthGuard implements CanActivate {
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
     let payload: { sub: string; cid: string; did: string; typ: string };
     try {
-      payload = await this.jwt.verifyAsync(token);
+      payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
       throw new UnauthorizedException('Please log in with your employee number and PIN.');
     }

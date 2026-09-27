@@ -9,7 +9,8 @@
     "dev": "ts-node --transpile-only src/main.ts",
     "db:migrate": "ts-node --transpile-only src/db/migrate-cli.ts",
     "db:seed": "ts-node --transpile-only src/db/seed-cli.ts",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "company:create": "ts-node --transpile-only src/db/company-cli.ts"
   },
   "jest": {
     "preset": "ts-jest",
@@ -23,12 +24,14 @@
     "testTimeout": 20000
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1141.0",
     "@nestjs/common": "^11.2.6",
     "@nestjs/core": "^11.2.6",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.2.6",
     "@node-rs/argon2": "^2.2.1",
     "@onpar/rules": "workspace:*",
+    "helmet": "^8.3.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

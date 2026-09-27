@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SessionProvider, useSession } from '@/lib/session';
+import { ChangePassword } from '@/components/ChangePassword';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
@@ -16,6 +17,7 @@ const NAV = [
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
   { href: '/training', label: 'Training', permission: 'training.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },
+  { href: '/users', label: 'Users', permission: 'users.manage' },
   { href: '/audit', label: 'Audit', permission: 'audit.view' },
 ];
 
@@ -45,7 +47,7 @@ function Header() {
           <b>{me.name}</b> · {me.roleLabel}
         </div>
         <div className="mute">
-          {me.company.name} ·{' '}
+          {me.company.name} · <Link href="/account">My account</Link> ·{' '}
           <button className="btn ghost sm" onClick={signOut}>
             Sign out
           </button>
@@ -55,11 +57,38 @@ function Header() {
   );
 }
 
+/** After a temporary password (new account or reset), nothing else is shown until the user chooses their own. */
+function Gate({ children }: { children: React.ReactNode }) {
+  const { me, refresh, signOut } = useSession();
+  if (!me.mustChangePassword) {
+    return (
+      <>
+        <Header />
+        <main className="page">{children}</main>
+      </>
+    );
+  }
+  return (
+    <main className="login">
+      <div className="card">
+        <img src="/tsf-logo.png" alt="The Security Franchise" />
+        <h2 style={{ marginTop: 10 }}>Choose your own password</h2>
+        <p className="mute small">
+          Welcome, {me.name.split(' ')[0]}. You signed in with a temporary password. Choose your own to continue; only you will know it.
+        </p>
+        <ChangePassword email={me.email} onDone={refresh} />
+        <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={signOut}>
+          Sign out
+        </button>
+      </div>
+    </main>
+  );
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
-      <Header />
-      <main className="page">{children}</main>
+      <Gate>{children}</Gate>
     </SessionProvider>
   );
 }
