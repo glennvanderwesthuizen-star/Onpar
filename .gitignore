@@ -15,3 +15,6 @@ apps/android/**/build/
 apps/android/local.properties
 apps/android/.kotlin/
 *.apk
+deploy/.env
+deploy/backup-passphrase
+backups/

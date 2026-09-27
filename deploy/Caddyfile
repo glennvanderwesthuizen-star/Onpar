@@ -1,0 +1,5 @@
+# The front door: HTTPS certificates are fetched and renewed automatically.
+{$ONPAR_DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+}

@@ -1,0 +1,85 @@
+# On Par on one server. Started by deploy/onpar.sh, which also creates deploy/.env.
+name: onpar
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://onpar_app:${ONPAR_APP_PASSWORD}@db:5432/onpar
+  DATABASE_OWNER_URL: postgres://onpar_owner:${ONPAR_OWNER_PASSWORD}@db:5432/onpar
+  JWT_SECRET: ${JWT_SECRET}
+  DATA_KEY: ${DATA_KEY}
+  UPLOAD_DIR: /data/uploads
+  PORT: "4000"
+  WEB_ORIGIN: https://${ONPAR_DOMAIN}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  # Requests arrive through the front door and the website, both inside this private network.
+  TRUST_PROXY: loopback, uniquelocal
+  STORAGE_DRIVER: local
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ONPAR_OWNER_PASSWORD: ${ONPAR_OWNER_PASSWORD}
+      ONPAR_APP_PASSWORD: ${ONPAR_APP_PASSWORD}
+      TZ: Africa/Johannesburg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init.sh:/docker-entrypoint-initdb.d/db-init.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: api }
+    image: onpar-api
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: web }
+    image: onpar-web
+    restart: unless-stopped
+    depends_on: [api]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ONPAR_DOMAIN: ${CADDY_ADDRESS:-${ONPAR_DOMAIN}}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+
+  # Backups on demand (deploy/onpar.sh backup); not a running service.
+  tools:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: tools }
+    image: onpar-tools
+    profiles: [tools]
+    environment:
+      DATABASE_OWNER_URL: postgres://onpar_owner:${ONPAR_OWNER_PASSWORD}@db:5432/onpar
+      UPLOAD_DIR: /data/uploads
+      BACKUP_DIR: /backups
+      BACKUP_PASSPHRASE_FILE: /run/backup-passphrase
+    volumes:
+      - uploads:/data/uploads:ro
+      - ../backups:/backups
+      - ./backup-passphrase:/run/backup-passphrase:ro
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

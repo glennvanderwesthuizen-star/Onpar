@@ -1,4 +1,7 @@
 /** @type {import('next').NextConfig} */
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
 const API = process.env.API_URL ?? 'http://localhost:4000';
 const dev = process.env.NODE_ENV !== 'production';
 
@@ -18,6 +21,9 @@ const csp = [
 
 export default {
   transpilePackages: ['@onpar/rules'],
+  // A self-contained build for the server package (deploy/Dockerfile).
+  output: 'standalone',
+  outputFileTracingRoot: join(dirname(fileURLToPath(import.meta.url)), '..', '..'),
   poweredByHeader: false,
   // The browser talks to /api on the same origin; Next forwards it to the API server.
   async rewrites() {

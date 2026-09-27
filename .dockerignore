@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.next
+**/build
+**/.gradle
+**/.kotlin
+apps/android
+.git
+**/.env
+**/uploads
+backups
+deploy/.env
