@@ -186,3 +186,18 @@ While you arrange the phone, I can start **Milestone 1 (foundation)** in paralle
 ### Milestone 0 note, 27 Sep 2026
 
 The owner has no Android phone yet, only a personal iPhone. The iPhone cannot run the kiosk and calling tests: those need Android's dedicated-device (lock task) mode and the ability to act as the phone's dialler, which iOS does not allow for apps. What an iPhone *can* check is QR scanning with a GPS accuracy reading at real patrol spots, through a web page in Safari. Milestone 0 proper still needs an Android phone.
+
+### Milestone 3: tasks, built 27 Sep 2026
+
+- A task is for one officer or for a post (whoever is on duty at that post's device). It repeats once, daily, weekly or monthly. A monthly task on the 29th to 31st falls on the last day of shorter months.
+- **Untimed by default** (section 25): the guard sees it as "any time during the shift". Only when "a specific time is required" is ticked does it have a due time, after which it shows as overdue.
+- The server creates each occurrence on schedule, a week ahead, whether or not earlier ones were done (scenario 9). Anything not done by the end of its day is recorded as missed by the scheduler.
+- The guard completes a task (with a photo when required, which may follow later if offline) or reports "could not complete" with a reason. That carries no penalty until a supervisor reviews it: accepted means no penalty; not accepted means it counts as not done (scoring, milestone 4).
+- Each occurrence keeps its own copy of the task, history, evidence and reason. Editing a task changes only open occurrences from today on; stopping it cancels later ones.
+- A task done before midnight but synced after the day ended still counts, and its history says so.
+- Management website: a Tasks page per day and site with counts (done, still to do, overdue, missed, to review), a list of all tasks with edit and stop, a task form, and an occurrence page with history, photo and review.
+- Tests: scenarios 1 (generator check with photo) and 9, plus tenant separation.
+
+**Interim, flagged:** a task's day is the calendar day (midnight to midnight). A night shift crosses midnight, so a daily task for night-shift posts may be better tied to the shift than the date. Worth deciding once real tasks are set up; the scheduler can change without affecting stored records.
+
+**Noticed while testing:** a site supervisor can only choose officers registered at their own site, so they cannot assign a task to a relief guard from another site. That is decision D-19 (home site vs working site).

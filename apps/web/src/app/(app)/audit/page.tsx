@@ -34,11 +34,15 @@ const ACTIONS: Record<string, string> = {
   'attendance.duty_from_on_behalf': 'Logged Duty From for an officer',
   'attendance.exception': 'Approved attendance exception',
   'attendance.selfie_view': 'Viewed declaration selfie',
+  'task.create': 'Created task',
+  'task.update': 'Edited task',
+  'task.stop': 'Stopped task',
+  'task.review': 'Reviewed "could not complete"',
 };
 
 function subject(e: Entry): string {
   const a = e.after ?? {};
-  return String(a.name ?? a.fullName ?? a.officer ?? a.label ?? a.kind ?? a.siteName ?? '');
+  return String(a.name ?? a.title ?? a.fullName ?? a.officer ?? a.label ?? a.kind ?? a.siteName ?? '');
 }
 
 export default function AuditPage() {

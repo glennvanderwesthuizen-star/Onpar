@@ -78,7 +78,7 @@ label.f { display: block; margin-bottom: 10px; }
 label.f > span { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 input, select, textarea { width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-input[type=checkbox] { width: auto; }
+input[type=checkbox], input[type=radio] { width: auto; }
 .err { color: var(--red); font-size: 13px; margin-top: 3px; }
 .invalid { border-color: var(--red); }
 
