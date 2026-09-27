@@ -18,6 +18,7 @@ const NAV = [
   { href: '/training', label: 'Training', permission: 'training.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },
   { href: '/users', label: 'Users', permission: 'users.manage' },
+  { href: '/privacy', label: 'Privacy', permission: 'privacy.manage' },
   { href: '/audit', label: 'Audit', permission: 'audit.view' },
 ];
 

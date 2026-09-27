@@ -23,6 +23,7 @@ const ACTIONS: Record<string, string> = {
   'user.update': 'Edited user',
   'user.password_reset': 'Reset password',
   'user.password_change': 'Changed own password',
+  'privacy.retention_update': 'Changed photo retention',
   'site.create': 'Created site',
   'site.update': 'Edited site',
   'officer.enrol': 'Enrolled officer',

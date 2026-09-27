@@ -35,6 +35,7 @@ import { parseBody, throwIfErrors } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
+import { RetentionService } from '../privacy/retention.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { PatrolsService, Upload } from './patrols.service';
 
@@ -115,6 +116,7 @@ export class PatrolsController {
     private readonly storage: StorageService,
     private readonly patrols: PatrolsService,
     private readonly scoring: ScoringService,
+    private readonly retention: RetentionService,
   ) {}
 
   /** Everything set up for a site: shifts with allocations, types with rules and warnings, and points. */
@@ -417,17 +419,19 @@ export class PatrolsController {
   @Get(':id/points/:pointId/photo')
   @RequirePermission('patrols.view')
   async photo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Param('pointId', ParseUUIDPipe) pointId: string, @Res() res: Response) {
-    const v = await this.db.withTenant(user.companyId, async (tx) =>
-      (
+    const v = await this.db.withTenant(user.companyId, async (tx) => {
+      const row = (
         await tx.query(
           `SELECT v.photo_key, v.photo_content_type, p.site_id FROM patrol_visits v JOIN patrol_instances p ON p.id = v.patrol_id
             WHERE v.patrol_id = $1 AND v.point_id = $2`,
           [id, pointId],
         )
-      ).rows[0],
-    );
-    if (!v?.photo_key) throw new NotFoundException('Photo not found.');
-    this.siteAccess(user, v.site_id);
+      ).rows[0];
+      if (!row?.photo_key) throw new NotFoundException('Photo not found.');
+      this.siteAccess(user, row.site_id);
+      await this.retention.assertNotRemoved(tx, row.photo_key);
+      return row;
+    });
     res.setHeader('Content-Type', v.photo_content_type);
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(await this.storage.get(v.photo_key));

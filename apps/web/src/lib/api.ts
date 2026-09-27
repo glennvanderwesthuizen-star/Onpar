@@ -56,7 +56,10 @@ function safeJson(text: string) {
 /** Fetches an authenticated image and returns an object URL for an <img>. */
 export async function imageUrl(path: string): Promise<string> {
   const res = await fetch(`/api${path}`, { headers: HEADERS });
-  if (!res.ok) throw new ApiError(res.status, 'Could not load the photo.');
+  if (!res.ok) {
+    const body = res.status === 410 ? safeJson(await res.text()) : null;
+    throw new ApiError(res.status, body?.message ?? 'Could not load the photo.');
+  }
   return URL.createObjectURL(await res.blob());
 }
 

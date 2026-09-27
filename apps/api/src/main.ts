@@ -7,6 +7,7 @@ import { buildAppModule } from './app.module';
 import { Config, loadConfig } from './config';
 import { TasksService } from './tasks/tasks.service';
 import { PatrolsService } from './patrols/patrols.service';
+import { RetentionService } from './privacy/retention.service';
 
 export async function createApp(config: Config = loadConfig()): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(buildAppModule(config), { logger: ['error', 'warn'] });
@@ -25,6 +26,7 @@ if (require.main === module) {
     await app.listen(config.port);
     app.get(TasksService).startScheduler();
     app.get(PatrolsService).startTimer();
+    app.get(RetentionService).startTimer();
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }

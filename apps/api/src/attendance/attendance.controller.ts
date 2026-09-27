@@ -18,6 +18,7 @@ import { CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '..
 import { parseBody } from '../common/validation';
 import { DbService } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { RetentionService } from '../privacy/retention.service';
 import { StorageService } from '../storage/storage.service';
 import { DutyService } from './duty.service';
 import { ScoringService } from '../scoring/scoring.service';
@@ -41,6 +42,7 @@ export class AttendanceController {
     private readonly storage: StorageService,
     private readonly duty: DutyService,
     private readonly scoring: ScoringService,
+    private readonly retention: RetentionService,
   ) {}
 
   /** One day's attendance, by the date each shift started. */
@@ -136,6 +138,7 @@ export class AttendanceController {
         )
       ).rows[0];
       if (!row?.selfie_key || (user.siteIds && !user.siteIds.includes(row.site_id))) throw new NotFoundException('Selfie not found.');
+      await this.retention.assertNotRemoved(tx, row.selfie_key);
       await this.audit.byUser(tx, user, { action: 'attendance.selfie_view', entityType: 'attendance', entityId: id, after: { kind } });
       return row;
     });

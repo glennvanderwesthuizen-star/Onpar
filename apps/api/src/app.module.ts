@@ -27,6 +27,8 @@ import { ReordersController, GuardReordersController } from './reorders/reorders
 import { TrainingController, GuardTrainingController } from './training/training.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { UsersController } from './users/users.controller';
+import { PrivacyController } from './privacy/privacy.controller';
+import { RetentionService } from './privacy/retention.service';
 
 @Controller('health')
 class HealthController {
@@ -62,9 +64,10 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardTrainingController,
       DashboardController,
       UsersController,
+      PrivacyController,
       AuditController,
     ],
-    providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,
+    providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
       DeviceAuthGuard,
       GuardAuthGuard,
