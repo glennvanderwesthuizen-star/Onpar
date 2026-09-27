@@ -321,3 +321,22 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Changing `DATA_KEY` (the file and ID encryption key) needs a re-encryption run, which is not built yet.
 - The S3 storage option is tested against a stand-in, not a real bucket. Check it once the AWS account exists.
 - Run one server for the pilot; move the scheduled jobs to a single worker before running more.
+
+### Guard phone app, stages 1 and 2, built 27 Sep 2026
+
+- `apps/android`, in Kotlin.
+  - **Core logic:** the connection to the server, the offline outbox, trusted time, setup, sign-in, duty and declarations. It is plain Kotlin, so it is tested here, including against a running On Par server.
+  - **Android screens:** built on GitHub, which keeps the installable app file for 30 days with each build.
+- **Setup:** a supervisor registers the phone on the Devices page, which now shows a setup QR code; the phone scans it. The details can also be typed in.
+- **Guard login:** employee number and PIN (five wrong PINs lock it, as before).
+- **Home:** shows the shift status (on time or late, since when) with **Duty On** / **Duty From** (PIN again).
+- **Check-in:** every minute the phone checks in (battery, app version), sends anything waiting and refreshes.
+- **Offline:** every action waits on the phone in the order it happened, survives a restart, is never duplicated when retried, and a refusal is kept with its reason.
+- **Declarations:** owed straight after Duty On or Duty From, even with no signal. Every statement must be ticked and a selfie taken. An optional comment can be raised as an equipment report. The text goes first, the photo after.
+- QR codes are read with ZXing, which works on any Android phone without Google services.
+
+**Next stages:** tasks, then patrols (QR with location lock), reports and re-orders, then score, training, calling approved contacts and kiosk lock.
+
+**Flagged:**
+- A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).
+- `dl.google.com` is blocked in this build environment, so the Android screens are only built on GitHub. Allowing it (environment network settings) would let them be built and checked here too.
