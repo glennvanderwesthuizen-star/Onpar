@@ -81,7 +81,7 @@ interface Item {
 }
 
 /** Every officer's current qualifications, plus PSIRA registration, with their status today. */
-async function currentItems(tx: Tx, siteIds: string[] | null, siteId: string | null, employeeId: string | null = null): Promise<Item[]> {
+export async function currentItems(tx: Tx, siteIds: string[] | null, siteId: string | null, employeeId: string | null = null): Promise<Item[]> {
   const today = sastDate(new Date());
   const officers = (
     await tx.query(

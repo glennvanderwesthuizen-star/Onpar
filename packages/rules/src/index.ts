@@ -9,3 +9,4 @@ export * from './scoring';
 export * from './reports';
 export * from './patrols';
 export * from './reorders';
+export * from './dashboard';
