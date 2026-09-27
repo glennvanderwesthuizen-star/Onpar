@@ -118,7 +118,7 @@ export class TasksService implements OnModuleDestroy {
                 missed_at = ((occurrence_date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg')
           WHERE state = 'open'
             AND ((occurrence_date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg') <= $1
-          RETURNING id, missed_at, title, occurrence_date, site_id, assignee_type, assignee_employee_id`,
+          RETURNING id, missed_at, title, occurrence_date, site_id, assignee_type, assignee_employee_id, assignee_device_id`,
         [now],
       )
     ).rows;
@@ -128,21 +128,41 @@ export class TasksService implements OnModuleDestroy {
          VALUES (app_company_id(), $1, $2, 'system', 'missed', 'Not done by the end of the day.')`,
         [r.id, r.missed_at],
       );
-      // A task for a post has no single responsible officer, so it costs nobody points
-      // until the owner decides who is accountable (decision D-21).
-      if (r.assignee_type === 'employee') {
+      // A task for a person costs that person the point. A task for a post costs it for
+      // every guard who logged Duty On at that post and was on duty that day, since it
+      // showed on each of their screens (decision D-21).
+      const responsible =
+        r.assignee_type === 'employee' ? [r.assignee_employee_id] : await this.guardsOnPost(tx, r.assignee_device_id, r.occurrence_date);
+      for (const employeeId of responsible) {
         await this.scoring.record(tx, {
-          employeeId: r.assignee_employee_id,
+          employeeId,
           siteId: r.site_id,
           date: r.occurrence_date,
           type: 'missed_task',
           sourceType: 'task',
           sourceId: r.id,
-          evidence: `“${r.title}” was not done by the end of ${sastLongDate(r.occurrence_date)}.`,
+          evidence:
+            r.assignee_type === 'employee'
+              ? `“${r.title}” was not done by the end of ${sastLongDate(r.occurrence_date)}.`
+              : `“${r.title}” for your post was not done by the end of ${sastLongDate(r.occurrence_date)}, and you were on duty there that day.`,
         });
       }
     }
     return rows.length;
+  }
+
+  /** Guards who logged Duty On on this post's device and were on duty at some point on the date. */
+  async guardsOnPost(tx: Tx, deviceId: string, date: string): Promise<string[]> {
+    const { closesAt } = occurrenceDeadline(date, null);
+    return (
+      await tx.query(
+        `SELECT DISTINCT a.employee_id
+           FROM duty_events x JOIN attendance a ON a.id = x.attendance_id
+          WHERE x.kind = 'duty_on' AND x.device_id = $1
+            AND a.duty_on_at < $3 AND (a.duty_from_at IS NULL OR a.duty_from_at >= $2)`,
+        [deviceId, sastInstant(date, '00:00'), closesAt],
+      )
+    ).rows.map((r) => r.employee_id);
   }
 
   /** Today's tasks for the guard: assigned to them, or to the post this device is at. */

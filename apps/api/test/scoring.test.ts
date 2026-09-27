@@ -195,13 +195,20 @@ describe('scoring', () => {
       expect(ev.evidence).toMatch(/did not accept the reason/);
     });
 
-    it('takes a point for a missed task for a person, not for a post (decision D-21)', async () => {
+    it('takes a point for a missed task for a person, and for a post from every guard on duty there that day (decision D-21)', async () => {
       await task('Personal radio check', mine());
       const deviceId = (await ownerQuery('SELECT id FROM devices LIMIT 1'))[0].id;
       await task('Post radio check', { assigneeType: 'post', assigneeDeviceId: deviceId });
       await w.app.get(TasksService).runSchedule(sastInstant(addDays(today, 1), '00:05'));
       const missed = await ownerQuery(`SELECT evidence FROM performance_events WHERE event_type = 'missed_task' ORDER BY created_at`);
-      expect(missed.map((m) => m.evidence)).toEqual([expect.stringMatching(/did not accept/), expect.stringMatching(/^“Personal radio check” was not done/)]);
+      expect(missed).toHaveLength(3);
+      expect(missed.map((m) => m.evidence)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/did not accept/),
+          expect.stringMatching(/^“Personal radio check” was not done/),
+          expect.stringMatching(/^“Post radio check” for your post was not done .* you were on duty there that day/),
+        ]),
+      );
     });
   });
 

@@ -215,7 +215,7 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Tests: scenarios 1 (score part) and 15.
 
 **Flagged:**
-- Decision D-21: who loses the point when a task assigned to a post is missed. Until decided, nobody does.
+- Decision D-21, decided by the owner: when a task assigned to a post is missed, every guard who logged Duty On on that post's device and was on duty that day loses the point. (A Duty On logged by a supervisor on someone's behalf has no device, so it does not count here.)
 - Holidays the President declares ad hoc (for example election days) are not in the working-day calculation.
 - The guard's own score screen on the phone is part of the Kotlin app; the server side it needs is ready.
 - As the brief says, have an employment lawyer review the scoring rules before real use (L-01).

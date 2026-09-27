@@ -43,7 +43,7 @@ export class ScoringService {
       `INSERT INTO performance_events (company_id, employee_id, site_id, event_date, event_type, impact, source_type,
                                        source_id, evidence, created_by_type)
        VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, 'system')
-       ON CONFLICT (source_type, source_id, event_type)
+       ON CONFLICT (source_type, source_id, event_type, employee_id)
          WHERE source_id IS NOT NULL AND reverses_event_id IS NULL AND source_type <> 'manual'
        DO NOTHING
        RETURNING id`,
@@ -87,17 +87,22 @@ export class ScoringService {
     return r.rows[0]?.id ?? null;
   }
 
-  /** Reverses the live (not yet reversed) automatic event of a type for a source, if there is one. */
+  /**
+   * Reverses every live (not yet reversed) automatic event of a type for a
+   * source, for all officers it applied to. Returns the first reversal's ID, or null if none.
+   */
   async reverseFor(tx: Tx, sourceType: string, sourceId: string, type: EventType, reason: string, by: Parameters<ScoringService['reverse']>[3]) {
-    const ev = (
+    const events = (
       await tx.query(
         `SELECT e.id FROM performance_events e
           WHERE e.source_type = $1 AND e.source_id = $2 AND e.event_type = $3
             AND NOT EXISTS (SELECT 1 FROM performance_events r WHERE r.reverses_event_id = e.id)`,
         [sourceType, sourceId, type],
       )
-    ).rows[0];
-    return ev ? this.reverse(tx, ev.id, reason, by) : null;
+    ).rows;
+    let first: string | null = null;
+    for (const ev of events) first ??= await this.reverse(tx, ev.id, reason, by);
+    return first;
   }
 
   /** An employee's score today, with every event in the window and why. */
