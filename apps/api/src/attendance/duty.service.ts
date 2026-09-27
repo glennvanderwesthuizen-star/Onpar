@@ -36,6 +36,7 @@ export interface DeclarationInput {
   accepted: boolean[];
   comment: string;
   raiseEquipmentReport: boolean;
+  equipmentReportPriority?: 'green' | 'amber' | 'red';
   trustedAt: Date;
   deviceClock: Date;
   selfieToFollow: boolean;
@@ -222,7 +223,7 @@ export class DutyService {
           {
             siteId: site,
             category: 'equipment',
-            priority: 'green',
+            priority: input.equipmentReportPriority ?? 'green',
             description: input.comment.trim(),
             source: 'declaration',
             sourceId: input.eventId,

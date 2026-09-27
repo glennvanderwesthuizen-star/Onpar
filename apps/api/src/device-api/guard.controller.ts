@@ -35,6 +35,8 @@ const DeclarationBody = z.object({
   accepted: z.array(z.boolean()),
   comment: z.string().max(2000).default(''),
   raiseEquipmentReport: z.boolean().default(false),
+  /** The priority the guard picks when raising the comment as an equipment report. */
+  equipmentReportPriority: z.enum(['green', 'amber', 'red']).default('green'),
   trustedAt: isoTime,
   deviceClock: isoTime,
   selfieToFollow: z.boolean().default(false),

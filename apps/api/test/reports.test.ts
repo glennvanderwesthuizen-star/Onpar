@@ -57,7 +57,7 @@ describe('reports', () => {
       .http()
       .post('/api/device/declarations')
       .set(g(j))
-      .field('data', JSON.stringify({ eventId: randomUUID(), dutyEventId: j.dutyEventId, accepted: [true, true, true], comment: 'Torch at Gate 2 does not work', raiseEquipmentReport: true, trustedAt: now(), deviceClock: now() }))
+      .field('data', JSON.stringify({ eventId: randomUUID(), dutyEventId: j.dutyEventId, accepted: [true, true, true], comment: 'Torch at Gate 2 does not work', raiseEquipmentReport: true, equipmentReportPriority: 'amber', trustedAt: now(), deviceClock: now() }))
       .attach('selfie', PNG, { filename: 's.png', contentType: 'image/png' });
     john = j;
     mary = await onDuty('9202204720083', 'Mary Dube');
@@ -66,7 +66,7 @@ describe('reports', () => {
 
   it('turns a declaration comment raised as an equipment report into a report (section 6.2)', async () => {
     const r = await w.http().get('/api/reports').set(auth(supervisor));
-    expect(r.body.rows).toEqual([expect.objectContaining({ number: 1, category: 'equipment', priority: 'green', source: 'declaration', reportedBy: 'John Smith', description: 'Torch at Gate 2 does not work' })]);
+    expect(r.body.rows).toEqual([expect.objectContaining({ number: 1, category: 'equipment', priority: 'amber', source: 'declaration', reportedBy: 'John Smith', description: 'Torch at Gate 2 does not work' })]);
   });
 
   let gate: string;

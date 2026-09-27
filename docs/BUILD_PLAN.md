@@ -234,6 +234,6 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Tests: scenarios 1 (report part), 8, 10 (injury link) and 16.
 
 **Flagged:**
-- Declaration equipment reports are Green by default. Say if they should be Amber.
+- Declaration equipment reports: the guard picks the priority when raising it, like any report (owner, 27 Sep 2026); Green if none is chosen.
 - Contractors do not have their own login yet (decision D-10); the supervisor records their work.
 - Reports raised automatically from failed patrol checks arrive with milestone 6.
