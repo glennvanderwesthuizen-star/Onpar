@@ -140,6 +140,32 @@ details.eq .grid { margin-top: 10px; }
 .login img { width: 96px; height: 96px; border-radius: 12px; }
 .login form { text-align: left; margin-top: 16px; }
 
+/* Dashboard (milestone 9) */
+.figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.figs .card { margin: 0; }
+.fig h3 a { color: var(--ink); text-decoration: none; }
+.fig h3 a:hover { text-decoration: underline; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px 12px; }
+.stat { display: flex; flex-direction: column; min-width: 0; }
+.stat b { font-size: 26px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--mute); font-size: 13px; }
+.stat span.small { font-size: 12px; }
+.bytype { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 6px; font-size: 13px; }
+.bytype div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.crumbs { font-size: 13px; color: var(--mute); margin-bottom: 6px; }
+.crumbs a { color: var(--mute); }
+.datenav input { width: 160px; margin: 0; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--bg); }
+.line { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.card h2 + .line, .card h2 + div > .line:first-child { border-top: 0; }
+a.line:hover { background: var(--bg); }
+.line.sub { padding-left: 14px; }
+.line > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
+.line > :last-child:not(:first-child) { flex: 0 1 auto; max-width: 45%; text-align: right; }
+.dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+.dgrid .card { margin: 0; }
+
 @media (max-width: 640px) {
   .top { padding: 8px 16px 0; }
   .who { margin-left: auto; }

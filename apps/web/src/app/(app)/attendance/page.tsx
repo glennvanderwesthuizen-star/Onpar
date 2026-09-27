@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { sastDate } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, useLoad } from '@/components/ui';
 import { ArrivalPill, AttendanceRow, DeparturePill, time } from '@/components/attendance';
 
-export default function AttendancePage() {
+export default function AttendancePage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  const initial = use(searchParams).date;
   const { can } = useSession();
-  const [date, setDate] = useState(() => sastDate(new Date()));
+  const [date, setDate] = useState(() => (initial && /^\d{4}-\d{2}-\d{2}$/.test(initial) ? initial : sastDate(new Date())));
   const [siteId, setSiteId] = useState('');
   const sites = useLoad(() => api<{ id: string; name: string }[]>('/sites'));
   const { data, error, reload } = useLoad(

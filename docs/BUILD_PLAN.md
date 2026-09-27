@@ -283,3 +283,14 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - The 30-day "expiring" window is a fixed default for now; it is written to become a company setting.
 - PSIRA registration is checked by hand against PSIRA's records. An automatic PSIRA check is not built (no official interface is known; a question for the owner).
 - Reminder messages before expiry need the notification service (section 4), not yet connected.
+
+### Milestone 9: management dashboard, built 27 Sep 2026
+
+- The Overview page is now the dashboard, for any day (today refreshes every minute). Figures from section 6.11: attendance (scheduled, on time, late, absent), tasks (completed, outstanding, overdue, missed, could not complete), reports (open, action required, overdue), patrols (alerts open, compliance overall and per type), re-orders open, training (compliant %, expiring, expired), performance (needs attention) and devices (active, not seen for an hour). Live patrol alerts show at the top. Each group links to its own page.
+- A "By site" table, then the drill-down: **Company → Site → Officer → Event**. The site page shows each officer's day (shift, tasks, patrols, reports, training, score), duty declarations with selfies and comments, checkpoint readings, rejected scans and devices. The officer page shows the shift and declarations, tasks (including the post's tasks shared by everyone on duty), patrols, reports and follow-ups, training and the day's performance events; every item opens its own record.
+- What each role sees follows their permissions: supervisors only their sites; a client or estate manager gets the summary figures only (decision D-23); HR sees training.
+- Tests: every figure checked against a day of known activity, site scoping, the client summary, company separation (scenario 14).
+
+**Flagged:**
+- **Absent** is interim until rostering (milestone 21): a post counts as absent when nobody logged Duty On for it once the shift has started (plus the grace period). With rostering it will name the missing person.
+- **Report overdue** uses proposed deadlines, decision D-22.

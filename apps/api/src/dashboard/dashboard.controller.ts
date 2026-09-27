@@ -111,7 +111,8 @@ export class DashboardController {
       const attendance = (
         await tx.query(
           `SELECT id, employee_id, shift_name AS "shiftName", arrival_status AS "arrivalStatus", late_minutes AS "lateMinutes",
-                  duty_on_at AS "dutyOnAt", duty_from_at AS "dutyFromAt", departure_status AS "departureStatus"
+                  duty_on_at AS "dutyOnAt", duty_from_at AS "dutyFromAt", departure_status AS "departureStatus",
+                  early_minutes AS "earlyMinutes", exception_reason AS "exceptionReason"
              FROM attendance WHERE site_id = $1 AND shift_date = $2 ORDER BY duty_on_at`,
           [id, day],
         )
