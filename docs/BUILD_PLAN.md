@@ -1,7 +1,7 @@
 # On Par: Build Plan
 
 Prepared from `OnPar_Claude_Code_Build_Brief.md` (v2.1) and `OnPar_Prototype_Reference.html`.
-Status: **draft, waiting for the owner to confirm the technology stack (section 3) and the decisions in `OPEN_DECISIONS.md`.** No application code has been written yet, as the brief requires.
+Status: **stack confirmed by the owner (27 Sep 2026). Milestone 1 (foundation) is being built in parallel while the Milestone 0 phone is arranged (decision D-01).**
 
 ---
 

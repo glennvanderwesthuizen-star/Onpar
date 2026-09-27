@@ -9,8 +9,8 @@ Legend for "Needed by": **M0** = before the hardware spike, **M1** = before the 
 
 | ID | Question | Recommendation | Needed by | Decision |
 |---|---|---|---|---|
-| D-01 | Start the foundation (server, database, website) while the phone spike is being arranged, or wait strictly for the spike to pass? | Start in parallel. None of that work depends on the phone model. | M0 | *open* |
-| D-02 | Technology stack (see `BUILD_PLAN.md` section 3). | Kotlin Android app; NestJS server; Next.js website and portal; PostgreSQL; AWS Cape Town. | M1 | *open* |
+| D-01 | Start the foundation (server, database, website) while the phone spike is being arranged, or wait strictly for the spike to pass? | Start in parallel. None of that work depends on the phone model. | M0 | **Decided 27 Sep 2026: start in parallel.** |
+| D-02 | Technology stack (see `BUILD_PLAN.md` section 3). | Kotlin Android app; NestJS server; Next.js website and portal; PostgreSQL; AWS Cape Town. | M1 | **Decided 27 Sep 2026: recommended stack.** |
 | D-03 | Which MDM (phone management system)? | Trial Hexnode or Scalefusion first; Android Management API as fallback. Settled by the spike. | M0 | *open* |
 | D-04 | Which rugged phone model to standardise on? | Test with the Blackview you have; settled by the spike. | M0 | *open* |
 | D-05 | Hosting: AWS Cape Town or Azure South Africa North? | AWS Cape Town. | M1 | *open* |

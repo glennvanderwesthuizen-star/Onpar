@@ -1,0 +1,123 @@
+import {
+  CanActivate,
+  createParamDecorator,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  SetMetadata,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import { can, Permission, Role, SITE_SCOPED_ROLES } from '@onpar/rules';
+import { hashToken } from './crypto';
+import { DbService } from '../db/db.service';
+
+/** A signed-in management user. */
+export interface UserPrincipal {
+  kind: 'user';
+  userId: string;
+  companyId: string;
+  role: Role;
+  name: string;
+  /** Null means all sites in the company. */
+  siteIds: string[] | null;
+}
+
+/** A registered post device, identified by its token. */
+export interface DevicePrincipal {
+  kind: 'device';
+  deviceId: string;
+  companyId: string;
+  siteId: string | null;
+  label: string;
+}
+
+const PERMISSION_KEY = 'onpar:permission';
+export const RequirePermission = (p: Permission) => SetMetadata(PERMISSION_KEY, p);
+
+export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionContext): UserPrincipal => {
+  return ctx.switchToHttp().getRequest().principal;
+});
+
+export const CurrentDevice = createParamDecorator((_: unknown, ctx: ExecutionContext): DevicePrincipal => {
+  return ctx.switchToHttp().getRequest().principal;
+});
+
+/** Requires `Authorization: Bearer <jwt>` for a management user, and the route's permission if any. */
+@Injectable()
+export class UserAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly db: DbService,
+    private readonly reflector: Reflector,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+    const header: string = req.headers.authorization ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!token) throw new UnauthorizedException('Please sign in.');
+    let payload: { sub: string; cid: string; typ: string };
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new UnauthorizedException('Your session has expired. Please sign in again.');
+    }
+    if (payload.typ !== 'user') throw new UnauthorizedException('Please sign in.');
+
+    // Re-read the user so a deactivated account or changed role takes effect immediately.
+    const principal = await this.db.withTenant(payload.cid, async (tx) => {
+      const u = (await tx.query('SELECT id, role, active, full_name FROM users WHERE id = $1', [payload.sub])).rows[0];
+      if (!u || !u.active) return null;
+      let siteIds: string[] | null = null;
+      if (SITE_SCOPED_ROLES.includes(u.role)) {
+        siteIds = (await tx.query('SELECT site_id FROM user_sites WHERE user_id = $1', [u.id])).rows.map(
+          (r) => r.site_id,
+        );
+      }
+      return { kind: 'user', userId: u.id, companyId: payload.cid, role: u.role, name: u.full_name, siteIds };
+    });
+    if (!principal) throw new UnauthorizedException('This account is no longer active.');
+    req.principal = principal;
+
+    const permission = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (permission && !can(principal.role as Role, permission)) {
+      throw new ForbiddenException('Your role does not allow this.');
+    }
+    return true;
+  }
+}
+
+/** Requires `X-Device-Token` from a registered device that is not locked, disabled or retired. */
+@Injectable()
+export class DeviceAuthGuard implements CanActivate {
+  constructor(private readonly db: DbService) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+    const token: string = req.headers['x-device-token'] ?? '';
+    if (!token) throw new UnauthorizedException('Device not registered.');
+    const [d] = await this.db.query<{ id: string; company_id: string; status: string; site_id: string | null; label: string }>(
+      'SELECT * FROM auth_device_by_token_hash($1)',
+      [hashToken(token)],
+    );
+    if (!d) throw new UnauthorizedException('Device not registered.');
+    if (d.status !== 'registered' && d.status !== 'active') {
+      throw new ForbiddenException(`This device is ${d.status}. Contact your supervisor.`);
+    }
+    req.principal = { kind: 'device', deviceId: d.id, companyId: d.company_id, siteId: d.site_id, label: d.label };
+    return true;
+  }
+}
+
+/** Throws 404 (not 403, so nothing leaks) when a site-scoped user asks for a site outside their list. */
+export function assertSiteAccess(user: UserPrincipal, siteId: string) {
+  if (user.siteIds && !user.siteIds.includes(siteId)) {
+    throw new NotFoundException('Site not found.');
+  }
+}
