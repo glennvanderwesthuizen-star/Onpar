@@ -27,6 +27,8 @@ jobs:
         run: psql -h localhost -U postgres -f scripts/db-setup.sql
         env:
           PGPASSWORD: postgres
+      - name: Database tools for the backup and restore test
+        run: pg_dump --version && pg_restore --version
       - run: pnpm --filter @onpar/rules build
       - run: pnpm typecheck
       - run: pnpm test

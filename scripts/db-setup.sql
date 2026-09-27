@@ -5,3 +5,4 @@ CREATE ROLE onpar_owner LOGIN PASSWORD 'onpar_owner_dev';
 CREATE ROLE onpar_app LOGIN PASSWORD 'onpar_app_dev';
 CREATE DATABASE onpar OWNER onpar_owner;
 CREATE DATABASE onpar_test OWNER onpar_owner;
+CREATE DATABASE onpar_restore_test OWNER onpar_owner;
