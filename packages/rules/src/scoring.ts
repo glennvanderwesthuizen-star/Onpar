@@ -17,6 +17,8 @@ export const EVENT_TYPES = {
   report_closed: { label: 'Report closed', sign: 1 },
   missed_shift: { label: 'Missed shift', sign: -1 },
   missed_patrol: { label: 'Missed patrol', sign: -1 },
+  /** Points come from the site's patrol points allocation, not from this table (section 6.5). */
+  patrol_completed: { label: 'Patrol completed', sign: 1 },
   outstanding: { label: 'Outstanding performance', sign: 1 },
 } as const;
 export type EventType = keyof typeof EVENT_TYPES;
@@ -50,6 +52,7 @@ export const DEFAULT_SCORING: ScoringConfig = {
     report_closed: 1,
     missed_shift: -2,
     missed_patrol: 0,
+    patrol_completed: 0,
     outstanding: 2,
   },
   base: 80,

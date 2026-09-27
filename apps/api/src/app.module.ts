@@ -21,6 +21,8 @@ import { ScoringService } from './scoring/scoring.service';
 import { ScoresController, GuardScoreController } from './scoring/scores.controller';
 import { ReportsService } from './reports/reports.service';
 import { ReportsController, GuardReportsController } from './reports/reports.controller';
+import { PatrolsService } from './patrols/patrols.service';
+import { PatrolsController, GuardPatrolsController } from './patrols/patrols.controller';
 
 @Controller('health')
 class HealthController {
@@ -48,6 +50,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardScoreController,
       ReportsController,
       GuardReportsController,
+      PatrolsController,
+      GuardPatrolsController,
       AuditController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,
@@ -59,6 +63,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       TasksService,
       ScoringService,
       ReportsService,
+      PatrolsService,
     ],
   })
   class AppModule {}

@@ -7,3 +7,4 @@ export * from './attendance';
 export * from './tasks';
 export * from './scoring';
 export * from './reports';
+export * from './patrols';

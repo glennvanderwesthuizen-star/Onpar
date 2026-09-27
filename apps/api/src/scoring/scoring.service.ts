@@ -18,6 +18,8 @@ export interface AutoEvent {
   sourceType: 'attendance' | 'task' | 'report' | 'training' | 'patrol';
   sourceId: string;
   evidence: string;
+  /** Only for patrol points, which come from the site's allocation rather than the rules table. */
+  impact?: number;
 }
 
 /**
@@ -47,7 +49,7 @@ export class ScoringService {
          WHERE source_id IS NOT NULL AND reverses_event_id IS NULL AND source_type <> 'manual'
        DO NOTHING
        RETURNING id`,
-      [e.employeeId, e.siteId, e.date, e.type, c.points[e.type], e.sourceType, e.sourceId, e.evidence],
+      [e.employeeId, e.siteId, e.date, e.type, e.impact ?? c.points[e.type], e.sourceType, e.sourceId, e.evidence],
     );
     return r.rows[0]?.id ?? null;
   }

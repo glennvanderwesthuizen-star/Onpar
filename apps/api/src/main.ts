@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { buildAppModule } from './app.module';
 import { Config, loadConfig } from './config';
 import { TasksService } from './tasks/tasks.service';
+import { PatrolsService } from './patrols/patrols.service';
 
 export async function createApp(config: Config = loadConfig()): Promise<INestApplication> {
   const app = await NestFactory.create(buildAppModule(config), { logger: ['error', 'warn'] });
@@ -17,6 +18,7 @@ if (require.main === module) {
   createApp(config).then(async (app) => {
     await app.listen(config.port);
     app.get(TasksService).startScheduler();
+    app.get(PatrolsService).startTimer();
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }
