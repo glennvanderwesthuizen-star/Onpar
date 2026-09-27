@@ -256,3 +256,14 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - The phone's own countdown and local alarm when there is no signal are part of the Kotlin app (Milestone 0 onwards).
 - Decision D-08: there is no existing QR product; On Par's own printed codes are used.
 - The MDM must block mock-location apps and developer options (Milestone 0).
+
+### Milestone 7: re-orders and issued kit, built 27 Sep 2026
+
+- Each company has its own kit list (a Kit list page; uniform tracked by size, equipment by asset number). Enrolment now uses it, and supervisors can issue kit to an officer later from the officer's page, which sets the issue date.
+- On the device, Re-order is part of the Report function: **Personal** (pick from the items issued to you; the size or asset number is filled in from your profile; the comment gives the reason) or **Site** (free text, for example "Toilet paper, 2 packs").
+- Stages: Requested, Ordered, Assigned (to a person to deliver it, the brief's assumption for decision D-09), Delivered, Received. Each records who, their role, a note and the time in an append-only history. The guard confirms Received on the device; for a personal item its issue date then updates.
+- No deductions of any kind (labour-law question, L-08); the re-order page says so.
+- Management website: Re-orders list with counts, a re-order page with the stage bar, history and next step, and the Kit list page.
+- Tests: scenario 12.
+
+**Later, as the brief says:** approval limits, stock levels, supplier orders and cost tracking.

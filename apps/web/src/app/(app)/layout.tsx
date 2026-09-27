@@ -10,11 +10,12 @@ const NAV = [
   { href: '/tasks', label: 'Tasks', permission: 'tasks.view' },
   { href: '/patrols', label: 'Patrols', permission: 'patrols.view' },
   { href: '/reports', label: 'Reports', permission: 'reports.view' },
+  { href: '/reorders', label: 'Re-orders', permission: 'reorders.view' },
   { href: '/scores', label: 'Scores', permission: 'scores.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
   { href: '/devices', label: 'Devices', permission: 'devices.view' },
-  { href: '/audit', label: 'Audit log', permission: 'audit.view' },
+  { href: '/audit', label: 'Audit', permission: 'audit.view' },
 ];
 
 function Header() {

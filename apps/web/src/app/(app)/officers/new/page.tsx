@@ -13,21 +13,6 @@ const QUALIFICATION_TYPES = [
   { type: 'other', label: 'Other' },
 ];
 
-/** Standard issued items (section 6.7). Uniform has sizes; equipment has asset numbers. */
-const KIT: { item: string; sized: boolean }[] = [
-  { item: 'Shirt', sized: true },
-  { item: 'Trousers', sized: true },
-  { item: 'Jacket', sized: true },
-  { item: 'Boots or shoes', sized: true },
-  { item: 'Cap', sized: true },
-  { item: 'Belt', sized: true },
-  { item: 'Reflective vest', sized: true },
-  { item: 'Raincoat', sized: true },
-  { item: 'Radio', sized: false },
-  { item: 'Torch', sized: false },
-  { item: 'Key set', sized: false },
-];
-
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' });
 
 interface Qualification {
@@ -62,9 +47,11 @@ export default function EnrolPage() {
   });
   const [quals, setQuals] = useState<Qualification[]>([]);
   const [photos, setPhotos] = useState<Partial<Record<PhotoKind, File>>>({});
-  const [kit, setKit] = useState<Record<string, KitRow>>(() =>
-    Object.fromEntries(KIT.map((k) => [k.item, { issued: false, value: '', issueDate: today() }])),
-  );
+  // The company's kit list (section 6.7); uniform has sizes, equipment has asset numbers.
+  const catalogue = useLoad(() => api<{ name: string; tracking: 'size' | 'asset'; active: boolean }[]>('/kit/catalogue'));
+  const KIT = (catalogue.data ?? []).filter((k) => k.active).map((k) => ({ item: k.name, sized: k.tracking === 'size' }));
+  const [kitRows, setKit] = useState<Record<string, KitRow>>({});
+  const kitRow = (item: string): KitRow => kitRows[item] ?? { issued: false, value: '', issueDate: today() };
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -109,10 +96,10 @@ export default function EnrolPage() {
       JSON.stringify({
         ...p,
         qualifications: quals.map(({ file: _f, ...q }) => q),
-        issuedItems: KIT.filter((k) => kit[k.item].issued).map((k) => ({
+        issuedItems: KIT.filter((k) => kitRow(k.item).issued).map((k) => ({
           item: k.item,
-          ...(k.sized ? { size: kit[k.item].value } : { assetNumber: kit[k.item].value }),
-          issueDate: kit[k.item].issueDate,
+          ...(k.sized ? { size: kitRow(k.item).value } : { assetNumber: kitRow(k.item).value }),
+          issueDate: kitRow(k.item).issueDate,
         })),
         acknowledgeWarnings,
       }),
@@ -367,8 +354,8 @@ export default function EnrolPage() {
             </thead>
             <tbody>
               {KIT.map((k) => {
-                const row = kit[k.item];
-                const update = (patch: Partial<KitRow>) => setKit({ ...kit, [k.item]: { ...row, ...patch } });
+                const row = kitRow(k.item);
+                const update = (patch: Partial<KitRow>) => setKit({ ...kitRows, [k.item]: { ...row, ...patch } });
                 return (
                   <tr key={k.item}>
                     <td>

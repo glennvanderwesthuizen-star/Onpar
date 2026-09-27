@@ -59,6 +59,11 @@ const ACTIONS: Record<string, string> = {
   'patrol.alert_ack': 'Acknowledged a patrol alert',
   'patrol.alert_safe': 'Confirmed a guard is safe',
   'patrol.review': 'Reviewed a patrol ended early',
+  'reorder.ordered': 'Marked a re-order as ordered',
+  'reorder.assigned': 'Assigned a re-order for delivery',
+  'reorder.delivered': 'Marked a re-order as delivered',
+  'kit.catalogue': 'Changed the kit list',
+  'kit.issue': 'Issued kit to an officer',
 };
 
 function subject(e: Entry): string {

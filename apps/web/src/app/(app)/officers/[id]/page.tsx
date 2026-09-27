@@ -139,6 +139,8 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
         )}
       </div>
 
+      {can('kit.issue') && <IssueKit officerId={o.id} onDone={reload} />}
+
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>Registration photos</h2>
@@ -241,6 +243,63 @@ function ResetPin({ officerId, locked, onDone }: { officerId: string; locked: bo
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+function IssueKit({ officerId, onDone }: { officerId: string; onDone: () => void }) {
+  const catalogue = useLoad(() => api<{ name: string; tracking: 'size' | 'asset'; active: boolean }[]>('/kit/catalogue'));
+  const [f, setF] = useState({ item: '', value: '', issueDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' }) });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const tracking = catalogue.data?.find((k) => k.name === f.item)?.tracking ?? 'size';
+  return (
+    <div className="card">
+      <h2>Issue kit</h2>
+      <p className="mute small">Issuing an item again (for example a replacement) updates its size or asset number and issue date.</p>
+      <ErrorBanner error={error} />
+      <div className="grid g3">
+        <Field label="Item">
+          <select value={f.item} onChange={(e) => setF({ ...f, item: e.target.value })}>
+            <option value="">Choose…</option>
+            {catalogue.data
+              ?.filter((k) => k.active)
+              .map((k) => (
+                <option key={k.name} value={k.name}>
+                  {k.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <Field label={tracking === 'size' ? 'Size' : 'Asset number'}>
+          <input value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
+        </Field>
+        <Field label="Issue date">
+          <input type="date" value={f.issueDate} onChange={(e) => setF({ ...f, issueDate: e.target.value })} />
+        </Field>
+      </div>
+      <button
+        className="btn"
+        disabled={busy || !f.item}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api(`/officers/${officerId}/issued-items`, {
+              method: 'POST',
+              json: { item: f.item, issueDate: f.issueDate, ...(tracking === 'size' ? { size: f.value } : { assetNumber: f.value }) },
+            });
+            setF({ ...f, item: '', value: '' });
+            onDone();
+          } catch (e) {
+            setError(e);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Issue
+      </button>
     </div>
   );
 }
