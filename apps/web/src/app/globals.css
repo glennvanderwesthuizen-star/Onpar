@@ -144,3 +144,17 @@ details.eq .grid { margin-top: 10px; }
   .top { padding: 10px 16px; }
   .who { margin-left: 0; text-align: left; width: 100%; }
 }
+
+/* Reports (section 24): colour badge and flat traffic light */
+.rbadge { display: inline-block; min-width: 42px; text-align: center; padding: 2px 8px; border-radius: 6px; color: #fff; font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tlight { display: inline-flex; gap: 3px; vertical-align: middle; }
+.tlight i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: inline-block; }
+.tlight i.g { background: #1b9e5a; }
+.tlight i.a { background: #e0a100; }
+.tlight i.r { background: #d33a2c; }
+.stages { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 12px; }
+.stages span { font-size: 12px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--mute); }
+.stages span.done { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.stages span.now { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
+.timeline > div { border-left: 3px solid var(--line); padding: 4px 0 10px 12px; position: relative; }
+.timeline > div::before { content: ''; position: absolute; left: -7px; top: 8px; width: 11px; height: 11px; border-radius: 50%; background: var(--card); border: 2px solid var(--green); }

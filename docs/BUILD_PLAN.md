@@ -219,3 +219,21 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - Holidays the President declares ad hoc (for example election days) are not in the working-day calculation.
 - The guard's own score screen on the phone is part of the Kotlin app; the server side it needs is ready.
 - As the brief says, have an employment lawyer review the scoring rules before real use (L-01).
+
+### Milestone 5: reports and close-out, built 27 Sep 2026
+
+- Anyone can report: guards from the post device (photo now or later if offline) and supervisors or managers on the website. Categories and Green/Amber/Red priority as in section 6.6.
+- Routing: each report goes to the site supervisor, plus the site manager for Red. A site can set its own routing (stored per site; a settings screen can come later). Company managers see every report.
+- Six stages, each recording who, their role, a note and the time in an append-only history: Reported, Assigned (to someone in the new People directory of staff and contractors), Actioned (recorded by the supervisor for contractors), Attendance checked, Job inspected, Closed (company manager only).
+- Attendance checked sends an inspection task to the post the report came from. The officer records "Repair done, all OK" (Job inspected) or "Not fixed" (back to Assigned, inspection cancelled) on the report.
+- Guard follow-up at any time once assigned, by the reporter or any officer on that site: not started, in progress, repair done, not fixed. It goes into the history and flags the report for the supervisor.
+- The reporter gets +1 when the report is closed. The inspection counts as a completed task.
+- Comments on a Duty On/From declaration marked "raise as equipment report" now become Equipment reports (Green). An injury report shows what the officer declared at Duty On for that shift.
+- Section 24 is included now: each open report holds its own colour badge, freed when it closes, and the priority shows as a flat traffic light.
+- Management website: Reports list with counts ("reported, resolved, outstanding"), a report page with the stage bar, history, photos and next-step actions, a New report form and the People directory.
+- Tests: scenarios 1 (report part), 8, 10 (injury link) and 16.
+
+**Flagged:**
+- Declaration equipment reports are Green by default. Say if they should be Amber.
+- Contractors do not have their own login yet (decision D-10); the supervisor records their work.
+- Reports raised automatically from failed patrol checks arrive with milestone 6.

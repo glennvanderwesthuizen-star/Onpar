@@ -42,6 +42,13 @@ const ACTIONS: Record<string, string> = {
   'score.reverse': 'Reversed points',
   'score.query_answer': 'Answered a score query',
   'score.rules': 'Changed scoring rules',
+  'report.create': 'Made a report',
+  'report.assign': 'Assigned a report',
+  'report.actioned': 'Recorded report work as done',
+  'report.attendance_checked': 'Confirmed attendance on a report',
+  'report.close': 'Closed a report',
+  'people.create': 'Added to people directory',
+  'people.update': 'Changed people directory',
 };
 
 function subject(e: Entry): string {
