@@ -352,7 +352,20 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 - **Ending early:** a patrol can be ended early with a reason.
 - **Tests:** scenarios 4, 5 and 7 were run from the phone logic against the real server.
 
-**Next stages:** reports and re-orders, then score, training, calling approved contacts and kiosk lock.
+**Stage 5, reports and re-orders (27 Sep 2026):**
+- **New report:** category, priority (Red warns that it also goes to the site manager), what was seen, and an optional photo sent with it.
+- **Reports list:** the guard's own reports and the site's open reports, with the colour badge, stage and assignee.
+- **Follow-up:** not started, in progress, repair done and OK, or not fixed (which needs a note), with an optional photo.
+  - The phone applies the server's rules first: no follow-up before the report is assigned or after it is closed.
+  - An inspection task in the Tasks list opens its report to record "Repair done, all OK" or "Not fixed".
+- **Re-orders:**
+  - Personal: pick from the items issued to you; the size or asset number comes from your profile.
+  - Site: free text and quantity.
+  - The list shows each re-order's stage, with "I have received it" once it is on its way.
+- **No signal:** reports and re-orders made with no signal show as "waiting for signal to send".
+- **Tests:** scenarios 1, 8 and 12 were run from the phone logic against the real server.
+
+**Next stage:** score, training, calling approved contacts and kiosk lock.
 
 **Flagged:**
 - A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).

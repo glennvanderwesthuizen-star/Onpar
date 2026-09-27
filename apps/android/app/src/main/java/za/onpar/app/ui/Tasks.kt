@@ -42,7 +42,7 @@ private fun status(t: TaskItem, now: LocalTime): Pair<String, Color> = when {
     t.state == "completed" -> "Done" to Green
     t.state == "could_not_complete" -> "Could not complete" to Amber
     t.state == "missed" -> "Missed" to Red
-    t.isInspection -> "Inspection: record it on the report" to Color.Gray
+    t.isInspection -> "Inspection: tap to record it on the report" to Amber
     t.overdue(now) -> "Overdue (due ${t.dueTime})" to Red
     t.dueTime != null -> "Due ${t.dueTime}" to Color.DarkGray
     else -> "Any time during the shift" to Color.DarkGray
@@ -59,7 +59,7 @@ fun TasksScreen(vm: AppViewModel, state: UiState) {
     val (open, done) = state.tasks.partition { it.isOpen && !it.isInspection }
     open.sortedBy { it.dueTime ?: "99:99" }.forEach { TaskRow(it, now) { vm.go(Page.Task(it.id)) } }
     if (done.isNotEmpty()) Text("Done and other", style = MaterialTheme.typography.titleMedium)
-    done.forEach { TaskRow(it, now, onClick = null) }
+    done.forEach { t -> TaskRow(t, now, onClick = if (t.isInspection && t.isOpen && t.reportId != null) ({ vm.go(Page.Report(t.reportId!!)) }) else null) }
     OutlinedButton(onClick = { vm.loadTasks() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
 }
 

@@ -24,6 +24,9 @@ import za.onpar.core.PendingDeclaration
 import java.io.File
 import za.onpar.core.Submitted
 import za.onpar.core.TaskItem
+import za.onpar.core.ReportItem
+import za.onpar.core.ReorderItem
+import za.onpar.core.IssuedItem
 import za.onpar.core.LocalPatrol
 import za.onpar.core.PatrolState
 import za.onpar.app.ui.takeFix
@@ -38,6 +41,11 @@ sealed interface Page {
     data object Patrols : Page
     data object PatrolScan : Page
     data class PatrolPoint(val patrolId: String, val point: za.onpar.core.PatrolPoint) : Page
+    data object Reports : Page
+    data object NewReport : Page
+    data class Report(val id: String) : Page
+    data object Reorders : Page
+    data object NewReorder : Page
 }
 
 data class UiState(
@@ -52,6 +60,11 @@ data class UiState(
     val activePatrol: LocalPatrol? = null,
     /** While a scan waits for an accurate GPS reading: the accuracy so far, in metres. */
     val gpsAccuracy: Double? = null,
+    val reports: List<ReportItem> = emptyList(),
+    val reorders: List<ReorderItem> = emptyList(),
+    val kit: List<IssuedItem> = emptyList(),
+    /** Actions waiting on the phone to be sent, by label. */
+    val waitingLabels: List<String> = emptyList(),
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -176,6 +189,89 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(page = page, error = null, message = null) }
         if (page == Page.Tasks) loadTasks()
         if (page == Page.Patrols) loadPatrols()
+        if (page == Page.Reports || page is Page.Report) loadReports()
+        if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
+    }
+
+    // --- Reports -------------------------------------------------------------
+
+    fun loadReports() = run {
+        val list = device.reports.list()
+        _state.update { it.copy(reports = list, waitingLabels = device.reports.waiting().map { w -> w.label }) }
+    }
+
+    private fun done(r: Submitted, sent: String, back: Page) {
+        _state.update {
+            when (r) {
+                is Submitted.Refused -> it.copy(error = r.message)
+                is Submitted.Sent -> it.copy(message = sent, page = back)
+                Submitted.Queued -> it.copy(message = "$sent Saved on the phone; it will be sent when there is signal.", page = back)
+            }
+        }
+    }
+
+    fun createReport(category: String, priority: String, description: String, photo: File?) = run {
+        try {
+            val r = device.reports.create(category, priority, description, photo)
+            if (r !is Submitted.Refused) photo?.delete()
+            done(r, "Report sent. It goes to your supervisor automatically.", Page.Reports)
+            val list = device.reports.list()
+            val waiting = device.reports.waiting().map { w -> w.label }
+            _state.update { it.copy(reports = list, waitingLabels = waiting) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun followUp(report: ReportItem, outcome: String, note: String, photo: File?) = run {
+        try {
+            val r = device.reports.followUp(report, outcome, note, photo)
+            if (r !is Submitted.Refused) photo?.delete()
+            done(r, "Follow-up recorded on report #${report.number}.", Page.Reports)
+            val list = device.reports.list()
+            _state.update { it.copy(reports = list) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    // --- Re-orders -----------------------------------------------------------
+
+    fun loadReorders() = run {
+        val list = device.reorders.list()
+        val kit = device.reorders.kit()
+        _state.update { it.copy(reorders = list, kit = kit, waitingLabels = device.reorders.waiting().map { w -> w.label }) }
+    }
+
+    fun reorderPersonal(item: IssuedItem, comment: String) = run {
+        try {
+            done(device.reorders.personal(item, comment), "Re-order sent: ${item.item}.", Page.Reorders)
+            val list = device.reorders.list()
+            _state.update { it.copy(reorders = list) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun reorderSite(item: String, quantity: String, comment: String) = run {
+        try {
+            done(device.reorders.site(item, quantity, comment), "Site re-order sent.", Page.Reorders)
+            val list = device.reorders.list()
+            _state.update { it.copy(reorders = list) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun received(r: ReorderItem) = run {
+        try {
+            done(device.reorders.received(r, ""), "Receipt confirmed: ${r.item}.", Page.Reorders)
+            val list = device.reorders.list()
+            val kit = device.reorders.kit()
+            _state.update { it.copy(reorders = list, kit = kit) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     // --- Patrols -------------------------------------------------------------
@@ -203,14 +299,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 out.point != null && out.patrolId != null && out.accepted != false && !out.point!!.needsNothing -> Page.PatrolPoint(out.patrolId!!, out.point!!)
                 else -> Page.Patrols
             }
+            val active = device.patrols.active()
+            val cached = device.patrols.cached()
             val text = if (out.accepted == true && out.point != null) "${out.point!!.name}: accepted." else out.message
             _state.update {
                 it.copy(
                     page = next,
                     message = if (out.accepted != false) text else null,
                     error = if (out.accepted == false) text else null,
-                    activePatrol = device.patrols.active(),
-                    patrols = device.patrols.cached(),
+                    activePatrol = active,
+                    patrols = cached,
                 )
             }
         } catch (e: IllegalArgumentException) {
@@ -270,7 +368,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             is Submitted.Sent -> _state.update { it.copy(message = done, page = Page.Tasks) }
             is Submitted.Queued -> _state.update { it.copy(message = "$done Saved on the phone; it will be sent when there is signal.", page = Page.Tasks) }
         }
-        _state.update { it.copy(tasks = device.tasks.today()) }
+        val list = device.tasks.today()
+        _state.update { it.copy(tasks = list) }
     }
 
     fun completeTask(task: TaskItem, comment: String, photo: File?) = run {

@@ -75,7 +75,9 @@ class LiveFixture(val url: String) {
             put("psiraExpiry", "2029-12-31")
             put("siteId", siteId)
             put("qualifications", buildJsonArray { })
-            put("issuedItems", buildJsonArray { })
+            put("issuedItems", buildJsonArray {
+                add(buildJsonObject { put("item", "Shirt"); put("size", "L"); put("issueDate", "2026-01-15") })
+            })
             put("acknowledgeWarnings", true)
         }
         val form = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("data", data.toString())
