@@ -135,6 +135,19 @@ class LiveServerTest {
     }
 
     @Test @Order(5)
+    fun `the phone shows the server's exact declaration wording, and the declaration with selfie is accepted`() {
+        assumeTrue(url.isNotEmpty())
+        val owed = device.owedDeclaration(device.state())!!
+        assertEquals(DeclarationText.DUTY_ON, owed.wording)
+        assertEquals(DeclarationText.DUTY_FROM, DeclarationText.forKind("duty_from"))
+        val jpeg = File(dir, "selfie.jpg").apply { writeBytes(byteArrayOf(-1, -40, -1, -32, 0, 16, 74, 70, 73, 70, 0, 1)) }
+        val r = device.declare(owed, listOf(true, true, true), "Torch at Gate 2 does not work", true, "amber", jpeg)
+        assertTrue(r is Submitted.Sent, "$r")
+        assertTrue(device.outbox.pending().isEmpty(), "selfie sent too")
+        assertEquals(null, device.owedDeclaration(device.state()))
+    }
+
+    @Test @Order(6)
     fun `the same action sent twice (a retry after lost signal) is recorded once`() {
         assumeTrue(url.isNotEmpty())
         val before = device.state().attendance!!.id
@@ -156,7 +169,7 @@ class LiveServerTest {
         put("deviceClock", device.clock.deviceClock().toString())
     }
 
-    @Test @Order(6)
+    @Test @Order(7)
     fun `signing out keeps nothing of the guard on the phone`() {
         assumeTrue(url.isNotEmpty())
         device.signOut()

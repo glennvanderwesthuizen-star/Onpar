@@ -86,7 +86,64 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
             put("trustedAt", clock.now().toString())
             put("deviceClock", clock.deviceClock().toString())
         }
-        return eventId to outbox.submit(api, eventId, kind.label, "/device/duty", body, requireGuard())
+        val result = outbox.submit(api, eventId, kind.label, "/device/duty", body, requireGuard())
+        // The declaration is owed at once, even with no signal to ask the server.
+        if (result !is Submitted.Refused) store["owedDeclaration"] = "${kind.wire}|$eventId"
+        return eventId to result
+    }
+
+    /**
+     * The declaration still owed, if any: from the server when online, otherwise the one
+     * this phone knows it owes after a Duty On or Duty From made without signal.
+     */
+    fun owedDeclaration(fromServer: GuardState?): PendingDeclaration? {
+        fromServer?.pendingDeclaration?.let { return it }
+        val (kind, dutyEventId) = store["owedDeclaration"]?.split('|')?.takeIf { it.size == 2 } ?: return null
+        // The server has answered and owes nothing, and the duty event is no longer waiting to be sent:
+        // it was either declared or refused, so nothing is owed.
+        if (fromServer != null && outbox.pending().none { it.eventId == dutyEventId }) {
+            store["owedDeclaration"] = null
+            return null
+        }
+        return PendingDeclaration(kind, dutyEventId, DeclarationText.forKind(kind))
+    }
+
+    /**
+     * The declaration after Duty On or Duty From (brief section 6.2): every statement
+     * accepted and a selfie, with an optional comment that can be raised as an
+     * equipment report. The text is sent first and the photo after, so a weak signal
+     * never holds up the declaration itself.
+     */
+    fun declare(
+        owed: PendingDeclaration,
+        accepted: List<Boolean>,
+        comment: String,
+        raiseEquipmentReport: Boolean,
+        reportPriority: String,
+        selfie: File,
+    ): Submitted {
+        require(accepted.size == owed.wording.statements.size && accepted.all { it }) { "Tick every statement to continue." }
+        require(selfie.exists() && selfie.length() > 0) { "Take your selfie to continue." }
+        require(!raiseEquipmentReport || comment.isNotBlank()) { "Describe the problem in the comment to raise it as an equipment report." }
+        val eventId = UUID.randomUUID().toString()
+        val body = buildJsonObject {
+            put("eventId", eventId)
+            put("dutyEventId", owed.dutyEventId)
+            put("accepted", kotlinx.serialization.json.JsonArray(accepted.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            put("comment", comment.trim())
+            put("raiseEquipmentReport", raiseEquipmentReport)
+            put("equipmentReportPriority", reportPriority)
+            put("trustedAt", clock.now().toString())
+            put("deviceClock", clock.deviceClock().toString())
+            put("selfieToFollow", true)
+        }
+        val token = requireGuard()
+        val label = if (owed.kind == "duty_from") "Duty From declaration" else "Duty On declaration"
+        outbox.add(eventId, label, "/device/declarations", body, token)
+        outbox.add("$eventId-selfie", "Selfie", "/device/declarations/$eventId/selfie", buildJsonObject { }, token, listOf(Upload("selfie", selfie, "image/jpeg")))
+        store["owedDeclaration"] = null
+        val results = runCatching { outbox.flush(api) }.getOrDefault(emptyMap())
+        return results[eventId] ?: Submitted.Queued
     }
 
     /** Sends anything waiting. Call when the phone gets signal and every minute or so. */

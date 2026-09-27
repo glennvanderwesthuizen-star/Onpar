@@ -88,7 +88,7 @@ private fun Banner(text: String, colour: Color, onClose: () -> Unit) {
 }
 
 @Composable
-private fun BigButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+fun BigButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -147,6 +147,11 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     var askPin by remember { mutableStateOf<DutyKind?>(null) }
     val home = state.home
     val shift = home?.attendance
+    // A declaration still owed comes first: nothing else until it is done (brief section 6.2).
+    state.owed?.let {
+        DeclarationScreen(vm, it, state.busy)
+        return
+    }
     Text("Hello, ${state.guardName ?: ""}", style = MaterialTheme.typography.headlineSmall)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -170,9 +175,6 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
                     },
                     color = if (shift.arrivalStatus == "LATE") Color(0xFFB3261E) else Green,
                 )
-            }
-            home?.pendingDeclaration?.let {
-                Text("Your ${if (it.kind == "duty_on") "Duty On" else "Duty From"} declaration is still owed.", color = Color(0xFFB86E00))
             }
         }
     }

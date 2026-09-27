@@ -20,6 +20,8 @@ import za.onpar.core.DeviceSetup
 import za.onpar.core.DutyKind
 import za.onpar.core.GuardState
 import za.onpar.core.OfflineException
+import za.onpar.core.PendingDeclaration
+import java.io.File
 import za.onpar.core.Submitted
 
 enum class Screen { Setup, Login, Home }
@@ -28,6 +30,8 @@ data class UiState(
     val screen: Screen,
     val guardName: String? = null,
     val home: GuardState? = null,
+    /** A Duty On or Duty From declaration still owed: shown before anything else. */
+    val owed: PendingDeclaration? = null,
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -74,11 +78,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refreshHome() = withContext(Dispatchers.IO) {
         try {
             val s = device.state()
-            _state.update { it.copy(home = s, online = true) }
+            _state.update { it.copy(home = s, online = true, owed = device.owedDeclaration(s)) }
         } catch (e: ApiException) {
             if (e.unauthorised) signOut() else _state.update { it.copy(error = e.message) }
         } catch (e: OfflineException) {
-            _state.update { it.copy(online = false) }
+            _state.update { it.copy(online = false, owed = device.owedDeclaration(null)) }
         }
     }
 
@@ -157,8 +161,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(message = "${kind.label} recorded.") }
                 refreshHome()
             }
-            is Submitted.Queued -> _state.update { it.copy(message = "${kind.label} saved on the phone. It will be sent when there is signal.") }
+            is Submitted.Queued -> _state.update {
+                it.copy(message = "${kind.label} saved on the phone. It will be sent when there is signal.", owed = device.owedDeclaration(null))
+            }
             is Submitted.Refused -> _state.update { it.copy(error = r.message) }
+        }
+    }
+
+    fun declare(owed: PendingDeclaration, accepted: List<Boolean>, comment: String, report: Boolean, priority: String, selfie: File) = run {
+        try {
+            val r = device.declare(owed, accepted, comment, report, priority, selfie)
+            when (r) {
+                is Submitted.Refused -> _state.update { it.copy(error = r.message) }
+                else -> {
+                    selfie.delete() // the outbox keeps its own copy until sent
+                    _state.update {
+                        it.copy(
+                            owed = null,
+                            message = if (r is Submitted.Sent) "Declaration saved. Thank you." else "Declaration saved on the phone. It will be sent when there is signal.",
+                        )
+                    }
+                    refreshHome()
+                }
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
         }
     }
 
