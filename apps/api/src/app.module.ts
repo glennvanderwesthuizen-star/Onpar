@@ -10,7 +10,11 @@ import { OfficersController } from './officers/officers.controller';
 import { DevicesController } from './devices/devices.controller';
 import { DeviceController } from './device-api/device.controller';
 import { StorageService } from './storage/storage.service';
-import { UserAuthGuard, DeviceAuthGuard } from './common/auth';
+import { UserAuthGuard, DeviceAuthGuard, GuardAuthGuard } from './common/auth';
+import { PinService } from './device-api/pin.service';
+import { GuardController } from './device-api/guard.controller';
+import { DutyService } from './attendance/duty.service';
+import { AttendanceController } from './attendance/attendance.controller';
 
 @Controller('health')
 class HealthController {
@@ -30,9 +34,17 @@ export function buildAppModule(config: Config = loadConfig()) {
       OfficersController,
       DevicesController,
       DeviceController,
+      GuardController,
+      AttendanceController,
       AuditController,
     ],
-    providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, UserAuthGuard, DeviceAuthGuard],
+    providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService,
+      UserAuthGuard,
+      DeviceAuthGuard,
+      GuardAuthGuard,
+      PinService,
+      DutyService,
+    ],
   })
   class AppModule {}
   return AppModule;

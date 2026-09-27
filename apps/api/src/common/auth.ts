@@ -121,3 +121,47 @@ export function assertSiteAccess(user: UserPrincipal, siteId: string) {
     throw new NotFoundException('Site not found.');
   }
 }
+
+/** A guard signed in on a post device. */
+export interface GuardPrincipal {
+  kind: 'guard';
+  employeeId: string;
+  companyId: string;
+  deviceId: string;
+  siteId: string | null;
+}
+
+export const CurrentGuard = createParamDecorator((_: unknown, ctx: ExecutionContext): GuardPrincipal => {
+  return ctx.switchToHttp().getRequest().principal;
+});
+
+/**
+ * Requires the device token and a guard token issued on that same device, so a
+ * guard's session cannot be used from another phone.
+ */
+@Injectable()
+export class GuardAuthGuard implements CanActivate {
+  constructor(
+    private readonly device: DeviceAuthGuard,
+    private readonly jwt: JwtService,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    await this.device.canActivate(ctx);
+    const req = ctx.switchToHttp().getRequest();
+    const d: DevicePrincipal = req.principal;
+    const header: string = req.headers.authorization ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    let payload: { sub: string; cid: string; did: string; typ: string };
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new UnauthorizedException('Please log in with your employee number and PIN.');
+    }
+    if (payload.typ !== 'guard' || payload.did !== d.deviceId || payload.cid !== d.companyId) {
+      throw new UnauthorizedException('Please log in with your employee number and PIN.');
+    }
+    req.principal = { kind: 'guard', employeeId: payload.sub, companyId: d.companyId, deviceId: d.deviceId, siteId: d.siteId };
+    return true;
+  }
+}
