@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import za.onpar.app.AppViewModel
+import za.onpar.app.Page
 import za.onpar.app.Screen
 import za.onpar.app.UiState
 import za.onpar.core.DutyKind
@@ -58,7 +59,11 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
             when (state.screen) {
                 Screen.Setup -> SetupScreen(vm, state.busy)
                 Screen.Login -> LoginScreen(vm, state.busy)
-                Screen.Home -> HomeScreen(vm, state)
+                Screen.Home -> when (val page = state.page) {
+                    Page.Home -> HomeScreen(vm, state)
+                    Page.Tasks -> if (state.owed != null) HomeScreen(vm, state) else TasksScreen(vm, state)
+                    is Page.Task -> if (state.owed != null) HomeScreen(vm, state) else TaskScreen(vm, state, page.id)
+                }
             }
         }
     }
@@ -155,7 +160,10 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     Text("Hello, ${state.guardName ?: ""}", style = MaterialTheme.typography.headlineSmall)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (home == null) {
+            if (home == null && !state.online) {
+                Text("No signal.", fontWeight = FontWeight.Bold)
+                Text("Your shift will show when the phone is back online. Anything you do is saved and sent later.")
+            } else if (home == null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.height(20.dp))
                     Spacer(Modifier.padding(4.dp))
@@ -182,6 +190,7 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
         if (shift == null) BigButton("DUTY ON", enabled = !state.busy) { askPin = DutyKind.ON }
         else BigButton("DUTY FROM", enabled = !state.busy) { askPin = DutyKind.FROM }
     }
+    OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
     OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
 

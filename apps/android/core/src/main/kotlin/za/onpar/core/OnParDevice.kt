@@ -14,6 +14,7 @@ import java.util.UUID
 class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), private val http: okhttp3.OkHttpClient = ApiClient.defaultHttp()) {
     private val store = Store(File(dataDir, "settings.json"))
     val outbox = Outbox(File(dataDir, "outbox"), clock)
+    val tasks = TaskActions(this, dataDir)
 
     val setup: DeviceSetup?
         get() {
@@ -72,6 +73,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     fun signOut() {
         store["guardToken"] = null
         store["guardName"] = null
+        tasks.clear()
     }
 
     fun state(): GuardState = OnParJson.decodeFromJsonElement(GuardState.serializer(), api.get("/device/me", requireGuard()))

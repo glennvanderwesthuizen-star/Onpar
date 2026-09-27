@@ -23,8 +23,16 @@ import za.onpar.core.OfflineException
 import za.onpar.core.PendingDeclaration
 import java.io.File
 import za.onpar.core.Submitted
+import za.onpar.core.TaskItem
 
 enum class Screen { Setup, Login, Home }
+
+/** Where the guard is within the app once logged in. */
+sealed interface Page {
+    data object Home : Page
+    data object Tasks : Page
+    data class Task(val id: String) : Page
+}
 
 data class UiState(
     val screen: Screen,
@@ -32,6 +40,8 @@ data class UiState(
     val home: GuardState? = null,
     /** A Duty On or Duty From declaration still owed: shown before anything else. */
     val owed: PendingDeclaration? = null,
+    val page: Page = Page.Home,
+    val tasks: List<TaskItem> = emptyList(),
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -149,7 +159,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         device.signOut()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, page = Page.Home, tasks = emptyList()) }
+    }
+
+    fun go(page: Page) {
+        _state.update { it.copy(page = page, error = null, message = null) }
+        if (page == Page.Tasks) loadTasks()
+    }
+
+    // --- Tasks ---------------------------------------------------------------
+
+    fun loadTasks() = run {
+        val list = device.tasks.today()
+        _state.update { it.copy(tasks = list) }
+    }
+
+    private fun afterTask(r: Submitted, done: String) {
+        when (r) {
+            is Submitted.Refused -> _state.update { it.copy(error = r.message) }
+            is Submitted.Sent -> _state.update { it.copy(message = done, page = Page.Tasks) }
+            is Submitted.Queued -> _state.update { it.copy(message = "$done Saved on the phone; it will be sent when there is signal.", page = Page.Tasks) }
+        }
+        _state.update { it.copy(tasks = device.tasks.today()) }
+    }
+
+    fun completeTask(task: TaskItem, comment: String, photo: File?) = run {
+        try {
+            val r = device.tasks.complete(task, comment, photo)
+            if (r !is Submitted.Refused) photo?.delete()
+            afterTask(r, "Task done.")
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun cannotCompleteTask(task: TaskItem, reason: String, comment: String, photo: File?) = run {
+        try {
+            val r = device.tasks.cannotComplete(task, reason, comment, photo)
+            if (r !is Submitted.Refused) photo?.delete()
+            afterTask(r, "Recorded. Your supervisor will review it; there is no penalty until then.")
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     // --- Duty ----------------------------------------------------------------
