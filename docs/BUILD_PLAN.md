@@ -181,4 +181,8 @@ While you arrange the phone, I can start **Milestone 1 (foundation)** in paralle
 - Comments marked "raise as equipment report" are stored with that flag; milestone 5 (reports) will turn them into reports, and link injury reports to the Duty On declaration.
 - Attendance events will feed the scoring engine in milestone 4 (on time +1, late −1).
 - The guard device screens themselves are built in Kotlin once milestone 0 settles the phone and MDM. The server side they need is ready and tested.
-- The wording "Duty From" (decision D-06) is still open.
+- The wording "Duty From" is confirmed by the owner (decision D-06).
+
+### Milestone 0 note, 27 Sep 2026
+
+The owner has no Android phone yet, only a personal iPhone. The iPhone cannot run the kiosk and calling tests: those need Android's dedicated-device (lock task) mode and the ability to act as the phone's dialler, which iOS does not allow for apps. What an iPhone *can* check is QR scanning with a GPS accuracy reading at real patrol spots, through a web page in Safari. Milestone 0 proper still needs an Android phone.

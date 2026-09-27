@@ -14,7 +14,7 @@ Legend for "Needed by": **M0** = before the hardware spike, **M1** = before the 
 | D-03 | Which MDM (phone management system)? | Trial Hexnode or Scalefusion first; Android Management API as fallback. Settled by the spike. | M0 | *open* |
 | D-04 | Which rugged phone model to standardise on? | Test with the Blackview you have; settled by the spike. | M0 | *open* |
 | D-05 | Hosting: AWS Cape Town or Azure South Africa North? | AWS Cape Town. | M1 | *open* |
-| D-06 | Is "Duty From" the intended term, or "Duty Off"? | Keep "Duty From" as supplied, but it is stored as a label, so changing it later is trivial. | M2 | *open* |
+| D-06 | Is "Duty From" the intended term, or "Duty Off"? | Keep "Duty From" as supplied, but it is stored as a label, so changing it later is trivial. | M2 | **Decided 27 Sep 2026: "Duty From" is correct.** |
 
 ## Needed later (by milestone)
 
