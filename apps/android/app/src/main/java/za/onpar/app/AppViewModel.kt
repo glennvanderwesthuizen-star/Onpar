@@ -24,6 +24,9 @@ import za.onpar.core.PendingDeclaration
 import java.io.File
 import za.onpar.core.Submitted
 import za.onpar.core.TaskItem
+import za.onpar.core.LocalPatrol
+import za.onpar.core.PatrolState
+import za.onpar.app.ui.takeFix
 
 enum class Screen { Setup, Login, Home }
 
@@ -32,6 +35,9 @@ sealed interface Page {
     data object Home : Page
     data object Tasks : Page
     data class Task(val id: String) : Page
+    data object Patrols : Page
+    data object PatrolScan : Page
+    data class PatrolPoint(val patrolId: String, val point: za.onpar.core.PatrolPoint) : Page
 }
 
 data class UiState(
@@ -42,6 +48,10 @@ data class UiState(
     val owed: PendingDeclaration? = null,
     val page: Page = Page.Home,
     val tasks: List<TaskItem> = emptyList(),
+    val patrols: PatrolState? = null,
+    val activePatrol: LocalPatrol? = null,
+    /** While a scan waits for an accurate GPS reading: the accuracy so far, in metres. */
+    val gpsAccuracy: Double? = null,
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -165,6 +175,86 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun go(page: Page) {
         _state.update { it.copy(page = page, error = null, message = null) }
         if (page == Page.Tasks) loadTasks()
+        if (page == Page.Patrols) loadPatrols()
+    }
+
+    // --- Patrols -------------------------------------------------------------
+
+    fun loadPatrols() = run {
+        val s = device.patrols.state()
+        _state.update { it.copy(patrols = s, activePatrol = device.patrols.active()) }
+    }
+
+    /** A code was read: take one GPS reading now, then send the scan. */
+    fun scanCode(code: String) = run {
+        _state.update { it.copy(gpsAccuracy = -1.0) }
+        val fix = try {
+            takeFix(getApplication()) { acc -> _state.update { it.copy(gpsAccuracy = acc) } }
+        } finally {
+            _state.update { it.copy(gpsAccuracy = null) }
+        }
+        if (fix == null) {
+            _state.update { it.copy(error = "No GPS reading. Turn on location, stand in the open and scan again.") }
+            return@run
+        }
+        try {
+            val out = device.patrols.scan(code, fix)
+            val next = when {
+                out.point != null && out.patrolId != null && out.accepted != false && !out.point!!.needsNothing -> Page.PatrolPoint(out.patrolId!!, out.point!!)
+                else -> Page.Patrols
+            }
+            val text = if (out.accepted == true && out.point != null) "${out.point!!.name}: accepted." else out.message
+            _state.update {
+                it.copy(
+                    page = next,
+                    message = if (out.accepted != false) text else null,
+                    error = if (out.accepted == false) text else null,
+                    activePatrol = device.patrols.active(),
+                    patrols = device.patrols.cached(),
+                )
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun savePoint(patrolId: String, point: za.onpar.core.PatrolPoint, note: String, photo: File?, numbers: Map<String, Double>, oks: Map<String, Boolean>, checkPhotos: Map<String, File>) = run {
+        try {
+            val r = device.patrols.saveChecks(patrolId, point, note, photo, numbers, oks, checkPhotos)
+            if (r !is Submitted.Refused) {
+                photo?.delete()
+                checkPhotos.values.forEach { it.delete() }
+            }
+            val done = device.patrols.active() == null
+            _state.update {
+                when (r) {
+                    is Submitted.Refused -> it.copy(error = r.message)
+                    else -> it.copy(
+                        page = Page.Patrols,
+                        message = when {
+                            r is Submitted.Queued -> "${point.name} saved on the phone. It will be sent when there is signal."
+                            done -> "Patrol complete. Well done."
+                            else -> "${point.name} done. Scan the next point."
+                        },
+                        activePatrol = device.patrols.active(),
+                    )
+                }
+            }
+            if (r is Submitted.Sent) loadPatrols()
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun endPatrolEarly(patrolId: String, reason: String) = run {
+        try {
+            when (val r = device.patrols.cannotFinish(patrolId, reason)) {
+                is Submitted.Refused -> _state.update { it.copy(error = r.message) }
+                else -> _state.update { it.copy(message = "Patrol ended early. Your supervisor will review it.", activePatrol = null, page = Page.Patrols) }
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     // --- Tasks ---------------------------------------------------------------

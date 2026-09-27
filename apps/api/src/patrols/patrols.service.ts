@@ -163,7 +163,9 @@ export class PatrolsService implements OnModuleDestroy {
         const done = (await tx.query(`SELECT count(*)::int AS n FROM patrol_instances WHERE attendance_id = $1 AND patrol_type_id = $2 AND state = 'completed'`, [a.id, t.id])).rows[0].n;
         const points = (
           await tx.query(
-            `SELECT id, name, instruction, photo_mode AS "photoMode", note_mode AS "noteMode", checks, lat, lng, radius_m AS "radiusM"
+            // qrHash lets the phone recognise a scanned point with no signal, without ever holding the codes themselves.
+            `SELECT id, name, instruction, photo_mode AS "photoMode", note_mode AS "noteMode", checks, lat, lng, radius_m AS "radiusM",
+                    encode(sha256(convert_to(qr_code, 'UTF8')), 'hex') AS "qrHash"
                FROM patrol_points WHERE patrol_type_id = $1 AND active ORDER BY sort_order, name`,
             [t.id],
           )

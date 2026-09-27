@@ -63,6 +63,9 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Home -> HomeScreen(vm, state)
                     Page.Tasks -> if (state.owed != null) HomeScreen(vm, state) else TasksScreen(vm, state)
                     is Page.Task -> if (state.owed != null) HomeScreen(vm, state) else TaskScreen(vm, state, page.id)
+                    Page.Patrols -> if (state.owed != null) HomeScreen(vm, state) else PatrolsScreen(vm, state)
+                    Page.PatrolScan -> if (state.owed != null) HomeScreen(vm, state) else PatrolScanScreen(vm, state)
+                    is Page.PatrolPoint -> if (state.owed != null) HomeScreen(vm, state) else PatrolPointScreen(vm, state, page.patrolId, page.point)
                 }
             }
         }
@@ -190,6 +193,7 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
         if (shift == null) BigButton("DUTY ON", enabled = !state.busy) { askPin = DutyKind.ON }
         else BigButton("DUTY FROM", enabled = !state.busy) { askPin = DutyKind.FROM }
     }
+    OutlinedButton(onClick = { vm.go(Page.Patrols) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Patrols", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
     OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }

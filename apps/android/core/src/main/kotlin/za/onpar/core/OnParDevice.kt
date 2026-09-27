@@ -15,6 +15,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     private val store = Store(File(dataDir, "settings.json"))
     val outbox = Outbox(File(dataDir, "outbox"), clock)
     val tasks = TaskActions(this, dataDir)
+    val patrols = PatrolActions(this, dataDir)
 
     val setup: DeviceSetup?
         get() {
@@ -74,6 +75,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         store["guardToken"] = null
         store["guardName"] = null
         tasks.clear()
+        patrols.clear()
     }
 
     fun state(): GuardState = OnParJson.decodeFromJsonElement(GuardState.serializer(), api.get("/device/me", requireGuard()))
