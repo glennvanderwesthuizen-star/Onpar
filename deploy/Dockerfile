@@ -10,7 +10,7 @@ RUN pnpm --filter @onpar/rules build && pnpm --filter @onpar/api build
 # The website forwards /api to the API container inside the private network.
 ENV API_URL=http://api:4000
 RUN pnpm --filter @onpar/web build
-RUN pnpm --filter @onpar/api deploy --legacy --prod /out/api && cp -r apps/api/migrations /out/api/dist/migrations
+RUN --mount=type=secret,id=ca,required=false sh -c '[ -s /run/secrets/ca ] && export NODE_EXTRA_CA_CERTS=/run/secrets/ca; pnpm --filter @onpar/api deploy --legacy --prod --prefer-offline /out/api'
 
 # The API: runs any new database migrations, then starts.
 FROM node:22-alpine AS api
@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 COPY --from=build /out/api /app
 USER node
 EXPOSE 4000
-CMD ["sh", "-c", "node dist/src/db/migrate-cli.js && node dist/src/main.js"]
+CMD ["sh", "-c", "node dist/db/migrate-cli.js && node dist/main.js"]
 
 # The management website.
 FROM node:22-alpine AS web
@@ -34,5 +34,5 @@ CMD ["node", "apps/web/server.js"]
 
 # Tools for backups: the database client and openssl.
 FROM postgres:16-alpine AS tools
-RUN --mount=type=secret,id=ca,required=false sh -c '[ -s /run/secrets/ca ] && cp /etc/ssl/certs/ca-certificates.crt /tmp/ca.bak && cat /run/secrets/ca >> /etc/ssl/certs/ca-certificates.crt; apk add --no-cache bash openssl coreutils; [ -f /tmp/ca.bak ] && mv /tmp/ca.bak /etc/ssl/certs/ca-certificates.crt; true'
+RUN --mount=type=secret,id=ca,required=false sh -c 'set -e; if [ -s /run/secrets/ca ]; then cp /etc/ssl/certs/ca-certificates.crt /tmp/ca.bak; cat /run/secrets/ca >> /etc/ssl/certs/ca-certificates.crt; fi; apk add --no-cache bash openssl coreutils; if [ -f /tmp/ca.bak ]; then mv /tmp/ca.bak /etc/ssl/certs/ca-certificates.crt; fi'
 COPY scripts/backup.sh scripts/restore.sh /scripts/

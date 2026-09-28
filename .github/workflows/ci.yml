@@ -55,3 +55,41 @@ jobs:
           name: onpar-phone-app
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+  server-package:
+    # Builds the hosting package and checks it works end to end: website through the
+    # front door, migrations, creating a company, and an encrypted backup.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Settings for a test run
+        run: |
+          cat > deploy/.env <<ENV
+          ONPAR_DOMAIN=localhost:8080
+          CADDY_ADDRESS=:80
+          HTTP_PORT=8080
+          HTTPS_PORT=8443
+          COOKIE_SECURE=false
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          ONPAR_OWNER_PASSWORD=$(openssl rand -hex 24)
+          ONPAR_APP_PASSWORD=$(openssl rand -hex 24)
+          JWT_SECRET=$(openssl rand -hex 48)
+          DATA_KEY=$(openssl rand -base64 32)
+          ENV
+          openssl rand -hex 32 > deploy/backup-passphrase
+          mkdir -p backups
+      - name: Build
+        run: docker compose --env-file deploy/.env -f deploy/docker-compose.yml --profile tools build
+      - name: Start and check
+        run: |
+          C="docker compose --env-file deploy/.env -f deploy/docker-compose.yml"
+          $C up -d
+          for i in $(seq 1 60); do curl -fs -o /dev/null http://localhost:8080/login && break; sleep 2; done
+          curl -fs http://localhost:8080/api/health
+          curl -fs -o /dev/null http://localhost:8080/login
+          $C exec -T api node dist/db/company-cli.js "CI Guarding" "CI Admin" admin@ci.test | grep "Temporary password"
+          $C --profile tools run --rm tools /scripts/backup.sh
+          ls backups/onpar-*.tar.enc
+      - name: Logs if it failed
+        if: failure()
+        run: docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs --tail 80

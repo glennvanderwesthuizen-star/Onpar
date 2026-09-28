@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/src/main.js",
+    "start": "node dist/main.js",
     "dev": "ts-node --transpile-only src/main.ts",
     "db:migrate": "ts-node --transpile-only src/db/migrate-cli.ts",
     "db:seed": "ts-node --transpile-only src/db/seed-cli.ts",

@@ -37,7 +37,7 @@ ENV
       echo "Created $ENV_FILE and $DEPLOY/backup-passphrase (secrets for this server)."
     fi
     mkdir -p backups
-    compose build
+    compose --profile tools build
     compose up -d
     # A nightly encrypted backup at 02:15 (server time: South Africa).
     (crontab -l 2>/dev/null | grep -v 'onpar.sh backup' || true; echo "15 2 * * * $(pwd)/deploy/onpar.sh backup >> $(pwd)/backups/backup.log 2>&1") | crontab -
@@ -47,7 +47,7 @@ ENV
     ;;
   update)
     git pull --ff-only
-    compose build
+    compose --profile tools build
     compose up -d
     docker image prune -f >/dev/null
     echo "Updated."
@@ -61,10 +61,10 @@ ENV
     ;;
   company)
     shift
-    compose exec api node dist/src/db/company-cli.js "$@"
+    compose exec api node dist/db/company-cli.js "$@"
     ;;
   demo)
-    compose exec api node dist/src/db/seed-cli.js
+    compose exec api node dist/db/seed-cli.js
     ;;
   backup)
     compose --profile tools run --rm tools /scripts/backup.sh
