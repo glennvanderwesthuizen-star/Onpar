@@ -84,7 +84,8 @@ jobs:
         run: |
           C="docker compose --env-file deploy/.env -f deploy/docker-compose.yml"
           $C up -d
-          for i in $(seq 1 60); do curl -fs -o /dev/null http://localhost:8080/login && break; sleep 2; done
+          # The website is up at once; the API first runs the database migrations.
+          for i in $(seq 1 90); do curl -fs -o /dev/null http://localhost:8080/api/health && break; sleep 2; done
           curl -fs http://localhost:8080/api/health
           curl -fs -o /dev/null http://localhost:8080/login
           $C exec -T api node dist/db/company-cli.js "CI Guarding" "CI Admin" admin@ci.test | grep "Temporary password"

@@ -41,8 +41,13 @@ ENV
     compose up -d
     # A nightly encrypted backup at 02:15 (server time: South Africa).
     (crontab -l 2>/dev/null | grep -v 'onpar.sh backup' || true; echo "15 2 * * * $(pwd)/deploy/onpar.sh backup >> $(pwd)/backups/backup.log 2>&1") | crontab -
+    echo "Waiting for On Par to finish setting up its database..."
+    for i in $(seq 1 90); do
+      compose exec -T api node -e "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null && break
+      sleep 2
+    done
     echo
-    echo "On Par is starting at https://$(grep ^ONPAR_DOMAIN= "$ENV_FILE" | cut -d= -f2)"
+    echo "On Par is running at https://$(grep ^ONPAR_DOMAIN= "$ENV_FILE" | cut -d= -f2)"
     echo "The first visit can take a minute while the HTTPS certificate is fetched."
     ;;
   update)
