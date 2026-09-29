@@ -4,8 +4,10 @@
 # It installs Docker, adds a 2 GB swap file, creates a key so the server can fetch the
 # code from GitHub, and prints the next step.
 set -euo pipefail
-sudo apt-get update -y
-sudo apt-get install -y git curl openssl ca-certificates
+# A new server runs its own updates at first boot; wait for them instead of failing.
+APT="sudo apt-get -o DPkg::Lock::Timeout=600"
+$APT update -y
+$APT install -y git curl openssl ca-certificates
 if ! command -v docker >/dev/null; then
   curl -fsSL https://get.docker.com | sudo sh
   sudo usermod -aG docker "$USER"
@@ -16,9 +18,10 @@ if [ ! -f /swapfile ]; then
 fi
 sudo timedatectl set-timezone Africa/Johannesburg
 # Automatic security updates for the server itself.
-sudo apt-get install -y unattended-upgrades
+$APT install -y unattended-upgrades
 sudo dpkg-reconfigure -f noninteractive unattended-upgrades
 if [ ! -f ~/.ssh/onpar_deploy ]; then
+  mkdir -p ~/.ssh && chmod 700 ~/.ssh
   ssh-keygen -t ed25519 -N '' -f ~/.ssh/onpar_deploy -C "onpar-server" >/dev/null
   cat >> ~/.ssh/config <<CFG
 Host github.com
