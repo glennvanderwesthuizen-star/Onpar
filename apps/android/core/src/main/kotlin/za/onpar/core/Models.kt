@@ -38,4 +38,6 @@ data class GuardState(
     val serverTime: String,
     val attendance: Attendance? = null,
     val pendingDeclaration: PendingDeclaration? = null,
+    /** The guard's real shift today and the coming working days (brief section 40). */
+    val roster: GuardRoster? = null,
 )

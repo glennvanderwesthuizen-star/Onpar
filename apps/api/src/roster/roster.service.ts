@@ -29,6 +29,8 @@ export interface AllocateInput {
   patternId: string;
   startDate: string;
   position: number;
+  dayShiftId?: string | null;
+  nightShiftId?: string | null;
   reason?: string;
 }
 
@@ -86,7 +88,7 @@ export class RosterService {
     const rows = (
       await tx.query(
         `SELECT a.id, a.employee_id, a.site_id AS "siteId", p.sequence, a.start_date AS "startDate",
-                a.end_date AS "endDate", a.position
+                a.end_date AS "endDate", a.position, a.day_shift_id AS "dayShiftId", a.night_shift_id AS "nightShiftId"
            FROM roster_allocations a JOIN shift_patterns p ON p.id = a.pattern_id
           WHERE a.employee_id = ANY($1::uuid[]) ORDER BY a.created_at`,
         [employeeIds],
@@ -163,6 +165,11 @@ export class RosterService {
     if (input.position < 1 || input.position > pattern.sequence.length) {
       throw new ConflictException(`The position must be between 1 and ${pattern.sequence.length} for this pattern.`);
     }
+    for (const [id, kind] of [[input.dayShiftId, 'day'], [input.nightShiftId, 'night']] as const) {
+      if (!id) continue;
+      const sh = (await tx.query('SELECT site_id, kind FROM site_shifts WHERE id = $1', [id])).rows[0];
+      if (!sh || sh.site_id !== input.siteId || sh.kind !== kind) throw new ConflictException(`Choose a ${kind} shift at this site.`);
+    }
     const check = await this.allocationCheck(tx, input.employeeId, input.siteId);
     for (const c of check.current) {
       if (user.siteIds && !user.siteIds.includes(c.siteId)) {
@@ -179,9 +186,11 @@ export class RosterService {
     ).rows;
     const id = (
       await tx.query(
-        `INSERT INTO roster_allocations (company_id, employee_id, site_id, pattern_id, start_date, position, exception_reason, created_by)
-         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [input.employeeId, input.siteId, input.patternId, input.startDate, input.position, input.reason?.trim() || null, user.userId],
+        `INSERT INTO roster_allocations (company_id, employee_id, site_id, pattern_id, start_date, position, exception_reason, created_by,
+                                         day_shift_id, night_shift_id)
+         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [input.employeeId, input.siteId, input.patternId, input.startDate, input.position, input.reason?.trim() || null, user.userId,
+          input.dayShiftId ?? null, input.nightShiftId ?? null],
       )
     ).rows[0].id;
     await this.assertRested(tx, input.employeeId, addDays(input.startDate, -1), addDays(input.startDate, Math.max(CHECK_AHEAD_DAYS, 2 * pattern.sequence.length)));
@@ -386,7 +395,7 @@ export class RosterService {
     const allocs = (
       await tx.query(
         `SELECT a.id, a.employee_id AS "employeeId", a.start_date AS "startDate", a.end_date AS "endDate", a.position,
-                p.id AS "patternId", p.number AS "patternNumber", p.name AS "patternName", p.sequence
+                a.day_shift_id AS "dayShiftId", a.night_shift_id AS "nightShiftId", p.id AS "patternId", p.number AS "patternNumber", p.name AS "patternName", p.sequence
            FROM roster_allocations a JOIN shift_patterns p ON p.id = a.pattern_id
           WHERE a.site_id = $1 AND a.employee_id = ANY($2::uuid[]) AND a.start_date <= $4 AND (a.end_date IS NULL OR a.end_date > $3)
           ORDER BY a.start_date`,

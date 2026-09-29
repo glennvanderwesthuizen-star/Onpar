@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PSIRA_GRADES, siteErrors, guardsNeededPerDay } from '@onpar/rules';
+import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PSIRA_GRADES, REQUIREMENT_DAYS, siteErrors, guardsNeededPerDay } from '@onpar/rules';
 import { ApiError } from '@/lib/api';
 import { ErrorBanner, Field } from './ui';
 
@@ -12,6 +12,8 @@ export interface Shift {
   startTime: string;
   endTime: string;
   guardsRequired: number;
+  /** Mon … Sun, then public holiday; null means the same every day (D-20). */
+  guardsByDay?: number[] | null;
   equipment: Record<string, number>;
 }
 
@@ -95,23 +97,69 @@ function ShiftCard({
         </Field>
       </div>
       <div className="guards">
-        <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
-          Guards needed on this shift, every day
-        </div>
-        <div className="stepper">
-          <button
-            type="button"
-            aria-label="One fewer guard"
-            disabled={shift.guardsRequired <= 1}
-            onClick={() => set({ guardsRequired: Math.max(1, shift.guardsRequired - 1) })}
-          >
-            −
-          </button>
-          <b aria-live="polite">{shift.guardsRequired}</b>
-          <button type="button" aria-label="One more guard" onClick={() => set({ guardsRequired: shift.guardsRequired + 1 })}>
-            +
-          </button>
-        </div>
+        {shift.guardsByDay ? (
+          <>
+            <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
+              Guards needed on this shift, day by day
+            </div>
+            <div className="byday">
+              {REQUIREMENT_DAYS.map((label, d) => {
+                const n = shift.guardsByDay![d];
+                const setDay = (v: number) => {
+                  const guardsByDay = shift.guardsByDay!.map((x, j) => (j === d ? Math.max(0, v) : x));
+                  set({ guardsByDay, guardsRequired: Math.max(1, ...guardsByDay) });
+                };
+                return (
+                  <div key={label} className={d === 7 ? 'hol' : ''}>
+                    <span>{label === 'Public holiday' ? 'Holiday' : label}</span>
+                    <button type="button" aria-label={`One fewer guard on ${label}`} disabled={n <= 0} onClick={() => setDay(n - 1)}>
+                      −
+                    </button>
+                    <b aria-live="polite">{n}</b>
+                    <button type="button" aria-label={`One more guard on ${label}`} onClick={() => setDay(n + 1)}>
+                      +
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {e('guardsByDay') && <div className="err">{e('guardsByDay')}</div>}
+          </>
+        ) : (
+          <>
+            <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
+              Guards needed on this shift, every day
+            </div>
+            <div className="stepper">
+              <button
+                type="button"
+                aria-label="One fewer guard"
+                disabled={shift.guardsRequired <= 1}
+                onClick={() => set({ guardsRequired: Math.max(1, shift.guardsRequired - 1) })}
+              >
+                −
+              </button>
+              <b aria-live="polite">{shift.guardsRequired}</b>
+              <button type="button" aria-label="One more guard" onClick={() => set({ guardsRequired: shift.guardsRequired + 1 })}>
+                +
+              </button>
+            </div>
+          </>
+        )}
+        <label className="row small" style={{ marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={!!shift.guardsByDay}
+            onChange={(ev) =>
+              set(
+                ev.target.checked
+                  ? { guardsByDay: REQUIREMENT_DAYS.map(() => shift.guardsRequired) }
+                  : { guardsByDay: null, guardsRequired: Math.max(1, ...(shift.guardsByDay ?? [1])) },
+              )
+            }
+          />
+          A different number on some days (weekends, public holidays)
+        </label>
       </div>
       <details className="eq">
         <summary>Equipment for this shift{equipmentTotal ? ` (${equipmentTotal} items)` : ''}</summary>
@@ -275,7 +323,9 @@ export function SiteForm({
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
           <h2 style={{ margin: 0 }}>Shifts</h2>
-          <span className="mute small">{guardsNeededPerDay(site.shifts)} guards needed per day in total</span>
+          <span className="mute small">{site.shifts.some((x) => x.guardsByDay) ? 'Up to ' : ''}
+            {guardsNeededPerDay(site.shifts)} guards needed per day in total
+          </span>
         </div>
         {errors.shifts && <div className="err">{errors.shifts}</div>}
         <div className="grid g2">

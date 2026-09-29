@@ -109,6 +109,11 @@ describe('resolving a day (scenario 25 and D-25)', () => {
     expect(resolveRosterDay('2026-10-04', [old, moved], [], shifts)).toMatchObject({ siteId: siteA });
     expect(resolveRosterDay('2026-10-05', [old, moved], [], shifts)).toMatchObject({ siteId: siteB, shiftId: 'b-day' });
   });
+  it('uses the chosen shift when a site has two of a kind', () => {
+    const atB = { ...alloc, siteId: siteB, dayShiftId: 'b-late' };
+    expect(resolveRosterDay('2026-10-01', [atB], [], shifts)).toMatchObject({ shiftId: 'b-late' });
+    expect(resolveRosterDay('2026-10-01', [{ ...atB, dayShiftId: null }], [], shifts)).toMatchObject({ shiftId: 'b-day' });
+  });
   it('flags a pattern night at a site with no night shift', () => {
     const atB = { ...alloc, siteId: siteB };
     expect(resolveRosterDay('2026-10-04', [atB], [], shifts)).toMatchObject({ status: 'unmapped', kind: 'night' });

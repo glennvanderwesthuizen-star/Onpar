@@ -396,3 +396,45 @@ The owner has no Android phone yet, only a personal iPhone. The iPhone cannot ru
 **Flagged:**
 - A guard's sign-in lasts 16 hours on the phone. Actions made offline and sent more than 16 hours later would be refused. Before the pilot, decide whether queued actions should carry a longer-lived device-level permission (the server already refuses anything over 72 hours old).
 - `dl.google.com` is blocked in this build environment, so the Android screens are only built on GitHub. Allowing it (environment network settings) would let them be built and checked here too.
+
+### Milestones 21 and 22: rostering and the attendance register, built 29 Sep 2026
+
+Built before the pilot at the owner's request (D-25), following the owner's process (section 2 above) and brief sections 31, 32 and 36 to 43.
+
+- **Shift patterns** (Roster → Shift patterns): a repeating cycle of Day, Night and Off, built by tapping + Day, + Night, + Off, with a two-digit number.
+  - A night shift straight into a day shift is refused, including when the cycle starts again.
+  - A pattern works at any site: D means the site's day shift, N its night shift. If a site has two of a kind (two night posts), the allocation says which.
+- **Allocate** (Roster page): site + pattern + guard + start date + position.
+  - A guard has only one allocation at a time. Allocating somewhere else moves them, after a warning.
+  - A clash check names anyone found on two sites anyway (the brief's second safety net).
+  - Grade and firearm competency are checked, with a warning that does not block; the reason is recorded.
+- **The roster table**, one week at a time, has three parts:
+  - guards needed per shift and day;
+  - each guard's worked-out shift for every day;
+  - rostered against needed, marked OK, short or over.
+- **Day changes** (click any cell), with the pattern left unchanged. A guard can:
+  - get a day off;
+  - work another shift at this site;
+  - work at a second site, **once or every week on that day** (D-19).
+  - Relief guards with no pattern can be added for single days.
+  - **A day shift straight after a night shift is always blocked** (D-25), checked against each site's real shift times.
+- **Guards needed, day by day** (site page): the same every day, or Monday to Sunday plus public holidays (D-20). Any single date can also differ.
+  - South African public holidays are worked out automatically, including the Monday after a Sunday holiday. Extra days, such as election days, can be added.
+- **Attendance uses the roster.**
+  - Duty On is matched to the shift the guard is rostered on, so lateness is measured against the real shift.
+  - A guard working at a site where they are not rostered is recorded but not scored.
+  - Guards with no roster yet keep the old matching.
+  - The dashboard's "Absent" now means a rostered guard who did not arrive. Sites with nobody rostered keep the old count.
+- **Attendance register** (Register page): per site, for the payroll month (26th to 25th, or the site's own day), with previous and next month.
+  - For each guard and day: the rostered shift, the real Duty On and Duty From, hours worked, and a status. The statuses are complete, on duty, absent, rest day, worked but not on the roster, no record, and still to come.
+  - Missing times are shown as missing, never filled in.
+  - A day worked at another site counts on that site's register.
+  - It can be downloaded for payroll (CSV). It is not a payslip.
+- **Phone:**
+  - The home screen shows today's real shift, "Off today" or "Not yet rostered", and the next few working days.
+  - **My roster** lists the working days of the next four weeks, kept for when there is no signal.
+- **Tests:** acceptance scenarios 22 to 26 and 29 to 32 are automated. The totals are 125 rules tests, 234 server tests and 51 phone tests.
+
+**Flagged for the owner:**
+- The rest rule only forbids a night shift straight into a day shift, plus any overlap. Weekly working-hours limits under the BCEA (L-07) are not checked yet; this needs a labour lawyer's figure first.
+- Swap requests between guards, and leave, are not built. For now, leave is recorded as a day off with a note.

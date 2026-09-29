@@ -158,6 +158,20 @@ describe('rostering', () => {
       expect((await week(siteA)).shifts[0].days[0].required).toBe(3);
     });
 
+    it('can use a second night shift when the site has two night posts', async () => {
+      const site = (await w.http().get(`/api/sites/${siteB}`).set(auth(manager))).body;
+      site.shifts.push({ name: 'Gate night', kind: 'night', startTime: '18:00', endTime: '06:00', guardsRequired: 1, equipment: {} });
+      const saved = (await w.http().put(`/api/sites/${siteB}`).set(auth(manager)).send(site)).body;
+      const gate = saved.shifts.find((s: { name: string }) => s.name === 'Gate night');
+      const [day] = await shiftsOf(siteA);
+      expect((await w.http().post('/api/roster/allocations').set(auth(manager)).send({ employeeId: g[7].id, siteId: siteB, patternId, startDate: addDays(monday, 70), position: 4, nightShiftId: day.id })).status).toBe(409);
+      const r = await w.http().post('/api/roster/allocations').set(auth(manager)).send({ employeeId: g[7].id, siteId: siteB, patternId, startDate: addDays(monday, 70), position: 4, nightShiftId: gate.id });
+      expect(r.status).toBe(201);
+      expect(cell(await week(siteB, addDays(monday, 70)), g[7].id, addDays(monday, 70))).toMatchObject({ status: 'working', shiftName: 'Gate night' });
+      // Take it off again so later tests see guard 7 as never rostered around today.
+      await ownerQuery('DELETE FROM roster_allocations WHERE employee_id = $1', [g[7].id]);
+    });
+
     it('rejects a position outside the pattern', async () => {
       expect((await allocate(g[4].id, siteA, monday, 10)).status).toBe(409);
     });
@@ -349,6 +363,55 @@ describe('rostering', () => {
     it('uses the site shifts for someone with no roster yet', async () => {
       const r = await dutyOn(7, '06:00');
       expect(r.body.attendance).toMatchObject({ shiftName: 'Day', arrivalStatus: 'ON_TIME', rosterStatus: 'no_roster' });
+    });
+  });
+  describe('attendance register (milestone 22, scenarios 26 and 32)', () => {
+    const D1 = sastDate(new Date(Date.now() - 24 * 3600 * 1000));
+    const reg = async (site: string, date = D1, token = manager) => w.http().get(`/api/register?siteId=${site}&date=${date}`).set(auth(token));
+
+    it('covers the payroll period from the 26th to the 25th, with previous and next', async () => {
+      const r = await reg(siteA, '2026-09-19');
+      expect(r.status).toBe(200);
+      expect(r.body.period).toEqual({ start: '2026-08-26', end: '2026-09-25', days: 31 });
+      expect(r.body.previous).toBe('2026-07-26');
+      expect(r.body.next).toBe('2026-09-26');
+    });
+
+    it('puts the real Duty On next to the rostered shift, and never invents a time', async () => {
+      const r = (await reg(siteA)).body;
+      const guard6 = r.guards.find((x: { id: string }) => x.id === g[6].id);
+      const row = guard6.days.find((d: { date: string }) => d.date === D1);
+      expect(row).toMatchObject({ here: true, scheduled: { name: 'Day', startTime: '06:00', endTime: '18:00', hours: 12 }, status: 'on_duty', dutyFromAt: null, hoursWorked: null });
+      expect(new Date(row.dutyOnAt).toISOString()).toBe(new Date(`${D1}T06:40:00+02:00`).toISOString());
+      expect(row.arrival).toEqual({ status: 'LATE', lateMinutes: 40 });
+      for (const guard of r.guards) {
+        for (const d of guard.days) {
+          if (!d.dutyOnAt) {
+            expect(['absent', 'upcoming', 'rest_day', 'no_record']).toContain(d.status);
+            expect(d.hoursWorked).toBeNull();
+          }
+        }
+      }
+      expect(r.note).toMatch(/not a payslip/);
+    });
+
+    it('counts a day worked at another site on that site\u2019s register, not twice', async () => {
+      // Guard 3 was rostered at Office Park yesterday but logged Duty On at Estate ABC.
+      const b = (await reg(siteB)).body.guards.find((x: { id: string }) => x.id === g[3].id);
+      expect(b.days.find((d: { date: string }) => d.date === D1)).toMatchObject({ here: false, siteName: 'Estate ABC' });
+      const a = (await reg(siteA)).body.guards.find((x: { id: string }) => x.id === g[3].id);
+      expect(a.days.find((d: { date: string }) => d.date === D1)).toMatchObject({ here: true, status: 'on_duty' });
+    });
+
+    it('follows a change to the site\u2019s payroll day', async () => {
+      const site = (await w.http().get(`/api/sites/${siteB}`).set(auth(manager))).body;
+      await w.http().put(`/api/sites/${siteB}`).set(auth(manager)).send({ ...site, payrollStartDay: 1 });
+      expect((await reg(siteB, '2026-09-19')).body.period).toEqual({ start: '2026-09-01', end: '2026-09-30', days: 30 });
+    });
+
+    it('is limited to the user\u2019s own sites', async () => {
+      expect((await reg(siteB, D1, supervisor)).status).toBe(404);
+      expect((await reg(siteA, D1, supervisor)).status).toBe(200);
     });
   });
 });

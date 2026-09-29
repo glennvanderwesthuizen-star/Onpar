@@ -46,6 +46,16 @@ data class Contact(val kind: String, val label: String, val name: String = "", v
 class ProfileActions(private val device: OnParDevice, dataDir: File) {
     private val scoreFile = File(dataDir, "score.json")
     private val trainingFile = File(dataDir, "training.json")
+    private val rosterFile = File(dataDir, "roster.json")
+    /** My roster: today and the working days of the next four weeks. The last copy is kept for when there is no signal. */
+    fun roster(): GuardRoster? = try {
+        val r = OnParJson.decodeFromJsonElement(GuardRoster.serializer(), device.client().get("/device/roster", device.requireGuard()))
+        rosterFile.writeText(OnParJson.encodeToString(GuardRoster.serializer(), r))
+        r
+    } catch (e: OfflineException) {
+        if (rosterFile.exists()) runCatching { OnParJson.decodeFromString(GuardRoster.serializer(), rosterFile.readText()) }.getOrNull() else null
+    }
+
     /** Kept at device level, not per guard: calls must work with no data and before anyone logs in. */
     private val contactsFile = File(dataDir, "contacts.json")
 
@@ -93,5 +103,6 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
     fun clear() {
         scoreFile.delete()
         trainingFile.delete()
+        rosterFile.delete()
     }
 }

@@ -24,5 +24,8 @@ class LiveProfileTest {
         assertEquals("On Par", s.positionLabel)
         val training = device.profile.training()
         assertTrue(training.any { it.name.startsWith("PSIRA registration") && it.status == "COMPLIANT" }, "$training")
+        // The fixture guard has no roster yet, so both the home screen and My roster say so.
+        assertEquals("Not yet rostered", device.state().roster.todayText())
+        assertEquals(false, device.profile.roster()!!.rostered)
     }
 }

@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import za.onpar.app.AppViewModel
+import za.onpar.core.rosterDate
+import za.onpar.core.shiftText
+import za.onpar.core.todayText
 import za.onpar.app.CallInfo
 import za.onpar.app.Calls
 import za.onpar.app.Kiosk
@@ -127,6 +130,29 @@ fun TrainingScreen(vm: AppViewModel, state: UiState) {
                     else -> "Current" to Green
                 }
                 Text(label, color = colour, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/** My roster: today and only the days the guard works in the next four weeks. */
+@Composable
+fun RosterScreen(vm: AppViewModel, state: UiState) {
+    Title("My roster") { vm.go(Page.Home) }
+    val r = state.roster
+    if (r == null) {
+        Text(if (state.busy) "Loading…" else "Your roster will show when the phone has signal.", color = Color.Gray)
+        return
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Text(r.todayText(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(12.dp))
+    }
+    if (r.rostered && r.comingUp.isEmpty()) Text("No working days in the next four weeks.", color = Color.Gray)
+    r.comingUp.forEach { d ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text(rosterDate(d.date), fontWeight = FontWeight.Bold)
+                Text(d.shiftText(), color = if (d.kind == "night") Color(0xFF1D4F91) else Amber)
             }
         }
     }

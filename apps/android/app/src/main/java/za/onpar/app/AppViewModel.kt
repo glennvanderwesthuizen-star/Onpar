@@ -52,6 +52,7 @@ sealed interface Page {
     data object NewReorder : Page
     data object Score : Page
     data object Training : Page
+    data object Roster : Page
     data object Call : Page
 }
 
@@ -74,6 +75,7 @@ data class UiState(
     val waitingLabels: List<String> = emptyList(),
     val score: Score? = null,
     val training: List<Qualification> = emptyList(),
+    val roster: za.onpar.core.GuardRoster? = null,
     val contacts: List<Contact> = emptyList(),
     val online: Boolean = true,
     val waiting: Int = 0,
@@ -204,6 +206,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
         if (page == Page.Score) loadScore()
         if (page == Page.Training) loadTraining()
+        if (page == Page.Roster) loadRoster()
         if (page == Page.Call) loadContacts()
     }
 
@@ -222,6 +225,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }
         }
+    }
+
+    fun loadRoster() = run {
+        val r = device.profile.roster()
+        _state.update { it.copy(roster = r) }
     }
 
     fun loadTraining() = run {

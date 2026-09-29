@@ -21,7 +21,9 @@ export default function NewSitePage() {
         initial={EMPTY_SITE}
         onSave={async (v) => {
           const site = await api<{ id: string }>('/sites', { method: 'POST', json: v });
-          router.replace(`/sites/${site.id}`);
+          // Coming from the Roster page's "New site" button: go back there with the new site chosen.
+          const then = new URLSearchParams(window.location.search).get('then');
+          router.replace(then === 'roster' ? `/roster?site=${site.id}` : `/sites/${site.id}`);
         }}
       />
     </>

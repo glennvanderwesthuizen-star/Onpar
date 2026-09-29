@@ -36,6 +36,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import za.onpar.app.AppViewModel
+import za.onpar.core.rosterDate
+import za.onpar.core.shiftText
+import za.onpar.core.todayText
 import za.onpar.app.Calls
 import androidx.compose.runtime.collectAsState
 import za.onpar.app.Page
@@ -85,6 +88,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.NewReorder -> if (state.owed != null) HomeScreen(vm, state) else NewReorderScreen(vm, state)
                     Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
+                    Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     // Calling is always allowed, even with a declaration owed.
                     Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
                 }
@@ -196,8 +200,14 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
                     Text("Loading your shift…")
                 }
             } else if (shift == null) {
-                Text("You are not on duty.", fontWeight = FontWeight.Bold)
-                Text("Press Duty On when you start your shift.")
+                // The real shift from the roster, never a fixed example (brief section 40).
+                Text(home.roster.todayText(), fontWeight = FontWeight.Bold)
+                Text("You are not on duty. Press Duty On when you start your shift.")
+                val next = home.roster?.comingUp.orEmpty().take(3)
+                if (next.isNotEmpty()) {
+                    Text("Coming up", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                    next.forEach { Text("${rosterDate(it.date)}: ${it.shiftText()}", fontSize = 14.sp) }
+                }
             } else {
                 Text("On duty since ${time(shift.dutyOnAt)}", fontWeight = FontWeight.Bold)
                 Text("${shift.shiftName ?: "Shift"} at ${shift.siteName ?: "your site"}")
@@ -224,6 +234,7 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
         OutlinedButton(onClick = { vm.go(Page.Score) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Score", fontSize = 18.sp) }
         OutlinedButton(onClick = { vm.go(Page.Training) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Training", fontSize = 18.sp) }
     }
+    OutlinedButton(onClick = { vm.go(Page.Roster) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("My roster", fontSize = 18.sp) }
     Button(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Call", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
     OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }

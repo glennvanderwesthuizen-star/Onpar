@@ -124,6 +124,10 @@ export interface RosterAllocation {
   /** The first date the allocation no longer applies; null while active. */
   endDate: string | null;
   position: number;
+  /** The site shift a D means, when the site has several day shifts; otherwise the first by sort order. */
+  dayShiftId?: string | null;
+  /** The site shift an N means, when the site has several night shifts. */
+  nightShiftId?: string | null;
 }
 
 export interface RosterChange {
@@ -207,7 +211,8 @@ export function resolveRosterDay(
   const sym = patternSymbolOn(alloc.sequence, alloc.startDate, alloc.position, date);
   if (sym === 'O' || sym === null) return { date, status: 'off', source: 'pattern', changeId: null, siteId: alloc.siteId };
   const kind: ShiftKind = sym === 'D' ? 'day' : 'night';
-  const s = siteShiftOfKind(shifts, alloc.siteId, kind);
+  const chosen = kind === 'day' ? alloc.dayShiftId : alloc.nightShiftId;
+  const s = (chosen && shifts.find((x) => x.id === chosen && x.siteId === alloc.siteId)) || siteShiftOfKind(shifts, alloc.siteId, kind);
   if (!s) return { date, status: 'unmapped', source: 'pattern', changeId: null, siteId: alloc.siteId, kind };
   return working(date, s, 'pattern', null);
 }

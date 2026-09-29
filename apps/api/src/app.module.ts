@@ -31,6 +31,7 @@ import { PrivacyController } from './privacy/privacy.controller';
 import { RetentionService } from './privacy/retention.service';
 import { RosterService } from './roster/roster.service';
 import { RosterController } from './roster/roster.controller';
+import { RegisterController } from './roster/register.controller';
 
 @Controller('health')
 class HealthController {
@@ -69,6 +70,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       PrivacyController,
       AuditController,
       RosterController,
+      RegisterController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,

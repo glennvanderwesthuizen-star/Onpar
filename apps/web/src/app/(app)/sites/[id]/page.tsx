@@ -39,7 +39,8 @@ export default function SitePage({ params }: { params: Promise<{ id: string }> }
       </div>
       {cov.officers < cov.neededPerDay && (
         <div className="banner warn">
-          This is a simple count for one day. Real rosters need relief guards, which the rostering milestone will handle.
+          This is a simple count for one day. Real rosters need relief guards; see this site on the{' '}
+          <Link href={`/roster?site=${id}`}>Roster</Link> page for who works which day.
         </div>
       )}
       {can('sites.edit') ? (

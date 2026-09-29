@@ -7,7 +7,9 @@ import { ChangePassword } from '@/components/ChangePassword';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
+  { href: '/roster', label: 'Roster', permission: 'roster.view' },
   { href: '/attendance', label: 'Attendance', permission: 'attendance.view' },
+  { href: '/register', label: 'Register', permission: 'register.view' },
   { href: '/tasks', label: 'Tasks', permission: 'tasks.view' },
   { href: '/patrols', label: 'Patrols', permission: 'patrols.view' },
   { href: '/reports', label: 'Reports', permission: 'reports.view' },

@@ -17,6 +17,8 @@ const AllocateBody = z.object({
   patternId: uuid,
   startDate: isoDate,
   position: z.number().int().min(1),
+  dayShiftId: uuid.nullish(),
+  nightShiftId: uuid.nullish(),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -133,6 +135,23 @@ export class RosterController {
   week(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string, @Query('from') from?: string) {
     const start = weekStart(from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : sastDate(new Date()));
     return this.db.withTenant(user.companyId, (tx) => this.roster.siteWeek(tx, user, siteId, start));
+  }
+
+  /** Every shift at the sites the user may roster, for choosing where a guard works on a changed day. */
+  @Get('shifts')
+  @RequirePermission('roster.view')
+  shifts(@CurrentUser() user: UserPrincipal) {
+    return this.db.withTenant(user.companyId, async (tx) =>
+      (
+        await tx.query(
+          `SELECT sh.id, sh.name, sh.kind, to_char(sh.start_time, 'HH24:MI') AS "startTime", to_char(sh.end_time, 'HH24:MI') AS "endTime",
+                  s.id AS "siteId", s.name AS "siteName"
+             FROM site_shifts sh JOIN sites s ON s.id = sh.site_id
+            WHERE ($1::uuid[] IS NULL OR s.id = ANY($1::uuid[])) ORDER BY lower(s.name), sh.sort_order`,
+          [user.siteIds],
+        )
+      ).rows,
+    );
   }
 
   /** Everyone who can be rostered, with where they are rostered on a date, for the allocate and change pickers. */
