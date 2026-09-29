@@ -136,6 +136,18 @@ These are not problems with your idea, just small inconsistencies worth knowing 
 6. **Supervisor name-matching.** Section 30 notes that employees are linked to sites by name in the prototype. **The real build links everything by a permanent ID**, so renaming a site breaks nothing.
 7. **Night-into-Day check.** Section 31 notes it assumes 06:00/18:00 shifts. **I will build it to compare each site's real shift times from the start**, since doing it properly costs little extra.
 
+### Rostering: the owner's process (28 Sep 2026, for Milestones 21 and 22)
+
+In the owner's words, summarised. It matches brief sections 31 and 36 to 43, with two additions (a second site, and each day set on its own).
+
+1. **Payroll month: 26th to 25th.** This leaves four days to collect the attendance registers and process pay (brief section 41, default 26).
+2. **Allocate = site + shift pattern + person.** The allocation also has a position, which sets where in the pattern the guard starts, so we know which day or night shift he begins on (brief section 31).
+3. **No day shift straight after a night shift** (brief section 31, checked against each site's real shift times).
+4. **Home site plus a second site.** Every guard has a home site. Many also work a second site, either regularly or ad hoc (D-19). The brief (section 38) allows only one allocation per person, so how a second site is rostered is open (D-25).
+5. **Guards needed are set for each day on its own** (D-20). How this is entered is open (D-25).
+6. **Attendance fills itself in.** Duty On and Duty From on the phone fill in the guard's actual attendance against his roster, which becomes the attendance register used for pay (brief section 32; not a payslip).
+7. **The guard sees his own roster.** After he signs in with his PIN, the phone shows only the days he is working (brief section 40).
+
 ---
 
 ## 7. What I need from you now
