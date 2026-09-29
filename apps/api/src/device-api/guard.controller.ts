@@ -18,6 +18,9 @@ import { parseBody } from '../common/validation';
 import { DutyService, Upload } from '../attendance/duty.service';
 import { MAX_UPLOAD_BYTES } from '../storage/storage.service';
 import { PinService } from './pin.service';
+import { DbService } from '../db/db.service';
+import { RosterService } from '../roster/roster.service';
+import { sastDate } from '@onpar/rules';
 
 const isoTime = z.string().datetime({ offset: true, message: 'Send times in ISO 8601 format.' }).transform((s) => new Date(s));
 
@@ -52,11 +55,19 @@ export class GuardController {
   constructor(
     private readonly duty: DutyService,
     private readonly pins: PinService,
+    private readonly db: DbService,
+    private readonly roster: RosterService,
   ) {}
 
   @Get('me')
   me(@CurrentGuard() guard: GuardPrincipal) {
     return this.duty.guardState(guard);
+  }
+
+  /** My roster: today and the working days of the next four weeks (section 40). */
+  @Get('roster')
+  myRoster(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, (tx) => this.roster.guardRoster(tx, guard.employeeId, sastDate(new Date()), 28));
   }
 
   /** Duty On or Duty From. The PIN is required again (section 6.1). */

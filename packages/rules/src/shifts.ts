@@ -1,5 +1,7 @@
 /** Site and shift rules (brief sections 6.13, 36 and 41). */
 
+import { guardsByDayError } from './roster';
+
 export type ShiftKind = 'day' | 'night';
 
 /** Default equipment list per shift. Configurable per company later. */
@@ -14,6 +16,8 @@ export interface ShiftInput {
   startTime?: string;
   endTime?: string;
   guardsRequired?: number;
+  /** Mon … Sun, then public holiday (D-20); null or missing means the same every day. */
+  guardsByDay?: number[] | null;
   equipment?: Record<string, number>;
 }
 
@@ -44,6 +48,8 @@ export function shiftErrors(shift: ShiftInput): Record<string, string> {
   if (!Number.isInteger(shift.guardsRequired) || (shift.guardsRequired as number) < 1) {
     errors.guardsRequired = 'At least 1 guard is needed on every shift.';
   }
+  const byDay = guardsByDayError(shift.guardsByDay);
+  if (byDay) errors.guardsByDay = byDay;
   for (const [item, qty] of Object.entries(shift.equipment ?? {})) {
     if (!Number.isInteger(qty) || qty < 0) errors[`equipment.${item}`] = `${item} must be 0 or more.`;
   }

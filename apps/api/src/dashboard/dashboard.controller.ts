@@ -19,6 +19,7 @@ import { CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '..
 import { DbService, Tx } from '../db/db.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { currentItems } from '../training/training.controller';
+import { RosterService } from '../roster/roster.service';
 
 /** Groups rows by a key once, rather than searching the whole list for each key. */
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
@@ -74,6 +75,7 @@ export class DashboardController {
   constructor(
     private readonly db: DbService,
     private readonly scoring: ScoringService,
+    private readonly roster: RosterService,
   ) {}
 
   /** Company figures for one day, with the same figures for each site. */
@@ -379,7 +381,35 @@ export class DashboardController {
           [day, siteIds],
         )
       ).rows;
+      // Rostered sites (milestone 21): each guard rostered here today is scheduled, and absent once
+      // his shift is past its start plus the grace period with no Duty On at that site for that day.
+      const rosteredIds = (
+        await tx.query(
+          `SELECT employee_id FROM roster_allocations WHERE site_id = ANY($1::uuid[]) AND start_date <= $2 AND (end_date IS NULL OR end_date > $2)
+           UNION
+           SELECT c.employee_id FROM roster_changes c JOIN site_shifts sh ON sh.id = c.shift_id
+            WHERE sh.site_id = ANY($1::uuid[]) AND (c.date = $2 OR (c.date IS NULL AND c.from_date <= $2 AND (c.until_date IS NULL OR c.until_date >= $2)))`,
+          [siteIds, day],
+        )
+      ).rows.map((r) => r.employee_id);
+      const rosterDays = await this.roster.days(tx, rosteredIds, day, day);
+      const came = new Set(
+        (await tx.query('SELECT employee_id, site_id FROM attendance WHERE shift_date = $1 AND employee_id = ANY($2::uuid[])', [day, rosteredIds])).rows.map(
+          (r) => `${r.employee_id}|${r.site_id}`,
+        ),
+      );
+      const rosteredSites = new Set<string>();
+      for (const [employeeId, [d]] of rosterDays) {
+        if (d.status !== 'working' || !sites.has(d.siteId)) continue;
+        rosteredSites.add(d.siteId);
+        each(d.siteId, (f) => {
+          f.attendance!.scheduled++;
+          if (!came.has(`${employeeId}|${d.siteId}`)) f.attendance!.absent += unfilledPosts(1, 0, day, d.startTime, now, grace);
+        });
+      }
+      // Sites with nobody rostered yet keep the interim count: each unfilled post is absent.
       for (const s of shifts) {
+        if (rosteredSites.has(s.site_id)) continue;
         const arrived = att.filter((a) => a.shift_id === s.id).length;
         each(s.site_id, (f) => {
           f.attendance!.scheduled += s.guards_required;

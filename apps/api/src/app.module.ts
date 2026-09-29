@@ -29,6 +29,8 @@ import { DashboardController } from './dashboard/dashboard.controller';
 import { UsersController } from './users/users.controller';
 import { PrivacyController } from './privacy/privacy.controller';
 import { RetentionService } from './privacy/retention.service';
+import { RosterService } from './roster/roster.service';
+import { RosterController } from './roster/roster.controller';
 
 @Controller('health')
 class HealthController {
@@ -66,6 +68,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       UsersController,
       PrivacyController,
       AuditController,
+      RosterController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
@@ -77,6 +80,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       ScoringService,
       ReportsService,
       PatrolsService,
+      RosterService,
     ],
   })
   class AppModule {}

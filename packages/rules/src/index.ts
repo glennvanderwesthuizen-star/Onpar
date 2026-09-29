@@ -11,3 +11,4 @@ export * from './patrols';
 export * from './reorders';
 export * from './dashboard';
 export * from './passwords';
+export * from './roster';

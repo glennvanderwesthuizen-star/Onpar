@@ -22,6 +22,7 @@ import { AuditService } from '../audit/audit.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { ReportsService } from '../reports/reports.service';
+import { RosterService } from '../roster/roster.service';
 
 export interface DutyInput {
   eventId: string;
@@ -59,6 +60,7 @@ export class DutyService {
     private readonly storage: StorageService,
     private readonly scoring: ScoringService,
     private readonly reports: ReportsService,
+    private readonly roster: RosterService,
   ) {}
 
   /**
@@ -126,9 +128,12 @@ export class DutyService {
     return this.db.withTenant(user.companyId, async (tx) => {
       const e = (await tx.query('SELECT id, full_name, home_site_id FROM employees WHERE id = $1', [employeeId])).rows[0];
       if (!e) throw new NotFoundException('Officer not found.');
-      if (user.siteIds && !user.siteIds.includes(e.home_site_id)) throw new NotFoundException('Officer not found.');
+      // Logged at the site the guard is rostered at that day (a relief guard may be away from home), else his home site.
+      const [today] = (await this.roster.days(tx, [e.id], sastDate(official), sastDate(official))).get(e.id)!;
+      const siteId = today.status === 'working' ? today.siteId : e.home_site_id;
+      if (user.siteIds && !user.siteIds.includes(e.home_site_id) && !user.siteIds.includes(siteId)) throw new NotFoundException('Officer not found.');
       const attendanceId =
-        kind === 'duty_on' ? await this.openShift(tx, e.id, e.home_site_id, official) : await this.closeShift(tx, e.id, official);
+        kind === 'duty_on' ? await this.openShift(tx, e.id, siteId, official) : await this.closeShift(tx, e.id, official);
       await tx.query(
         `INSERT INTO duty_events (id, company_id, attendance_id, employee_id, kind, official_at, trusted_at, device_clock,
                                   late_synced, drift_seconds, drift_flagged, on_behalf_by, on_behalf_reason)
@@ -296,6 +301,8 @@ export class DutyService {
         serverTime: new Date().toISOString(),
         attendance,
         pendingDeclaration,
+        // The guard's real shift today and the next few days (section 40).
+        roster: await this.roster.guardRoster(tx, guard.employeeId, sastDate(new Date())),
       };
     });
   }
@@ -319,24 +326,34 @@ export class DutyService {
     if (open.rowCount) {
       throw new ConflictException('You are still on duty from an earlier shift. Log Duty From, or ask your supervisor to close it.');
     }
-    const shifts = (
-      await tx.query(
-        `SELECT id, name, to_char(start_time, 'HH24:MI') AS "startTime", to_char(end_time, 'HH24:MI') AS "endTime"
-           FROM site_shifts WHERE site_id = $1`,
-        [siteId],
-      )
-    ).rows;
     const grace = (await tx.query('SELECT grace_minutes FROM companies')).rows[0].grace_minutes;
-    const match = matchShift(shifts, at);
-    const arrival = arrivalStatus(match?.scheduledStart ?? null, at, grace);
-    const shiftName = match ? shifts.find((s) => s.id === match.shiftId)?.name : null;
+    // The roster decides the shift (milestone 21). A guard with no roster at all falls back to the
+    // site's shifts; a guard working here without being rostered here is recorded but not scored.
+    const rostered = await this.roster.dutyMatch(tx, employeeId, siteId, at);
+    let match: { shiftId: string; shiftDate: string; scheduledStart: Date; scheduledEnd: Date } | null;
+    let shiftName: string | null | undefined;
+    if (rostered.status === 'rostered') {
+      match = rostered.shift;
+      shiftName = rostered.shift.shiftName;
+    } else {
+      const shifts = (
+        await tx.query(
+          `SELECT id, name, to_char(start_time, 'HH24:MI') AS "startTime", to_char(end_time, 'HH24:MI') AS "endTime"
+             FROM site_shifts WHERE site_id = $1`,
+          [siteId],
+        )
+      ).rows;
+      match = matchShift(shifts, at);
+      shiftName = match ? shifts.find((s) => s.id === match!.shiftId)?.name : null;
+    }
+    const arrival = rostered.status === 'not_rostered_here' ? arrivalStatus(null, at) : arrivalStatus(match?.scheduledStart ?? null, at, grace);
     let attendanceId: string;
     try {
       attendanceId = (
         await tx.query(
           `INSERT INTO attendance (company_id, employee_id, site_id, shift_id, shift_name, shift_date, scheduled_start,
-                                   scheduled_end, duty_on_at, arrival_status, late_minutes)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+                                   scheduled_end, duty_on_at, arrival_status, late_minutes, roster_status)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
           [
             employeeId,
             siteId,
@@ -348,6 +365,7 @@ export class DutyService {
             at,
             arrival.status,
             arrival.lateMinutes,
+            rostered.status === 'rostered' ? 'rostered' : rostered.status,
           ],
         )
       ).rows[0].id;
@@ -379,13 +397,13 @@ export class DutyService {
   private async closeShift(tx: Tx, employeeId: string, at: Date): Promise<string> {
     const a = (
       await tx.query(
-        'SELECT id, scheduled_end, duty_on_at FROM attendance WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE',
+        'SELECT id, scheduled_end, duty_on_at, roster_status FROM attendance WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE',
         [employeeId],
       )
     ).rows[0];
     if (!a) throw new ConflictException('You are not on duty, so there is nothing to log Duty From for.');
     if (at.getTime() < new Date(a.duty_on_at).getTime()) throw new BadRequestException('Duty From cannot be before Duty On.');
-    const dep = departureStatus(a.scheduled_end ? new Date(a.scheduled_end) : null, at);
+    const dep = departureStatus(a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null, at);
     await tx.query('UPDATE attendance SET duty_from_at = $2, departure_status = $3, early_minutes = $4 WHERE id = $1', [
       a.id,
       at,
@@ -401,7 +419,7 @@ export class DutyService {
         `SELECT a.id, a.shift_name AS "shiftName", a.shift_date AS "shiftDate", a.scheduled_start AS "scheduledStart",
                 a.scheduled_end AS "scheduledEnd", a.duty_on_at AS "dutyOnAt", a.duty_from_at AS "dutyFromAt",
                 a.arrival_status AS "arrivalStatus", a.late_minutes AS "lateMinutes",
-                a.departure_status AS "departureStatus", a.early_minutes AS "earlyMinutes", s.name AS "siteName"
+                a.departure_status AS "departureStatus", a.early_minutes AS "earlyMinutes", a.roster_status AS "rosterStatus", s.name AS "siteName"
            FROM attendance a JOIN sites s ON s.id = a.site_id WHERE a.id = $1`,
         [id],
       )

@@ -24,6 +24,7 @@ const Shift = z.object({
   startTime: z.string(),
   endTime: z.string(),
   guardsRequired: z.number().int(),
+  guardsByDay: z.array(z.number().int()).nullable().default(null),
   equipment: z.record(z.string(), z.number().int()).default({}),
   patrolPoints: z.number().min(0).max(1000).default(0),
 });
@@ -142,18 +143,18 @@ export class SitesController {
     const keep = site.shifts.filter((s) => s.id).map((s) => s.id);
     await tx.query('DELETE FROM site_shifts WHERE site_id = $1 AND NOT (id = ANY($2::uuid[]))', [siteId, keep]);
     for (const [i, s] of site.shifts.entries()) {
-      const values = [s.name, s.kind, s.startTime, s.endTime, s.guardsRequired, JSON.stringify(s.equipment), i, s.patrolPoints];
+      const values = [s.name, s.kind, s.startTime, s.endTime, s.guardsRequired, JSON.stringify(s.equipment), i, s.patrolPoints, s.guardsByDay];
       if (s.id) {
         const r = await tx.query(
           `UPDATE site_shifts SET name = $3, kind = $4, start_time = $5, end_time = $6, guards_required = $7,
-                  equipment = $8, sort_order = $9, patrol_points = $10 WHERE id = $1 AND site_id = $2`,
+                  equipment = $8, sort_order = $9, patrol_points = $10, guards_by_day = $11 WHERE id = $1 AND site_id = $2`,
           [s.id, siteId, ...values],
         );
         if (!r.rowCount) throw new NotFoundException('One of the shifts no longer exists. Please reload.');
       } else {
         await tx.query(
-          `INSERT INTO site_shifts (company_id, site_id, name, kind, start_time, end_time, guards_required, equipment, sort_order, patrol_points)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `INSERT INTO site_shifts (company_id, site_id, name, kind, start_time, end_time, guards_required, equipment, sort_order, patrol_points, guards_by_day)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [siteId, ...values],
         );
       }
@@ -181,7 +182,7 @@ export class SitesController {
     const shifts = (
       await tx.query(
         `SELECT id, name, kind, to_char(start_time, 'HH24:MI') AS "startTime", to_char(end_time, 'HH24:MI') AS "endTime",
-                guards_required AS "guardsRequired", equipment, patrol_points::float AS "patrolPoints"
+                guards_required AS "guardsRequired", guards_by_day AS "guardsByDay", equipment, patrol_points::float AS "patrolPoints"
            FROM site_shifts WHERE site_id = $1 ORDER BY sort_order`,
         [id],
       )
