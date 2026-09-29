@@ -31,7 +31,7 @@ Cape Town is switched off by default on new accounts.
 4. **Instance type:** **t3.medium**.
 5. **Key pair:** choose **Proceed without a key pair**. You will connect through the browser instead.
 6. **Network settings**, then **Edit**:
-   - Keep "Allow SSH traffic", but change "from" to **My IP**.
+   - Keep "Allow SSH traffic", from **Anywhere**. (Not "My IP": the browser login in step 4 comes from Amazon's addresses, not yours. It stays safe because there is no key pair and no password login; only Amazon's short-lived browser keys work.)
    - Tick **Allow HTTPS traffic from the internet** and **Allow HTTP traffic from the internet**.
 7. **Storage:** **30** GB, type **gp3**.
 8. **Launch instance.**
