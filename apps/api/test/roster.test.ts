@@ -343,8 +343,11 @@ describe('rostering', () => {
     });
 
     it('records but does not score a guard who is rostered elsewhere', async () => {
-      // Guard 3 is now rostered at Office Park only.
-      await allocate(g[3].id, siteB, D1, 1);
+      // Guard 3 is now rostered at Office Park only. Clear his history first, so the rest rule
+      // cannot refuse this allocation on some weekdays (a night the day before D1).
+      await ownerQuery('DELETE FROM roster_changes WHERE employee_id = $1', [g[3].id]);
+      await ownerQuery('DELETE FROM roster_allocations WHERE employee_id = $1', [g[3].id]);
+      expect((await allocate(g[3].id, siteB, D1, 1)).status).toBe(201);
       const r = await dutyOn(3, '06:00');
       expect(r.status).toBe(200);
       expect(r.body.attendance).toMatchObject({ arrivalStatus: 'UNSCHEDULED', rosterStatus: 'not_rostered_here' });
