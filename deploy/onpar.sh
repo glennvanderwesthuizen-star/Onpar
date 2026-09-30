@@ -13,6 +13,8 @@ DEPLOY=deploy
 ENV_FILE=$DEPLOY/.env
 compose() { docker compose --env-file "$ENV_FILE" -f $DEPLOY/docker-compose.yml "$@"; }
 rand() { openssl rand -hex "${1:-24}"; }
+# Photos and certificates are written by the app's own user, so it must own the folder.
+fix_uploads() { compose exec -T -u root api chown node:node /data/uploads 2>/dev/null || true; }
 
 case "${1:-}" in
   install)
@@ -39,6 +41,7 @@ ENV
     mkdir -p backups
     compose --profile tools build
     compose up -d
+    fix_uploads
     # A nightly encrypted backup at 02:15 (server time: South Africa).
     (crontab -l 2>/dev/null | grep -v 'onpar.sh backup' || true; echo "15 2 * * * $(pwd)/deploy/onpar.sh backup >> $(pwd)/backups/backup.log 2>&1") | crontab -
     echo "Waiting for On Par to finish setting up its database..."
@@ -54,6 +57,7 @@ ENV
     git pull --ff-only
     compose --profile tools build
     compose up -d
+    fix_uploads
     docker image prune -f >/dev/null
     echo "Updated."
     ;;

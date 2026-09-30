@@ -17,6 +17,9 @@ FROM node:22-alpine AS api
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /out/api /app
+# The folder for photos and certificates must belong to the app's user; a new Docker
+# volume takes its owner from here.
+RUN mkdir -p /data/uploads && chown node:node /data/uploads
 USER node
 EXPOSE 4000
 CMD ["sh", "-c", "node dist/db/migrate-cli.js && node dist/main.js"]
