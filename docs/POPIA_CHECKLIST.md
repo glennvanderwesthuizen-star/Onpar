@@ -7,7 +7,7 @@ Prepared at Milestone 10 (hardening), 27 September 2026. This is a working check
 | POPIA condition | What is built | Where |
 |---|---|---|
 | **Accountability** | Every action is written to an append-only audit log, which the database refuses to change or delete. Viewing photos and ID-related data is logged. | Audit page; `audit_log` |
-| **Processing limitation (minimal data)** | Location is captured only at a QR scan (and the optional Duty On site check), never continuously. The post device never shows personal, pay or disciplinary data. Only what the brief lists is recorded. | Patrols, attendance |
+| **Processing limitation (minimal data)** | Location is captured only at a QR scan, a PANIC (owner's decision D-28) and the optional Duty On site check, never continuously. The post device never shows personal, pay or disciplinary data. Only what the brief lists is recorded. | Patrols, attendance |
 | **Purpose specification / retention** | Photo retention setting (selfies and patrol photos, proposed 12 months), **off until switched on**, with a log of every removal. | Privacy page |
 | **Information quality** | Corrections are made by adding records, with before and after kept (qualifications, PSIRA, scoring reversals). | Officers, Training, Scores |
 | **Openness** | The employee notice (section 3 below) is drafted for legal review. | This document |
@@ -44,7 +44,9 @@ Prepared at Milestone 10 (hardening), 27 September 2026. This is a working check
 > - **Your performance score:** points for events such as arriving on time or a missed task, each with its evidence. You can see your score and why it changed, and you can query any negative event within 7 days. **Scores never lead to discipline or deductions automatically.**
 > - **Your training:** qualifications, dates and certificates.
 >
-> On Par does **not** track your location between scans, and does not record calls.
+> - **Panic and BOLO:** if you hold PANIC, the phone records the time, the site, who is signed in, and the phone's location **once, at that moment**, and calls the control room. A BOLO records the photo and note you send.
+>
+> On Par does **not** track your location between scans or panics, and does not record calls.
 >
 > **Who can see it:** your supervisor and managers for the sites you work at, and administrators. Clients see only site-level figures, never your personal details.
 >

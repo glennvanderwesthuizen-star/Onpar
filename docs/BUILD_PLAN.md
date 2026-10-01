@@ -438,3 +438,24 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 **Flagged for the owner:**
 - The rest rule only forbids a night shift straight into a day shift, plus any overlap. Weekly working-hours limits under the BCEA (L-07) are not checked yet; this needs a labour lawyer's figure first.
 - Swap requests between guards, and leave, are not built. For now, leave is recorded as a day off with a note.
+
+### 1 Oct 2026: front screen, Panic and BOLO (decisions D-27, D-28)
+
+- **Phone front screen** (before sign-in): four big buttons. They are Sign in / Duty On, PANIC, BOLO and Call. PANIC, BOLO and Call work without signing in. PANIC and BOLO are also at the top of the guard's home screen.
+- **PANIC:**
+  - It must be held for 2 seconds; letting go early cancels it.
+  - The phone calls the site's control room at once.
+  - It takes one location reading (8 seconds at most), then sends the alert. With no signal, the alert waits at the front of the queue on the phone.
+  - The guard is recorded if one is signed in.
+- **Website:**
+  - A red banner shows on every page while a panic is open. It flashes until someone acknowledges it.
+  - The **Panic** page shows where, when and who, whether the call started, and a map link. A supervisor acknowledges, then resolves with a note. Nothing is deleted.
+- **BOLO:** a photo plus a short note from the phone, shown under **Reports → BOLO**.
+- **Fixed on the way:** the phone app never asked for location permission. On a phone without MDM, a patrol scan could have stopped the app. It now asks, and never reads the location without permission.
+- **Tests:** 14 new server tests (248 in total) and 8 new phone tests. One existing live phone test (patrols) fails in the last half hour before a shift change; that is the test's timing, not the app.
+
+**Flagged for the owner:**
+- The panic location is an exception to "location only at a scan". It is recorded in the POPIA notice (P-4) for the POPIA specialist to check.
+- Live video streaming is planned after the pilot.
+- BOLO without sign-in was assumed; say if only signed-in guards should send them.
+
