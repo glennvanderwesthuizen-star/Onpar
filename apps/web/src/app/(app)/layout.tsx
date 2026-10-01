@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SessionProvider, useSession } from '@/lib/session';
 import { ChangePassword } from '@/components/ChangePassword';
+import { PanicBanner } from '@/components/PanicBanner';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
+  { href: '/panic', label: 'Panic', permission: 'panic.view' },
   { href: '/roster', label: 'Roster', permission: 'roster.view' },
   { href: '/attendance', label: 'Attendance', permission: 'attendance.view' },
   { href: '/register', label: 'Register', permission: 'register.view' },
@@ -62,11 +64,12 @@ function Header() {
 
 /** After a temporary password (new account or reset), nothing else is shown until the user chooses their own. */
 function Gate({ children }: { children: React.ReactNode }) {
-  const { me, refresh, signOut } = useSession();
+  const { me, can, refresh, signOut } = useSession();
   if (!me.mustChangePassword) {
     return (
       <>
         <Header />
+        {can('panic.view') && <PanicBanner />}
         <main className="page">{children}</main>
       </>
     );

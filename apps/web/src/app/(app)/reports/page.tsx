@@ -51,6 +51,9 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="row">
+          <Link className="btn ghost" href="/reports/bolo">
+            BOLO
+          </Link>
           <Link className="btn ghost" href="/reports/people">
             People directory
           </Link>

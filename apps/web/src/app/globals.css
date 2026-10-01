@@ -236,3 +236,14 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .strip .night { background: var(--blue-bg); color: var(--blue); }
 .strip .off { background: var(--bg); color: var(--mute); }
 .strip.big > * { min-width: 48px; padding: 6px; font-size: 13px; cursor: pointer; }
+
+/* Panic and BOLO */
+.panic-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--red); color: #fff; padding: 10px 20px; font-size: 15px; }
+.panic-banner b { font-size: 17px; letter-spacing: .08em; }
+.panic-banner span { flex: 1; min-width: 200px; }
+.panic-banner .btn { background: #fff; color: var(--red); border-color: #fff; }
+.panic-banner.flash { animation: panic-flash 1s steps(2, start) infinite; }
+@keyframes panic-flash { 50% { background: #7a1712; } }
+@media (prefers-reduced-motion: reduce) { .panic-banner.flash { animation: none; } }
+.bolo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.bolo-grid .card { margin: 0; }
