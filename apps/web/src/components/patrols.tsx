@@ -20,8 +20,40 @@ export function PatrolState({ state, review }: { state: string; review?: string 
   }
 }
 
-/** A printable QR code for a patrol point. */
-export function QrCard({ code, name, sub }: { code: string; name: string; sub?: string }) {
+/**
+ * A printable checkpoint plate for a patrol point, laid out like the plates TSF already
+ * uses: company logo, a large QR code, then checkpoint, site and customer. The code
+ * printed small at the bottom can be typed in if the sticker is damaged.
+ */
+export function QrCard({ code, checkpoint, site, customer, patrol }: { code: string; checkpoint: string; site: string; customer?: string; patrol?: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    QRCode.toDataURL(code, { margin: 1, width: 600, errorCorrectionLevel: 'M' }).then(setSrc);
+  }, [code]);
+  return (
+    <div className="qr-plate">
+      <img className="qr-logo" src="/tsf-logo.png" alt="" />
+      <div className="qr-code">{src ? <img src={src} alt={`QR code for ${checkpoint}`} /> : null}</div>
+      <div className="qr-lines">
+        <div>
+          Checkpoint: <b>{checkpoint}</b>
+        </div>
+        <div>Site: {site}</div>
+        {customer && <div>Customer: {customer}</div>}
+        {patrol && <div className="qr-patrol">Patrol: {patrol}</div>}
+      </div>
+      <div className="qr-foot">
+        <span className="logo">
+          On<i>Par</i>
+        </span>
+        <span className="qr-id">{code}</span>
+      </div>
+    </div>
+  );
+}
+
+/** A plain QR code with a label, for the phone setup code on the Devices page. */
+export function SimpleQr({ code, name, sub }: { code: string; name: string; sub?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     QRCode.toDataURL(code, { margin: 1, width: 400, errorCorrectionLevel: 'M' }).then(setSrc);
@@ -31,7 +63,6 @@ export function QrCard({ code, name, sub }: { code: string; name: string; sub?: 
       {src ? <img src={src} alt={`QR code for ${name}`} /> : <div style={{ width: 140, height: 140 }} />}
       <b>{name}</b>
       {sub && <div style={{ fontSize: 12 }}>{sub}</div>}
-      <div style={{ fontSize: 10, fontFamily: 'monospace' }}>{code}</div>
     </div>
   );
 }

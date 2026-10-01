@@ -6,7 +6,7 @@ import { Check, DEFAULT_POINT_RADIUS_M } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, useLoad } from '@/components/ui';
-import { QrCard, useSave } from '@/components/patrols';
+import { QrCard, SimpleQr, useSave } from '@/components/patrols';
 
 interface Setup {
   shifts: { id: string; name: string; kind: string; startTime: string; endTime: string; patrolPoints: number }[];
@@ -33,7 +33,7 @@ interface Point {
 export default function PatrolSetupPage() {
   const { can } = useSession();
   const editable = can('patrols.setup');
-  const sites = useLoad(() => api<{ id: string; name: string }[]>('/sites'));
+  const sites = useLoad(() => api<{ id: string; name: string; client?: string }[]>('/sites'));
   const [siteId, setSiteId] = useState('');
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get('siteId');
@@ -44,26 +44,30 @@ export default function PatrolSetupPage() {
   }, [sites.data, siteId]);
   const { data, error, reload } = useLoad(async () => (siteId ? api<Setup>(`/patrols/setup?siteId=${siteId}`) : null), [siteId]);
   const [editing, setEditing] = useState<Point | null>(null);
-  const [printing, setPrinting] = useState(false);
+  // What to print: every active point on the site, or one point.
+  const [printing, setPrinting] = useState<'all' | string | null>(null);
 
   if (printing && data) {
+    const site = sites.data?.find((s) => s.id === siteId);
+    const chosen = data.points.filter((p) => p.active && p.qrCode && (printing === 'all' || p.id === printing));
     return (
       <>
         <div className="row no-print" style={{ marginBottom: 12 }}>
           <button className="btn" onClick={() => window.print()}>
             Print
           </button>
-          <button className="btn ghost" onClick={() => setPrinting(false)}>
+          <button className="btn ghost" onClick={() => setPrinting(null)}>
             Back
           </button>
+          <span className="mute small">
+            Four plates fit on an A4 page (about 9.5 × 14 cm each). Print on sticker paper or send the PDF to a sign maker for weatherproof or engraved plates.
+          </span>
         </div>
         <div className="qr-sheet">
-          {data.points
-            .filter((p) => p.active)
-            .map((p) => {
-              const t = data.types.find((x) => x.id === p.patrolTypeId);
-              return <QrCard key={p.id} code={p.qrCode!} name={p.name} sub={t ? `${t.name} (${t.code})` : undefined} />;
-            })}
+          {chosen.map((p) => {
+            const t = data.types.find((x) => x.id === p.patrolTypeId);
+            return <QrCard key={p.id} code={p.qrCode!} checkpoint={p.name} site={site?.name ?? ''} customer={site?.client || undefined} patrol={t ? `${t.code} · ${t.name}` : undefined} />;
+          })}
         </div>
       </>
     );
@@ -89,19 +93,28 @@ export default function PatrolSetupPage() {
               ))}
             </select>
           </div>
-          {!!data?.points.length && (
-            <button className="btn ghost" onClick={() => setPrinting(true)}>
-              Print QR codes
-            </button>
-          )}
+          <button
+            className="btn ghost"
+            disabled={!data?.points.some((p) => p.active)}
+            title={data?.points.some((p) => p.active) ? undefined : 'Add a patrol point first; each point gets its own QR code.'}
+            onClick={() => setPrinting('all')}
+          >
+            Print all QR codes
+          </button>
         </div>
       </div>
       <ErrorBanner error={error} />
+      {data && !data.points.length && (
+        <div className="banner warn">
+          <b>How QR codes work:</b> a patrol (for example &quot;Perimeter&quot;) has checkpoints (for example &quot;Front gate&quot;, &quot;Generator room&quot;). Each
+          checkpoint gets its own QR code. Use <b>+ Add point</b> under a patrol to add one; then <b>Print all QR codes</b>, or <b>QR code</b> next to a single point.
+        </div>
+      )}
       {data && (
         <>
           <Allocation data={data} editable={editable} onDone={reload} />
           {data.types.map((t) => (
-            <TypeCard key={t.id} type={t} data={data} editable={editable} onDone={reload} onEditPoint={setEditing} />
+            <TypeCard key={t.id} type={t} data={data} editable={editable} onDone={reload} onEditPoint={setEditing} onPrint={setPrinting} />
           ))}
           {editable && <NewType siteId={siteId} onDone={reload} />}
           {editing && (
@@ -164,12 +177,14 @@ function TypeCard({
   editable,
   onDone,
   onEditPoint,
+  onPrint,
 }: {
   type: Setup['types'][number];
   data: Setup;
   editable: boolean;
   onDone: () => void;
   onEditPoint: (p: Point) => void;
+  onPrint: (pointId: string) => void;
 }) {
   const points = data.points.filter((p) => p.patrolTypeId === t.id);
   return (
@@ -193,7 +208,7 @@ function TypeCard({
           <RuleEditor key={s.id} typeId={t.id} shift={s} rule={data.rules.find((r) => r.typeId === t.id && r.shiftId === s.id)} editable={editable} onDone={onDone} />
         ))}
       </div>
-      <h3 style={{ marginTop: 12 }}>Points ({points.length})</h3>
+      <h3 style={{ marginTop: 12 }}>Checkpoints ({points.length})</h3>
       {!points.length && <p className="mute small">No points yet. {t.singleScan ? 'A single-scan patrol needs one point.' : 'Add the places the guard must scan.'}</p>}
       <div className="scroll">
         <table>
@@ -220,11 +235,18 @@ function TypeCard({
                   {Number(p.lat).toFixed(5)}, {Number(p.lng).toFixed(5)} · {p.radiusM} m
                 </td>
                 <td>
-                  {editable && (
-                    <button className="btn ghost sm" onClick={() => onEditPoint(p)}>
-                      Edit
-                    </button>
-                  )}
+                  <div className="row" style={{ flexWrap: 'nowrap' }}>
+                    {p.active && p.id && (
+                      <button className="btn ghost sm" onClick={() => onPrint(p.id!)}>
+                        QR code
+                      </button>
+                    )}
+                    {editable && (
+                      <button className="btn ghost sm" onClick={() => onEditPoint(p)}>
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -239,7 +261,7 @@ function TypeCard({
             onEditPoint({ patrolTypeId: t.id, name: '', lat: '', lng: '', radiusM: DEFAULT_POINT_RADIUS_M, instruction: '', photoMode: 'off', noteMode: 'off', checks: [], active: true })
           }
         >
-          + Add point
+          + Add point (checkpoint)
         </button>
       )}
     </div>
@@ -491,7 +513,7 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
       </div>
       {p.qrCode && (
         <div style={{ marginTop: 12 }}>
-          <QrCard code={p.qrCode} name={p.name} />
+          <SimpleQr code={p.qrCode} name={p.name} sub="Use “QR code” in the list to print the full plate." />
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDateTime, useLoad } from '@/components/ui';
-import { QrCard } from '@/components/patrols';
+import { SimpleQr } from '@/components/patrols';
 
 interface Device {
   id: string;
@@ -158,7 +158,7 @@ function RegisterDevice({ sites, onRegistered }: { sites: Site[]; onRegistered: 
           <p>
             <b>{token.label}</b> is registered. Open On Par on the phone and scan this code:
           </p>
-          <QrCard code={setupCode(token.token)} name={token.label} sub="On Par phone setup" />
+          <SimpleQr code={setupCode(token.token)} name={token.label} sub="On Par phone setup" />
           <p className="small">
             Or type the details on the phone: server <b>{typeof window === 'undefined' ? '' : window.location.origin}</b>, device key:
           </p>

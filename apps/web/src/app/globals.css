@@ -197,12 +197,24 @@ a.line:hover { background: var(--bg); }
 .alert-card.escalated { box-shadow: 0 0 0 3px var(--red) inset; }
 .qr { display: inline-block; text-align: center; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #000; }
 .qr img { width: 140px; height: 140px; display: block; margin: 0 auto 6px; }
-.qr-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+/* Checkpoint plates: logo, large QR code, checkpoint / site / customer (like TSF's existing plates). */
+.qr-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.qr-plate { background: #fff; color: #111; border: 2px solid #222; border-radius: 10px; padding: 14px 16px 10px; display: flex; flex-direction: column; align-items: center; aspect-ratio: 95 / 140; }
+.qr-plate .qr-logo { align-self: flex-start; width: 22%; height: auto; }
+.qr-plate .qr-code { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+.qr-plate .qr-code img { width: 68%; height: auto; image-rendering: pixelated; }
+.qr-plate .qr-lines { text-align: center; font-size: 15px; line-height: 1.7; margin: 6px 0 10px; }
+.qr-plate .qr-patrol { font-size: 12px; color: #555; }
+.qr-plate .qr-foot { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.qr-plate .qr-foot .logo { font-size: 18px; color: #16232b; }
+.qr-plate .qr-id { font-family: monospace; font-size: 9px; color: #777; }
 @media print {
-  .top, .no-print { display: none !important; }
-  .page { max-width: none; padding: 0; }
-  .qr { break-inside: avoid; border: 1px solid #000; }
-  .qr img { width: 5cm; height: 5cm; }
+  .top, .no-print, .panic-banner { display: none !important; }
+  .page { max-width: none; padding: 0; margin: 0; }
+  @page { size: A4; margin: 8mm; }
+  .qr-sheet { display: grid; grid-template-columns: 95mm 95mm; gap: 4mm; justify-content: center; }
+  .qr-plate { width: 95mm; height: 140mm; aspect-ratio: auto; break-inside: avoid; border: 0.4mm solid #000; border-radius: 3mm; }
+  .qr-plate .qr-lines { font-size: 13pt; }
 }
 
 /* Roster (sections 31, 37) */
