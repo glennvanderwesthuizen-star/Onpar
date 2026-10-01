@@ -13,8 +13,10 @@ android {
         // Android 10 or newer (brief: managed Android device; kiosk and security updates need it).
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The GitHub build number, so each build is newer than the last and shows which one is installed.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
     }
 
     // Test builds are all signed with the same key, so a new test app installs over the old one

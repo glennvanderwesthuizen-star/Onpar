@@ -118,7 +118,12 @@ private fun StatusBar(state: UiState) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("On Par", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val build = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text("On Par", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            build?.let { Text("  build $it", color = Color.White, fontSize = 11.sp) }
+        }
         val net = if (state.online) "Online" else "No signal"
         Text(if (state.waiting > 0) "$net · ${state.waiting} waiting" else net, color = Color.White, fontSize = 13.sp)
     }
