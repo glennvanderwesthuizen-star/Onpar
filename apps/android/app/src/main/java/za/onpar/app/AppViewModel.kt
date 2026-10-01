@@ -534,7 +534,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         _state.update { it.copy(page = Page.PanicSent, panic = PanicStatus(PanicStage.Sending, callProblem, controlRoom = control), error = null, message = null) }
         viewModelScope.launch {
-            val fix = runCatching { takeFix(app, PANIC_FIX_TIMEOUT_MS) { } }.getOrNull()
+            val fix = runCatching { za.onpar.app.ui.takePanicFix(app, PANIC_FIX_TIMEOUT_MS) }.getOrNull()
             val r = withContext(Dispatchers.IO) {
                 runCatching { device.alerts.panic(fix, callStarted = callProblem == null) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
             }

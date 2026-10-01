@@ -99,6 +99,11 @@ function PanicCard({ p, canManage, onDone }: { p: PanicAlert; canManage: boolean
         </p>
       )}
       <ErrorBanner error={error} />
+      {open && !canManage && (
+        <p className="small mute" style={{ marginBottom: 0 }}>
+          Only a company manager, site manager or site supervisor can acknowledge and resolve a panic. Sign in with one of those accounts.
+        </p>
+      )}
       {open && canManage && (
         <div style={{ marginTop: 10 }}>
           {!p.acknowledgedAt && (
