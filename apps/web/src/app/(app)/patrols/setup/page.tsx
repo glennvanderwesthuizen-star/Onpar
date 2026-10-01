@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, DEFAULT_POINT_RADIUS_M } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -379,9 +379,20 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
     );
   };
 
+  // The form opens below all the patrols, so bring it into view and put the cursor in Name.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    box.current?.querySelector('input')?.focus({ preventScroll: true });
+  }, []);
+
   return (
-    <div className="card" style={{ borderColor: 'var(--green)', borderWidth: 2 }}>
-      <h2>{p.id ? `Edit ${initial.name}` : 'New patrol point'}</h2>
+    <div ref={box} className="card" style={{ borderColor: 'var(--green)', borderWidth: 2, scrollMarginTop: 16 }}>
+      <h2>{p.id ? `Edit ${initial.name}` : 'New checkpoint'}</h2>
+      <p className="mute small">
+        Give it a name, then set where it is: stand at the checkpoint with a phone or laptop and press <b>Use my current location</b>, or type the
+        coordinates (from Google Maps: right-click the spot and click the numbers to copy them).
+      </p>
       <ErrorBanner error={save.error} />
       <div className="grid g2">
         <Field label="Name" error={save.errors.name}>
@@ -408,6 +419,15 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
           <input type="number" min={5} max={500} value={p.radiusM} onChange={(e) => set({ radiusM: Number(e.target.value) })} />
         </Field>
       </div>
+      <Field label="Or paste coordinates from Google Maps" hint="For example: -26.10764, 28.05671">
+        <input
+          placeholder="-26.10764, 28.05671"
+          onChange={(e) => {
+            const m = e.target.value.match(/(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/);
+            if (m) set({ lat: Number(m[1]), lng: Number(m[2]) });
+          }}
+        />
+      </Field>
       <button type="button" className="btn ghost sm" onClick={here}>
         Use my current location (stand at the point)
       </button>
