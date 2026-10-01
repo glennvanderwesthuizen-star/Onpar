@@ -17,6 +17,18 @@ android {
         versionName = "0.1.0"
     }
 
+    // Test builds are all signed with the same key, so a new test app installs over the old one
+    // (with a different key Android refuses the update). This key is for testing only; the
+    // pilot and live app will be signed with a private key kept outside the code.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("onpar-test.keystore")
+            storePassword = "onpar-test"
+            keyAlias = "onpar-test"
+            keyPassword = "onpar-test"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
