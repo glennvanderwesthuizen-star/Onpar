@@ -34,6 +34,7 @@ import za.onpar.core.Contact
 import za.onpar.core.LocalPatrol
 import za.onpar.core.PatrolState
 import za.onpar.app.ui.takeFix
+import za.onpar.core.PANIC_FIX_TIMEOUT_MS
 
 enum class Screen { Setup, Login, Home }
 
@@ -54,7 +55,24 @@ sealed interface Page {
     data object Training : Page
     data object Roster : Page
     data object Call : Page
+    /** Employee number and PIN, from the front screen. */
+    data object SignIn : Page
+    data object Bolo : Page
+    /** What happened after PANIC was held. */
+    data object PanicSent : Page
 }
+
+enum class PanicStage { Sending, Sent, Saved, Refused }
+
+/** The panic just raised on this phone, as shown to the guard. */
+data class PanicStatus(
+    val stage: PanicStage,
+    /** Why the phone could not call the control room, if it could not. */
+    val callProblem: String? = null,
+    val located: Boolean = false,
+    val refusal: String? = null,
+    val controlRoom: Contact? = null,
+)
 
 data class UiState(
     val screen: Screen,
@@ -77,6 +95,7 @@ data class UiState(
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
     val contacts: List<Contact> = emptyList(),
+    val panic: PanicStatus? = null,
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -189,7 +208,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signIn(employeeNumber: String, pin: String) = run {
         val e = device.signIn(employeeNumber, pin)
-        _state.update { it.copy(screen = Screen.Home, guardName = e.name) }
+        _state.update { it.copy(screen = Screen.Home, guardName = e.name, page = Page.Home) }
         refreshHome()
     }
 
@@ -495,4 +514,62 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() = run { background() }
+
+    // --- Panic and BOLO (decisions D-27, D-28) --------------------------------
+
+    /**
+     * PANIC, after the button was held for two seconds. In this order: call the site's
+     * control room at once, take one location reading (a few seconds at most), then send
+     * the alert to the website. Works with nobody signed in, and with no data (the call
+     * uses the mobile network; the alert waits on the phone and goes first when signal returns).
+     */
+    fun panic() {
+        if (_state.value.panic?.stage == PanicStage.Sending) return
+        val app = getApplication<Application>()
+        val control = (_state.value.contacts.ifEmpty { device.profile.cachedContacts() }).firstOrNull { it.kind == "control_room" }
+        val callProblem = when {
+            control == null -> "No control room number is set up for this site, so the phone could not call. Phone for help another way."
+            !Calls.place(app, control.phone) -> "The phone could not start the call to the control room (On Par may not make calls). Phone for help another way."
+            else -> null
+        }
+        _state.update { it.copy(page = Page.PanicSent, panic = PanicStatus(PanicStage.Sending, callProblem, controlRoom = control), error = null, message = null) }
+        viewModelScope.launch {
+            val fix = runCatching { takeFix(app, PANIC_FIX_TIMEOUT_MS) { } }.getOrNull()
+            val r = withContext(Dispatchers.IO) {
+                runCatching { device.alerts.panic(fix, callStarted = callProblem == null) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
+            }
+            val stage = when (r) {
+                is Submitted.Sent -> PanicStage.Sent
+                Submitted.Queued -> PanicStage.Saved
+                is Submitted.Refused -> PanicStage.Refused
+            }
+            _state.update {
+                it.copy(
+                    panic = it.panic?.copy(stage = stage, located = fix != null, refusal = (r as? Submitted.Refused)?.message),
+                    waiting = device.outbox.pending().size,
+                    online = r !is Submitted.Queued,
+                )
+            }
+        }
+    }
+
+    /** Calls the control room again from the panic screen. */
+    fun callControlRoom() {
+        val c = _state.value.panic?.controlRoom ?: return
+        if (!Calls.place(getApplication(), c.phone)) _state.update { it.copy(error = "The phone could not start the call.") }
+    }
+
+    fun panicDone() = _state.update { it.copy(panic = null, page = Page.Home) }
+
+    /** A BOLO: what to look out for, with a photo if taken. Works offline. */
+    fun bolo(note: String, photo: File?) = run {
+        try {
+            val r = device.alerts.bolo(note, photo)
+            // The outbox keeps its own copy of the photo.
+            if (r !is Submitted.Refused) photo?.delete()
+            done(r, "BOLO sent.", Page.Home)
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
 }

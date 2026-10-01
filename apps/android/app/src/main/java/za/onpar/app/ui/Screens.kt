@@ -76,7 +76,14 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
             state.message?.let { Banner(it, Color(0xFFDFF3E7)) { vm.dismiss() } }
             when (state.screen) {
                 Screen.Setup -> SetupScreen(vm, state.busy)
-                Screen.Login -> if (state.page == Page.Call) CallScreen(vm, state) { vm.go(Page.Home) } else LoginScreen(vm, state.busy)
+                // Before sign-in: the front screen (decision D-27), from which Panic, BOLO and Call work without signing in.
+                Screen.Login -> when (state.page) {
+                    Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
+                    Page.SignIn -> LoginScreen(vm, state.busy)
+                    Page.Bolo -> BoloScreen(vm, state)
+                    Page.PanicSent -> PanicSentScreen(vm, state)
+                    else -> FrontScreen(vm, state)
+                }
                 Screen.Home -> when (val page = state.page) {
                     Page.Home -> HomeScreen(vm, state)
                     Page.Tasks -> if (state.owed != null) HomeScreen(vm, state) else TasksScreen(vm, state)
@@ -94,6 +101,10 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     // Calling is always allowed, even with a declaration owed.
                     Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
+                    // Panic and BOLO are always allowed too.
+                    Page.PanicSent -> PanicSentScreen(vm, state)
+                    Page.Bolo -> BoloScreen(vm, state)
+                    Page.SignIn -> HomeScreen(vm, state)
                 }
             }
         }
@@ -157,7 +168,10 @@ private fun SetupScreen(vm: AppViewModel, busy: Boolean) {
 private fun LoginScreen(vm: AppViewModel, busy: Boolean) {
     var number by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
-    Text("Log in", style = MaterialTheme.typography.headlineSmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Log in", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { vm.go(Page.Home) }) { Text("Back") }
+    }
     OutlinedTextField(
         number, { number = it.filter(Char::isDigit).take(8) },
         label = { Text("Employee number") }, singleLine = true,
@@ -186,11 +200,13 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     val shift = home?.attendance
     // A declaration still owed comes first: nothing else until it is done (brief section 6.2).
     state.owed?.let {
+        AlertRow(vm)
         DeclarationScreen(vm, it, state.busy)
         OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth()) { Text("Call supervisor or control room") }
         return
     }
     Text("Hello, ${state.guardName ?: ""}", style = MaterialTheme.typography.headlineSmall)
+    AlertRow(vm)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (home == null && !state.online) {

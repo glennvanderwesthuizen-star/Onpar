@@ -93,6 +93,10 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
 
     private inline fun <reified T> fetch(path: String, file: File, token: String?): List<T> = fetch(path, file, token, ListSerializer(kotlinx.serialization.serializer<T>()))
 
+    /** The contacts last fetched, read from the phone only. */
+    fun cachedContacts(): List<Contact> =
+        if (contactsFile.exists()) runCatching { OnParJson.decodeFromString(ListSerializer(Contact.serializer()), contactsFile.readText()) }.getOrDefault(emptyList()) else emptyList()
+
     /** The phone may dial only these numbers (compared digits-only, so spacing does not matter). */
     fun isApproved(number: String): Boolean {
         val digits = number.filter(Char::isDigit)

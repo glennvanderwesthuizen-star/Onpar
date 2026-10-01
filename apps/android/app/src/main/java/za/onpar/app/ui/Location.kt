@@ -1,6 +1,9 @@
 package za.onpar.app.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.content.Context
 import android.location.Location
 import android.location.LocationListener
@@ -20,6 +23,7 @@ import kotlin.coroutines.resume
  */
 @SuppressLint("MissingPermission")
 suspend fun takeFix(context: Context, timeoutMs: Long = 30_000, progress: (Double?) -> Unit): Fix? {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return null
     var best: Location? = null

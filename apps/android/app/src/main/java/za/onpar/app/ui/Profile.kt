@@ -3,9 +3,6 @@ package za.onpar.app.ui
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Bundle
-import android.telecom.TelecomManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -158,11 +155,7 @@ fun RosterScreen(vm: AppViewModel, state: UiState) {
     }
 }
 
-/** Places a call to an approved number. With On Par as the calling app, the call stays inside On Par. */
-private fun placeCall(context: Context, number: String) {
-    val tm = context.getSystemService(TelecomManager::class.java)
-    tm.placeCall(Uri.fromParts("tel", number, null), Bundle())
-}
+private fun placeCall(context: Context, number: String) = Calls.place(context, number)
 
 /** Approved contacts only: no keypad and no other numbers (brief section 6.10). */
 @Composable

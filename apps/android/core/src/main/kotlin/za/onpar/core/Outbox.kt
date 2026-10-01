@@ -59,9 +59,9 @@ class Outbox(private val dir: File, private val clock: TrustedClock) {
     @Synchronized
     fun failed(): List<OutboxItem> = itemFiles(failedDir).map { OnParJson.decodeFromString(OutboxItem.serializer(), it.readText()) }
 
-    /** Saves an action. Photos are copied into the outbox. */
+    /** Saves an action. Photos are copied into the outbox. An urgent one (a panic) is sent before everything else waiting. */
     @Synchronized
-    fun add(eventId: String, label: String, path: String, body: JsonElement, guardToken: String?, files: List<Upload> = emptyList()): OutboxItem {
+    fun add(eventId: String, label: String, path: String, body: JsonElement, guardToken: String?, files: List<Upload> = emptyList(), urgent: Boolean = false): OutboxItem {
         // The folders come back if the phone's storage was cleared while the app ran.
         listOf(dir, failedDir, filesDir).forEach { it.mkdirs() }
         val kept = files.map { f ->
@@ -71,7 +71,8 @@ class Outbox(private val dir: File, private val clock: TrustedClock) {
         }
         val item = OutboxItem(eventId, label, path, body, kept, guardToken, Instant.now().toString())
         // A saved sequence number in the name keeps the order in which things happened, across restarts.
-        val name = "%019d-%s.json".format(nextSequence(), eventId)
+        // "!" sorts before any digit, so urgent items go first (in their own order).
+        val name = (if (urgent) "!" else "") + "%019d-%s.json".format(nextSequence(), eventId)
         write(File(dir, name), item)
         return item
     }

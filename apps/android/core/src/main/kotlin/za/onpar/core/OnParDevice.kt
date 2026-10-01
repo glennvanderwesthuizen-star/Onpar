@@ -19,6 +19,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     val reports = ReportActions(this, dataDir)
     val reorders = ReorderActions(this, dataDir)
     val profile = ProfileActions(this, dataDir)
+    val alerts = AlertActions(this)
 
     val setup: DeviceSetup?
         get() {

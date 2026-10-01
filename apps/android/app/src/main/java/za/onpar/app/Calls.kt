@@ -1,6 +1,13 @@
 package za.onpar.app
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Bundle
+import android.telecom.TelecomManager
+import androidx.core.content.ContextCompat
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
@@ -42,6 +49,15 @@ object Calls {
         val number = c.details?.handle?.schemeSpecificPart.orEmpty()
         @Suppress("DEPRECATION") val state = c.state
         _current.value = CallInfo(number, c.details?.callDirection == Call.Details.DIRECTION_INCOMING, state)
+    }
+
+    /**
+     * Starts a call to an approved number. With On Par as the calling app, the call stays
+     * inside On Par. Returns false if the phone may not make calls (permission refused).
+     */
+    fun place(context: Context, number: String): Boolean {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return false
+        return runCatching { context.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", number, null), Bundle()) }.isSuccess
     }
 
     fun answer() = call?.answer(VideoProfile.STATE_AUDIO_ONLY)
