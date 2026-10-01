@@ -428,6 +428,11 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
           }}
         />
       </Field>
+      {p.lat !== '' && p.lng !== '' && (
+        <p className="small" style={{ color: 'var(--green)', margin: '0 0 8px' }}>
+          ✓ Location set: {p.lat}, {p.lng}
+        </p>
+      )}
       <button type="button" className="btn ghost sm" onClick={here}>
         Use my current location (stand at the point)
       </button>
@@ -513,10 +518,23 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
         + Add a check
       </button>
 
+      {(() => {
+        // Say exactly what is still missing, rather than just greying out the button.
+        const missing = [
+          !p.name.trim() && 'a name',
+          (p.lat === '' || p.lng === '') && 'the location (paste coordinates or use your current location)',
+          p.checks.some((c) => !c.label.trim()) && 'a "What to check" for every check (or Remove the empty ones)',
+        ].filter(Boolean);
+        return missing.length ? (
+          <div className="banner warn" style={{ marginTop: 12 }}>
+            Still needed: {missing.join('; ')}.
+          </div>
+        ) : null;
+      })()}
       <div className="row" style={{ marginTop: 14 }}>
         <button
           className="btn"
-          disabled={save.busy || p.lat === '' || p.lng === ''}
+          disabled={save.busy || !p.name.trim() || p.lat === '' || p.lng === '' || p.checks.some((c) => !c.label.trim())}
           onClick={() =>
             save.run(async () => {
               const body = { ...p, qrCode: undefined, id: undefined };
