@@ -61,6 +61,8 @@ export const PERMISSIONS = {
   'roster.manage': ['company_manager', 'site_manager', 'site_supervisor'],
   'roster.patterns': ['system_admin', 'company_manager'],
   'register.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'hr_admin', 'payroll_clerk'],
+  'panic.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'panic.manage': ['company_manager', 'site_manager', 'site_supervisor'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;
