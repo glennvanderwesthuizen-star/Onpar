@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -56,17 +57,19 @@ fun time(iso: String?): String = iso?.let { runCatching { HHMM.format(Instant.pa
 
 @Composable
 fun OnParScreens(state: UiState, vm: AppViewModel) {
+    // safeDrawingPadding keeps everything clear of the phone's own status bar, navigation buttons and
+    // keyboard, so nothing (such as Log out at the bottom) is hidden behind them.
     // A call, ringing or in progress, comes before everything else (brief section 6.10).
     val call by Calls.current.collectAsState()
     val current = call
     if (current != null) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             StatusBar(state)
             InCallScreen(current, state.contacts)
         }
         return
     }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         StatusBar(state)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             state.error?.let { Banner(it, Color(0xFFFBE3E0)) { vm.dismiss() } }

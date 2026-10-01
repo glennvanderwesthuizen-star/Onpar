@@ -467,6 +467,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 is Submitted.Refused -> _state.update { it.copy(error = r.message) }
                 else -> {
                     selfie.delete() // the outbox keeps its own copy until sent
+                    if (owed.kind == "duty_from") {
+                        // The shift is over: sign the guard out so the post phone is ready for the next person.
+                        // Anything still waiting to send keeps its own sign-in and is sent later.
+                        signOut()
+                        _state.update {
+                            it.copy(
+                                owed = null,
+                                message = if (r is Submitted.Sent) "Duty From complete. Thank you. The phone is ready for the next guard."
+                                else "Duty From saved on the phone and will be sent when there is signal. The phone is ready for the next guard.",
+                            )
+                        }
+                        return@run
+                    }
                     _state.update {
                         it.copy(
                             owed = null,
