@@ -160,6 +160,36 @@ While you arrange the phone, I can start **Milestone 1 (foundation)** in paralle
 
 ---
 
+## 7a. Going commercial (parked until after the pilot)
+
+Agreed with the owner on 1 Oct 2026 as the direction. **Nothing here is started yet.**
+
+**How it is sold:** On Par is not a paid app in the Play Store. It is a monthly subscription for security companies. Each company gets its own login and its own separate data (already built). The phone app is free to install and works only for a paying company.
+
+**Order:**
+1. **TSF pilot (about 1 to 3 months):**
+   - Before it starts: reset the server with new keys, and do the hardware test with the rugged phones and the phone-management system (Milestone 0).
+   - Then run On Par for real on a few sites.
+2. **Business and legal (owner, with specialists):**
+   - Who owns and sells On Par (D-29).
+   - A customer agreement drafted by a lawyer (D-30).
+   - A POPIA operator agreement with each customer (D-24, D-30).
+   - Answers to the legal points already flagged (L-01 to L-08).
+3. **Price (D-18):** per guard, per device or per site, and how much.
+4. **Build for selling (developer):**
+   - Billing: count guards and devices per company each month, and invoice or take payment through a South African payment provider (D-31).
+   - A page to add a new customer company, with guided setup.
+   - A proper web address (D-32).
+   - The release phone app, signed with a private key and published through Google Play or the phone-management system.
+   - Monitoring and alerts, and a support channel.
+   - A stronger server setup once there are several customers: a managed database with automatic backups, and possibly a second server.
+5. **Sell:**
+   - A demo company (already there).
+   - A one-page brochure and a price list.
+   - First customers: TSF franchisees.
+
+Suggested timing: steps 2 to 4 run alongside the pilot, so the first paying franchisee can start when the pilot ends.
+
 ## 8. Progress log
 
 ### Milestone 1: foundation, built 27 Sep 2026
