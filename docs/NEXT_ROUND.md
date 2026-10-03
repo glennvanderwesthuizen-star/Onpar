@@ -1,6 +1,12 @@
 # On Par: next round of changes (from the owner's testing, 2 to 3 Oct 2026)
 
-Collected while the owner tests. **Nothing here is built yet.** The owner says "go ahead" before building starts; legal points are flagged, not decided.
+Collected while the owner tests. Legal points are flagged, not decided.
+
+**Go-ahead given 3 Oct 2026.** Building order:
+- **Round A (every shift):** 7 (sideways photos), 1 (Log out and Lock), 2 and 3 (relief rules), 6 (declaration), 4 (points), 5 (overtime minutes).
+- **Round B:** 9 (uniform flow) and 10 (uniform condition notes).
+- **Round C:** 12 (BOLO voice notes and video).
+- **Later:** 11 (merchandise); a proper stores app and stock-holding.
 
 ## 1. Log out and Lock while on duty
 
@@ -68,12 +74,12 @@ Owner decision: **ask for the PIN at Duty On every time** (no change; signing in
 
 Messages are **person to person only**: only the guard concerned, his supervisor, the manager and stores see an order. Examples: "Michael, your supervisor has your uniform and will bring it on Tuesday."
 
-**Still to answer:**
-- Stock levels in the store and low-stock warnings: wanted?
-- Out of stock: can stores send part of an order and mark the rest back-ordered?
-- Must the old item be handed in, and recorded?
-- New guards: full site list on day one (starting their 12 months)?
-- Supervisors' access: the website on their own phone ("My tasks") first; a supervisor mode in the app later (D-11).
+**Decided 3 Oct 2026:** no stock-holding for now. Stores marks an order ready when the items are available. A deeper stores app and stock-holding come later.
+
+**Assumed until the owner says otherwise:**
+- The old item does not have to be handed in (not recorded).
+- A manager can record a new guard's starter issue, which starts his 12 months.
+- Supervisors use the website on their own phone ("My tasks") first; a supervisor mode in the app comes later (D-11).
 
 ## 10. Uniform condition notes (abuse of uniform)
 
