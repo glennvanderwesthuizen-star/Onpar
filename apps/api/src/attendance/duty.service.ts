@@ -15,6 +15,12 @@ import {
   sastDate,
   DECLARATIONS,
   DutyKind,
+  declarationWordingFor,
+  earnsEarlyBonus,
+  reliefCheck,
+  ReliefCheck,
+  LeavingGuard,
+  Reliever,
 } from '@onpar/rules';
 import type { GuardPrincipal, UserPrincipal } from '../common/auth';
 import { DbService, Tx } from '../db/db.service';
@@ -79,7 +85,7 @@ export class DutyService {
         const attendanceId =
           input.kind === 'duty_on'
             ? await this.openShift(tx, guard.employeeId, guard.siteId, time.officialAt)
-            : await this.closeShift(tx, guard.employeeId, time.officialAt);
+            : await this.closeShift(tx, guard.employeeId, time.officialAt, time.lateSynced ? 'late' : 'device');
         await tx.query(
           `INSERT INTO duty_events (id, company_id, attendance_id, employee_id, device_id, kind, official_at, trusted_at,
                                     device_clock, received_at, late_synced, drift_seconds, drift_flagged)
@@ -133,7 +139,7 @@ export class DutyService {
       const siteId = today.status === 'working' ? today.siteId : e.home_site_id;
       if (user.siteIds && !user.siteIds.includes(e.home_site_id) && !user.siteIds.includes(siteId)) throw new NotFoundException('Officer not found.');
       const attendanceId =
-        kind === 'duty_on' ? await this.openShift(tx, e.id, siteId, official) : await this.closeShift(tx, e.id, official);
+        kind === 'duty_on' ? await this.openShift(tx, e.id, siteId, official) : await this.closeShift(tx, e.id, official, 'released');
       await tx.query(
         `INSERT INTO duty_events (id, company_id, attendance_id, employee_id, kind, official_at, trusted_at, device_clock,
                                   late_synced, drift_seconds, drift_flagged, on_behalf_by, on_behalf_reason)
@@ -178,8 +184,9 @@ export class DutyService {
       if (!duty || duty.employee_id !== guard.employeeId) {
         throw new ConflictException('The Duty On or Duty From for this declaration has not arrived yet. Send it first.');
       }
-      const wording = DECLARATIONS[duty.kind as DutyKind];
-      if (input.accepted.length !== wording.statements.length || !input.accepted.every(Boolean)) {
+      // A phone not yet updated may show an earlier wording; it is recorded under that version.
+      const wording = declarationWordingFor(duty.kind as DutyKind, input.accepted.length);
+      if (!wording || !input.accepted.every(Boolean)) {
         throw new BadRequestException('Every statement must be accepted.');
       }
       let selfieKey: string | null = null;
@@ -285,7 +292,21 @@ export class DutyService {
       let pendingDeclaration = null;
       if (a) {
         const summary = await this.attendanceSummary(tx, a.id);
-        if (!summary.dutyFromAt) attendance = summary;
+        if (!summary.dutyFromAt) {
+          const open = (await tx.query('SELECT id, site_id, scheduled_end, roster_status FROM attendance WHERE id = $1', [a.id])).rows[0];
+          const r = await this.reliefFor(tx, open, new Date());
+          attendance = {
+            ...summary,
+            relief: {
+              canLeave: r.canLeave,
+              outcome: r.outcome,
+              message: r.message,
+              unlocksAt: r.unlocksAt?.toISOString() ?? null,
+              canGiveTurn: r.canGiveTurn,
+              reliever: r.reliever?.name ?? null,
+            },
+          };
+        }
         const owed = !summary.declarations.duty_on
           ? 'duty_on'
           : summary.dutyFromAt && !summary.declarations.duty_from
@@ -390,27 +411,143 @@ export class DutyService {
             ? `Duty On at ${sastTime(at)} for ${shift}: ${arrival.lateMinutes} minutes late.`
             : `Duty On at ${sastTime(at)} for ${shift}.`,
       });
+      // More than 15 minutes early earns an extra point (D-33).
+      if (earnsEarlyBonus(match.scheduledStart, at)) {
+        const early = Math.floor((match.scheduledStart.getTime() - at.getTime()) / 60_000);
+        await this.scoring.record(tx, {
+          employeeId,
+          siteId,
+          date: match.shiftDate,
+          type: 'early_arrival',
+          sourceType: 'attendance',
+          sourceId: attendanceId,
+          evidence: `Duty On at ${sastTime(at)}, ${early} minutes before ${shift}.`,
+        });
+      }
     }
     return attendanceId;
   }
 
-  private async closeShift(tx: Tx, employeeId: string, at: Date): Promise<string> {
+  /**
+   * Closes the guard's open shift. From the phone, Duty From is refused until his relief
+   * has arrived (or 30 minutes after the shift), first in first out (D-33). A Duty From
+   * sent late from a phone without signal is accepted and marked "not checked"; a
+   * supervisor's Duty From releases him.
+   */
+  private async closeShift(tx: Tx, employeeId: string, at: Date, mode: 'device' | 'late' | 'released'): Promise<string> {
     const a = (
       await tx.query(
-        'SELECT id, scheduled_end, duty_on_at, roster_status FROM attendance WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE',
+        `SELECT id, site_id, shift_date, scheduled_end, duty_on_at, roster_status FROM attendance
+          WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE`,
         [employeeId],
       )
     ).rows[0];
     if (!a) throw new ConflictException('You are not on duty, so there is nothing to log Duty From for.');
     if (at.getTime() < new Date(a.duty_on_at).getTime()) throw new BadRequestException('Duty From cannot be before Duty On.');
+    const check = await this.reliefFor(tx, a, at);
+    if (mode === 'device' && !check.canLeave) throw new ConflictException(check.message);
+    const reliefStatus = mode === 'released' ? 'released' : mode === 'late' ? 'not_checked' : check.outcome;
     const dep = departureStatus(a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null, at);
-    await tx.query('UPDATE attendance SET duty_from_at = $2, departure_status = $3, early_minutes = $4 WHERE id = $1', [
-      a.id,
-      at,
-      dep.status,
-      dep.earlyMinutes,
-    ]);
+    await tx.query(
+      `UPDATE attendance SET duty_from_at = $2, departure_status = $3, early_minutes = $4, relief_status = $5, relieved_by_attendance_id = $6
+        WHERE id = $1`,
+      [a.id, at, dep.status, dep.earlyMinutes, reliefStatus, check.outcome === 'relieved' && mode === 'device' ? check.reliever!.attendanceId : null],
+    );
+    if (mode === 'device') await this.scoreCovering(tx, employeeId, a, at, check);
     return a.id;
+  }
+
+  /**
+   * A guard who stayed past his shift because his relief was late, or never came, gets a
+   * point for covering, and the points the late relief lost (D-33).
+   */
+  private async scoreCovering(tx: Tx, employeeId: string, a: { id: string; site_id: string; shift_date: string; scheduled_end: Date | null }, at: Date, check: ReliefCheck) {
+    if (!a.scheduled_end) return;
+    const stayed = Math.floor((at.getTime() - new Date(a.scheduled_end).getTime()) / 60_000);
+    if (stayed < 1) return;
+    const lateRelief = check.outcome === 'relieved' && check.reliever!.lateMinutes > 0;
+    if (!lateRelief && check.outcome !== 'no_relief') return;
+    const date = typeof a.shift_date === 'string' ? a.shift_date : sastDate(new Date(a.shift_date));
+    const why = lateRelief
+      ? `Stayed ${stayed} minutes after the shift until ${check.reliever!.name} arrived (${check.reliever!.lateMinutes} minutes late).`
+      : `Stayed ${stayed} minutes after the shift; no relief arrived.`;
+    await this.scoring.record(tx, { employeeId, siteId: a.site_id, date, type: 'covering', sourceType: 'attendance', sourceId: a.id, evidence: why });
+    if (lateRelief) {
+      const late = (await this.scoring.config(tx)).points.late;
+      if (late < 0) {
+        await this.scoring.record(tx, {
+          employeeId,
+          siteId: a.site_id,
+          date,
+          type: 'covered_points',
+          impact: -late,
+          sourceType: 'attendance',
+          sourceId: a.id,
+          evidence: `The ${-late} point${late === -1 ? '' : 's'} ${check.reliever!.name} lost for arriving late.`,
+        });
+      }
+    }
+  }
+
+  /** Whether the guard on this open shift may log Duty From at `at` (D-33). */
+  private async reliefFor(tx: Tx, a: { id: string; site_id: string; scheduled_end: Date | null; roster_status: string | null }, at: Date): Promise<ReliefCheck> {
+    const end = a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null;
+    if (!end) return reliefCheck(at, a.id, null, [], []);
+    const leaving: LeavingGuard[] = (
+      await tx.query(
+        `SELECT a.id, e.full_name, a.duty_on_at, a.duty_from_at, a.turn_given_at, a.relief_status
+           FROM attendance a JOIN employees e ON e.id = a.employee_id
+          WHERE a.site_id = $1 AND a.scheduled_end = $2 AND a.roster_status IS DISTINCT FROM 'not_rostered_here'`,
+        [a.site_id, end],
+      )
+    ).rows.map((r) => ({
+      attendanceId: r.id,
+      name: r.full_name,
+      dutyOnAt: new Date(r.duty_on_at),
+      dutyFromAt: r.duty_from_at ? new Date(r.duty_from_at) : null,
+      turnGivenAt: r.turn_given_at ? new Date(r.turn_given_at) : null,
+      reliefStatus: r.relief_status,
+    }));
+    // The next shift's guards who have done Duty On here: a shift starting when this one ends (or up to 6 hours later).
+    const relievers: Reliever[] = (
+      await tx.query(
+        `SELECT a.id, e.full_name, a.duty_on_at, a.late_minutes
+           FROM attendance a JOIN employees e ON e.id = a.employee_id
+          WHERE a.site_id = $1 AND a.scheduled_start >= $2 AND a.scheduled_start < $2 + interval '6 hours' AND a.duty_on_at <= $3`,
+        [a.site_id, end, at],
+      )
+    ).rows.map((r) => ({ attendanceId: r.id, name: r.full_name, dutyOnAt: new Date(r.duty_on_at), lateMinutes: r.late_minutes ?? 0 }));
+    return reliefCheck(at, a.id, end, leaving, relievers);
+  }
+
+  /**
+   * "Let my partner go first": the guard whose turn it is gives it to the next guard in the
+   * queue. Needs his PIN (checked by the caller). Recorded with both names.
+   */
+  async giveTurn(guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const a = (
+        await tx.query(
+          `SELECT id, site_id, scheduled_end, roster_status FROM attendance WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE`,
+          [guard.employeeId],
+        )
+      ).rows[0];
+      if (!a) throw new ConflictException('You are not on duty.');
+      const now = new Date();
+      const check = await this.reliefFor(tx, a, now);
+      if (!check.canGiveTurn) throw new ConflictException('There is nobody to give your turn to right now.');
+      await tx.query('UPDATE attendance SET turn_given_at = $2 WHERE id = $1', [a.id, now]);
+      const after = await this.reliefFor(tx, { ...a }, now);
+      await this.audit.record(tx, {
+        actorType: 'employee',
+        actorId: guard.employeeId,
+        action: 'attendance.relief_turn_given',
+        entityType: 'attendance',
+        entityId: a.id,
+        after: { relief: check.reliever?.name ?? null },
+      });
+      return { relief: after };
+    });
   }
 
   private async attendanceSummary(tx: Tx, id: string) {

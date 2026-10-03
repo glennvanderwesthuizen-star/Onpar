@@ -1,4 +1,4 @@
-import { arrivalStatus, departureStatus, matchShift, reconcileTime, sastDate, sastInstant, DECLARATIONS } from './index';
+import { arrivalStatus, declarationWordingFor, departureStatus, matchShift, reconcileTime, sastDate, sastInstant, DECLARATIONS } from './index';
 
 const day = { id: 'day', startTime: '06:00', endTime: '18:00' };
 const night = { id: 'night', startTime: '18:00', endTime: '06:00' };
@@ -76,8 +76,17 @@ describe('trusted time (section 8, scenario 13)', () => {
 });
 
 describe('declaration wording', () => {
-  it('has three Duty On statements and one Duty From statement', () => {
-    expect(DECLARATIONS.duty_on.statements).toHaveLength(3);
+  it('has four Duty On statements (the fourth is the relief statement, D-33) and one Duty From statement', () => {
+    expect(DECLARATIONS.duty_on.statements).toHaveLength(4);
+    expect(DECLARATIONS.duty_on.version).toBe(2);
+    expect(DECLARATIONS.duty_on.statements[3]).toContain('until my relief has arrived');
     expect(DECLARATIONS.duty_from.statements).toHaveLength(1);
+  });
+
+  it('still accepts the three-statement wording from phones not yet updated, as version 1', () => {
+    expect(declarationWordingFor('duty_on', 4)?.version).toBe(2);
+    expect(declarationWordingFor('duty_on', 3)?.version).toBe(1);
+    expect(declarationWordingFor('duty_on', 2)).toBeNull();
+    expect(declarationWordingFor('duty_from', 1)?.version).toBe(1);
   });
 });

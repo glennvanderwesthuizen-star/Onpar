@@ -15,6 +15,8 @@ interface Day {
   arrival: { status: string; lateMinutes: number } | null;
   departure: { status: string; earlyMinutes: number } | null;
   hoursWorked: number | null;
+  overtime: { before: number; after: number; total: number } | null;
+  reliefStatus: string | null;
   status: string;
   statusLabel: string;
 }
@@ -23,7 +25,7 @@ interface Guard {
   id: string;
   name: string;
   employeeNumber: string;
-  summary: { scheduled: number; completed: number; absent: number; late: number; unscheduled: number; hoursScheduled: number; hoursWorked: number };
+  summary: { scheduled: number; completed: number; absent: number; late: number; unscheduled: number; hoursScheduled: number; hoursWorked: number; overtimeMinutes: number };
   days: Day[];
 }
 
@@ -41,6 +43,13 @@ interface Register {
 const time = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Johannesburg' }) : '—';
 const dayName = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+/** How a guard left at shift change (D-33). */
+const RELIEF: Record<string, string> = {
+  relieved: 'Relieved',
+  no_relief: 'No relief came: post uncovered',
+  released: 'Released by supervisor',
+  not_checked: 'Sent without signal: relief not checked',
+};
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'grey'> = {
   complete: 'green',
   on_duty: 'blue',
@@ -54,7 +63,7 @@ const TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'grey'> = {
 function csv(r: Register) {
   const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [
-    ['Employee number', 'Name', 'Date', 'Site', 'Rostered shift', 'Rostered start', 'Rostered end', 'Rostered hours', 'Duty On', 'Duty From', 'Hours worked', 'Late minutes', 'Status'].map(q).join(','),
+    ['Employee number', 'Name', 'Date', 'Site', 'Rostered shift', 'Rostered start', 'Rostered end', 'Rostered hours', 'Duty On', 'Duty From', 'Hours worked', 'Late minutes', 'Minutes before shift', 'Minutes after shift', 'Overtime minutes', 'Left', 'Status'].map(q).join(','),
   ];
   for (const g of r.guards) {
     for (const d of g.days) {
@@ -73,6 +82,10 @@ function csv(r: Register) {
           d.dutyFromAt ? time(d.dutyFromAt) : '',
           d.hoursWorked ?? '',
           d.arrival?.status === 'LATE' ? d.arrival.lateMinutes : '',
+          d.overtime?.before || '',
+          d.overtime?.after || '',
+          d.overtime?.total || '',
+          d.reliefStatus ? (RELIEF[d.reliefStatus] ?? '') : '',
           d.statusLabel,
         ]
           .map(q)
@@ -179,6 +192,7 @@ export default function RegisterPage() {
                   {g.summary.absent > 0 && <Pill tone="red">{g.summary.absent} absent</Pill>}
                   {g.summary.late > 0 && <Pill tone="amber">{g.summary.late} late</Pill>}
                   {g.summary.unscheduled > 0 && <Pill tone="amber">{g.summary.unscheduled} not on roster</Pill>}
+                  {g.summary.overtimeMinutes > 0 && <Pill tone="blue">{g.summary.overtimeMinutes} min overtime</Pill>}
                   <span className="mute">
                     {g.summary.hoursWorked} h of {g.summary.hoursScheduled} h
                   </span>
@@ -193,6 +207,7 @@ export default function RegisterPage() {
                       <th>Duty On</th>
                       <th>Duty From</th>
                       <th>Hours</th>
+                      <th>Overtime</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -210,9 +225,21 @@ export default function RegisterPage() {
                         </td>
                         <td>
                           {time(d.dutyFromAt)}
-                          {d.departure?.status === 'EARLY_DEPARTURE' && <div className="small err">{d.departure.earlyMinutes} min early</div>}
+                          {d.departure?.status === 'EARLY_DEPARTURE' && (
+                            <div className={d.reliefStatus === 'relieved' || d.reliefStatus === 'released' ? 'small mute' : 'small err'}>{d.departure.earlyMinutes} min early</div>
+                          )}
+                          {d.reliefStatus && d.reliefStatus !== 'no_rule' && (
+                            <div className={d.reliefStatus === 'no_relief' ? 'small err' : 'small mute'}>{RELIEF[d.reliefStatus]}</div>
+                          )}
                         </td>
                         <td>{d.hoursWorked ?? '—'}</td>
+                        <td>
+                          {d.overtime?.total ? (
+                            <span title={`${d.overtime.before} min before, ${d.overtime.after} min after`}>{d.overtime.total} min</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td>
                           <Pill tone={TONE[d.status] ?? 'grey'}>{d.statusLabel}</Pill>
                         </td>

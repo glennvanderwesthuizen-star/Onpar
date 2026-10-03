@@ -10,6 +10,7 @@ import {
   shiftLengthMinutes,
   shiftWindow,
   REGISTER_STATUS_LABELS,
+  overtimeMinutes,
 } from '@onpar/rules';
 import { assertSiteAccess, CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { DbService } from '../db/db.service';
@@ -69,7 +70,8 @@ export class RegisterController {
       const attendance = (
         await tx.query(
           `SELECT a.employee_id, a.site_id, s.name AS site_name, a.shift_date AS date, a.shift_name, a.duty_on_at, a.duty_from_at,
-                  a.arrival_status, a.late_minutes, a.departure_status, a.early_minutes
+                  a.arrival_status, a.late_minutes, a.departure_status, a.early_minutes,
+                  a.scheduled_start, a.scheduled_end, a.relief_status
              FROM attendance a JOIN sites s ON s.id = a.site_id
             WHERE a.employee_id = ANY($1::uuid[]) AND a.shift_date BETWEEN $2 AND $3 ORDER BY a.duty_on_at`,
           [ids, start, end],
@@ -79,7 +81,7 @@ export class RegisterController {
 
       const totals = { scheduled: 0, completed: 0, absent: 0, onDuty: 0, hoursScheduled: 0, hoursWorked: 0 };
       const guards = people.map((p) => {
-        const sum = { scheduled: 0, completed: 0, absent: 0, late: 0, unscheduled: 0, hoursScheduled: 0, hoursWorked: 0 };
+        const sum = { scheduled: 0, completed: 0, absent: 0, late: 0, unscheduled: 0, hoursScheduled: 0, hoursWorked: 0, overtimeMinutes: 0 };
         const rows = dateRange(start, end).map((date, i) => {
           const r = days.get(p.id)![i];
           const worked = attendance.find((a) => a.employee_id === p.id && a.date === date) ?? null;
@@ -96,6 +98,10 @@ export class RegisterController {
           // Days at another site count on that site's register, never twice.
           const here = atSiteId === null || atSiteId === siteId;
           const hoursWorked = dutyOn && dutyFrom ? hoursBetween(dutyOn, dutyFrom) : null;
+          // Minutes before the rostered start and after its end (D-33), from real times only.
+          const overtime = worked
+            ? overtimeMinutes(worked.scheduled_start ? new Date(worked.scheduled_start) : null, worked.scheduled_end ? new Date(worked.scheduled_end) : null, dutyOn, dutyFrom)
+            : null;
           if (here) {
             if (shift) {
               sum.scheduled++;
@@ -106,6 +112,7 @@ export class RegisterController {
             if (status === 'unscheduled') sum.unscheduled++;
             if (worked?.arrival_status === 'LATE') sum.late++;
             if (hoursWorked) sum.hoursWorked += hoursWorked;
+            if (overtime) sum.overtimeMinutes += overtime.total;
           }
           return {
             date,
@@ -117,6 +124,8 @@ export class RegisterController {
             arrival: worked ? { status: worked.arrival_status, lateMinutes: worked.late_minutes } : null,
             departure: worked?.departure_status ? { status: worked.departure_status, earlyMinutes: worked.early_minutes } : null,
             hoursWorked,
+            overtime,
+            reliefStatus: worked?.relief_status ?? null,
             status,
             statusLabel: REGISTER_STATUS_LABELS[status],
           };

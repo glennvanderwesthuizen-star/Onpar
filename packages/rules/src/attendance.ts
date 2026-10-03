@@ -144,11 +144,13 @@ export function reconcileTime(trustedAt: Date, deviceClock: Date, receivedAt: Da
  */
 export const DECLARATIONS = {
   duty_on: {
-    version: 1,
+    // Version 2 (decision D-33) adds the relief statement. Wording to be checked by a labour lawyer (L-02).
+    version: 2,
     statements: [
       'I am fit and free of injury and ready to commence and complete my shift',
       'I have read the OB and understand the tasks for the day',
       'I have taken receipt of all equipment handed over from the previous shift, all in good order',
+      'I understand that I may not leave the site until my relief has arrived, for up to 30 minutes after my shift ends, unless my supervisor releases me',
     ],
   },
   duty_from: {
@@ -160,6 +162,19 @@ export const DECLARATIONS = {
 } as const;
 
 export type DutyKind = keyof typeof DECLARATIONS;
+
+/** Earlier wordings still accepted from phones not yet updated, recorded under their own version. */
+const EARLIER_DECLARATIONS: Record<DutyKind, { version: number; statements: readonly string[] }[]> = {
+  duty_on: [{ version: 1, statements: DECLARATIONS.duty_on.statements.slice(0, 3) }],
+  duty_from: [],
+};
+
+/** The wording a declaration was made against, found by how many statements the phone showed. */
+export function declarationWordingFor(kind: DutyKind, statementCount: number): { version: number; statements: readonly string[] } | null {
+  const current = DECLARATIONS[kind];
+  if (statementCount === current.statements.length) return current;
+  return EARLIER_DECLARATIONS[kind].find((w) => w.statements.length === statementCount) ?? null;
+}
 
 /** HH:MM in South African time. */
 export function sastTime(at: Date): string {

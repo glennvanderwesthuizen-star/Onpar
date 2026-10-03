@@ -12,3 +12,4 @@ export * from './reorders';
 export * from './dashboard';
 export * from './passwords';
 export * from './roster';
+export * from './relief';

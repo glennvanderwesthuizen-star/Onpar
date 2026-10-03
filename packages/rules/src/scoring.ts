@@ -20,6 +20,12 @@ export const EVENT_TYPES = {
   /** Points come from the site's patrol points allocation, not from this table (section 6.5). */
   patrol_completed: { label: 'Patrol completed', sign: 1 },
   outstanding: { label: 'Outstanding performance', sign: 1 },
+  /** Duty On more than 15 minutes before the shift (D-33). */
+  early_arrival: { label: 'Arrived early', sign: 1 },
+  /** Stayed past the shift because the relief was late or did not come (D-33). */
+  covering: { label: 'Covered for a late relief', sign: 1 },
+  /** The points the late relief lost, given to the guard who covered (D-33). The value comes from "Late arrival". */
+  covered_points: { label: 'Points from the late relief', sign: 1 },
 } as const;
 export type EventType = keyof typeof EVENT_TYPES;
 
@@ -54,6 +60,9 @@ export const DEFAULT_SCORING: ScoringConfig = {
     missed_patrol: 0,
     patrol_completed: 0,
     outstanding: 2,
+    early_arrival: 1,
+    covering: 1,
+    covered_points: 0,
   },
   base: 80,
   min: 0,

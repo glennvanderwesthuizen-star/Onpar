@@ -32,7 +32,7 @@ describe('Duty On, Duty From and attendance', () => {
       .set(guard())
       .send({ eventId: randomUUID(), kind, pin, trustedAt: at, deviceClock: at, ...extra });
   const declare = (dutyEventId: string, at: string, extra: Record<string, unknown> = {}, withSelfie = true) => {
-    const data = { eventId: randomUUID(), dutyEventId, accepted: [true, true, true], trustedAt: at, deviceClock: at, ...extra };
+    const data = { eventId: randomUUID(), dutyEventId, accepted: [true, true, true, true], trustedAt: at, deviceClock: at, ...extra };
     let req = w.http().post('/api/device/declarations').set(guard()).field('data', JSON.stringify(data));
     if (withSelfie) req = req.attach('selfie', PNG, { filename: 'selfie.png', contentType: 'image/png' });
     return req;
@@ -84,7 +84,7 @@ describe('Duty On, Duty From and attendance', () => {
       siteName: 'Estate ABC',
       declarations: { duty_on: false, duty_from: false },
     });
-    expect(r.body.declaration.statements).toHaveLength(3);
+    expect(r.body.declaration.statements).toHaveLength(4);
 
     const me = await w.http().get('/api/device/me').set(guard());
     expect(me.body.pendingDeclaration).toMatchObject({ kind: 'duty_on', dutyEventId: dutyOnEventId });
@@ -107,8 +107,8 @@ describe('Duty On, Duty From and attendance', () => {
     expect(new Date(ev.official_at).toISOString()).toBe(new Date(sast(D2, '05:57')).toISOString());
   });
 
-  it('will not accept a declaration unless all three statements are accepted (scenario 10)', async () => {
-    const r = await declare(dutyOnEventId, sast(D2, '05:58'), { accepted: [true, false, true] });
+  it('will not accept a declaration unless every statement is accepted (scenario 10)', async () => {
+    const r = await declare(dutyOnEventId, sast(D2, '05:58'), { accepted: [true, false, true, true] });
     expect(r.status).toBe(400);
     expect(r.body.message).toBe('Every statement must be accepted.');
   });
@@ -122,12 +122,12 @@ describe('Duty On, Duty From and attendance', () => {
   it('records the declaration with the wording shown, a comment and the selfie', async () => {
     const r = await declare(dutyOnEventId, sast(D2, '05:58'), { comment: 'Torch at Gate 2 is broken', raiseEquipmentReport: true });
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ kind: 'duty_on', wordingVersion: 1, selfieReceived: true });
+    expect(r.body).toMatchObject({ kind: 'duty_on', wordingVersion: 2, selfieReceived: true });
     const me = await w.http().get('/api/device/me').set(guard());
     expect(me.body.pendingDeclaration).toBeNull();
     expect(me.body.attendance.declarations.duty_on).toBe(true);
     const [d] = await ownerQuery('SELECT statements, comment FROM declarations WHERE attendance_id = $1', [attendanceId]);
-    expect(d.statements).toHaveLength(3);
+    expect(d.statements).toHaveLength(4);
     expect(d.statements.every((s: { accepted: boolean }) => s.accepted)).toBe(true);
     expect(d.comment).toBe('Torch at Gate 2 is broken');
   });

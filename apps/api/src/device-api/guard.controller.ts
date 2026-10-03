@@ -79,6 +79,15 @@ export class GuardController {
     return this.duty.recordDuty(guard, input);
   }
 
+  /** "Let my partner go first" at shift change (D-33). Needs the guard's PIN. */
+  @Post('relief/give-turn')
+  @HttpCode(200)
+  async giveTurn(@CurrentGuard() guard: GuardPrincipal, @Body() body: unknown) {
+    const { pin } = parseBody(z.object({ pin: z.string().regex(/^\d{4,6}$/, 'Your PIN is 4 to 6 digits.') }), body);
+    await this.pins.check(guard.companyId, { employeeId: guard.employeeId }, pin, guard.deviceId, null);
+    return this.duty.giveTurn(guard);
+  }
+
   /**
    * The declaration after Duty On or Duty From. JSON, or multipart with the
    * fields in `data` and the photo in `selfie`. When offline, the text may be
