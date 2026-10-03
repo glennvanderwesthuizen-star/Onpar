@@ -13,3 +13,4 @@ export * from './dashboard';
 export * from './passwords';
 export * from './roster';
 export * from './relief';
+export * from './uniform';

@@ -7,6 +7,7 @@ export const ROLES = [
   'client_manager',
   'hr_admin',
   'payroll_clerk',
+  'stores_clerk',
 ] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -18,6 +19,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   client_manager: 'Client or estate manager',
   hr_admin: 'HR administrator',
   payroll_clerk: 'Payroll clerk',
+  stores_clerk: 'Stores clerk',
 };
 
 /** Roles limited to the sites they are assigned to. Everyone else sees the whole company. */
@@ -63,6 +65,13 @@ export const PERMISSIONS = {
   'register.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'hr_admin', 'payroll_clerk'],
   'panic.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'panic.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  // Uniform (D-33): see orders; decide lines; stores; collect and deliver; catalogue and site lists; record an issue.
+  'uniform.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'stores_clerk'],
+  'uniform.review': ['system_admin', 'company_manager', 'site_manager'],
+  'uniform.stores': ['system_admin', 'company_manager', 'stores_clerk'],
+  'uniform.deliver': ['company_manager', 'site_manager', 'site_supervisor'],
+  'uniform.catalogue': ['system_admin', 'company_manager'],
+  'uniform.issue': ['system_admin', 'company_manager', 'site_manager'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

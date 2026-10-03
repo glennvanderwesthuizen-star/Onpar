@@ -33,6 +33,7 @@ import { RosterService } from './roster/roster.service';
 import { RosterController } from './roster/roster.controller';
 import { RegisterController } from './roster/register.controller';
 import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-bolo.controller';
+import { GuardUniformController, UniformController } from './uniform/uniform.controller';
 
 @Controller('health')
 class HealthController {
@@ -74,6 +75,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       RegisterController,
       DevicePanicBoloController,
       PanicBoloController,
+      UniformController,
+      GuardUniformController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
