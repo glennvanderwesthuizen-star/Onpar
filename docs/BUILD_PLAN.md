@@ -510,3 +510,16 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - L-07: keeping a guard past his shift, and how overtime is paid.
 - The "post uncovered" status is shown on the attendance register; a push alert to the supervisor's own phone comes with the supervisor app (D-11).
 
+### 3 Oct 2026: Round B, uniform (D-33, docs/NEXT_ROUND.md items 9 and 10)
+
+- **Catalogue:** uniform items with types (Shirt: short sleeve, long sleeve, golf ...), sizes, prices and a renewal period (12 months by default). There is also a uniform list per site.
+- **Guard orders on the post phone ("My uniform"):** a table of his items with the last issue date, his size, how many he may have and when each is next due. He ticks several items and sends one order; items not yet due need a reason.
+- **Manager or administrator decides each line:** company account, guard's account, or not issued (with a reason). Prices and totals are shown.
+- **Stores clerk (new role):** marks the order ready.
+- **Supervisor ("My deliveries"):** collects it and stores confirms the hand-over. The task shows when each guard is next on duty, from the roster.
+- **Guard signs for it with his PIN.** For guard's-account items he also signs "I agree to pay R___"; this is a record for payroll, and the app never deducts (L-08). Each issue restarts the item's 12 months.
+- **Starter issues** for new guards can be recorded by a manager (Uniform → Guards).
+- **Uniform condition notes:** an HR record written by supervisors and read only by managers and HR. Every view is logged, notes are never shown on the post phone, and they never trigger anything by themselves.
+- **Not built (owner, 3 Oct):** stock-holding and a separate stores app (later); merchandise (later).
+- **Tests:** totals are 139 rules, 266 server and 70 phone tests, all passing.
+
