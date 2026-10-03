@@ -489,3 +489,24 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - Live video streaming is planned after the pilot.
 - BOLO without sign-in was assumed; say if only signed-in guards should send them.
 
+### 3 Oct 2026: Round A of the owner's testing changes (D-33, docs/NEXT_ROUND.md)
+
+- **Lock instead of Log out while on duty.**
+  - The only way off duty is Duty From.
+  - Several guards can be signed in on one post phone. The front screen lists those on duty, and each unlocks with his own PIN, even without signal.
+- **Relief at shift change.**
+  - Duty From waits until a relief has done Duty On: one for one, first in first out.
+  - A guard whose turn it is can "let my partner go first" with his PIN; it is recorded.
+  - After 30 minutes with no relief, Duty From unlocks and the post shows as uncovered.
+  - A supervisor's "Duty From on behalf" releases a guard at any time.
+- **Points:** Duty On more than 15 minutes early earns +1. Staying past the shift for a late or missing relief earns +1, plus the points the late guard lost.
+- **Overtime minutes:** the register and its download show minutes before and after the rostered shift, and how each guard left.
+- **Duty On declaration version 2** adds the relief statement. Phones not yet updated still work and are recorded as version 1.
+- **Photos** are turned upright on the phone before they are kept.
+- **Tests:** 9 new rules tests, 8 new server tests and 5 new phone tests. The totals are 135 rules, 256 server and 66 phone tests, all passing.
+
+**Flagged for the owner:**
+- L-02: the declaration wording.
+- L-07: keeping a guard past his shift, and how overtime is paid.
+- The "post uncovered" status is shown on the attendance register; a push alert to the supervisor's own phone comes with the supervisor app (D-11).
+
