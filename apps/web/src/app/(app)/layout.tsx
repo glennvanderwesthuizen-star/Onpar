@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { SessionProvider, useSession } from '@/lib/session';
 import { ChangePassword } from '@/components/ChangePassword';
 import { PanicBanner } from '@/components/PanicBanner';
+import { BoloBanner } from '@/components/BoloBanner';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
@@ -71,6 +72,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       <>
         <Header />
         {can('panic.view') && <PanicBanner />}
+        {can('panic.view') && <BoloBanner />}
         <main className="page">{children}</main>
       </>
     );

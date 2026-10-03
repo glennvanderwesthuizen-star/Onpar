@@ -259,3 +259,11 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 @media (prefers-reduced-motion: reduce) { .panic-banner.flash { animation: none; } }
 .bolo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .bolo-grid .card { margin: 0; }
+.bolo-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #c25e00; color: #fff; padding: 9px 20px; font-size: 15px; }
+.bolo-banner b { font-size: 16px; letter-spacing: .08em; }
+.bolo-banner span { flex: 1; min-width: 200px; }
+.bolo-banner .btn { background: #fff; color: #c25e00; border-color: #fff; }
+.bolo-banner.flash { animation: bolo-flash 1s steps(2, start) infinite; }
+@keyframes bolo-flash { 50% { background: #8a4300; } }
+@media (prefers-reduced-motion: reduce) { .bolo-banner.flash { animation: none; } }
+@media print { .bolo-banner { display: none !important; } }
