@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -27,6 +27,10 @@ export default function Overview({ searchParams }: { searchParams: Promise<{ dat
   const today = data?.today;
   useAutoRefresh(reload, !!today && date === today);
   const drill = can('attendance.view');
+  // Roles without the dashboard (stores clerk, payroll clerk) start on their own page.
+  useEffect(() => {
+    if (!can('dashboard.view')) router.replace(can('uniform.stores') ? '/uniform' : can('register.view') ? '/register' : '/account');
+  }, [can, router]);
 
   return (
     <>

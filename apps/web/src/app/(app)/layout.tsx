@@ -15,6 +15,7 @@ const NAV = [
   { href: '/tasks', label: 'Tasks', permission: 'tasks.view' },
   { href: '/patrols', label: 'Patrols', permission: 'patrols.view' },
   { href: '/reports', label: 'Reports', permission: 'reports.view' },
+  { href: '/uniform', label: 'Uniform', permission: 'uniform.view' },
   { href: '/reorders', label: 'Re-orders', permission: 'reorders.view' },
   { href: '/scores', label: 'Scores', permission: 'scores.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
