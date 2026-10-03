@@ -2,7 +2,7 @@
 
 Collected while the owner tests. Legal points are flagged, not decided.
 
-**Go-ahead given 3 Oct 2026.** Building order:
+**Go-ahead given 3 Oct 2026.** Rounds A, B and C were built on 3 Oct 2026 (see the progress log in BUILD_PLAN.md). Building order:
 - **Round A (every shift):** 7 (sideways photos), 1 (Log out and Lock), 2 and 3 (relief rules), 6 (declaration), 4 (points), 5 (overtime minutes).
 - **Round B:** 9 (uniform flow) and 10 (uniform condition notes).
 - **Round C:** 12 (BOLO voice notes and video).

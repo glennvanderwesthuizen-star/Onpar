@@ -44,7 +44,7 @@ Prepared at Milestone 10 (hardening), 27 September 2026. This is a working check
 > - **Your performance score:** points for events such as arriving on time or a missed task, each with its evidence. You can see your score and why it changed, and you can query any negative event within 7 days. **Scores never lead to discipline or deductions automatically.**
 > - **Your training:** qualifications, dates and certificates.
 >
-> - **Panic and BOLO:** if you hold PANIC, the phone records the time, the site, who is signed in, and the phone's location **once, at that moment**, and calls the control room. A BOLO records the photo and note you send.
+> - **Panic and BOLO:** if you hold PANIC, the phone records the time, the site, who is signed in, and the phone's location **once, at that moment**, and calls the control room. A BOLO records the photo, video, voice note and note you send; the microphone records only while you hold the voice-note button or film a video.
 >
 > On Par does **not** track your location between scans or panics, and does not record calls.
 >

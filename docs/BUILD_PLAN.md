@@ -523,3 +523,10 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Not built (owner, 3 Oct):** stock-holding and a separate stores app (later); merchandise (later).
 - **Tests:** totals are 139 rules, 266 server and 70 phone tests, all passing.
 
+### 3 Oct 2026: Round C, BOLO (docs/NEXT_ROUND.md item 12)
+
+- **Phone:** pressing BOLO opens big buttons for PHOTO, VIDEO (up to 30 seconds), VOICE NOTE (press and hold) and WRITE, with the PANIC button underneath. Several can go in one BOLO; each shows a tick once added. A BOLO waits on the phone when there is no signal.
+- **Website:** an orange BOLO banner (red stays for panic) shows until someone has seen it. The BOLO page plays the video and voice note; managers and supervisors mark "I have seen it", then close the BOLO with what was done.
+- **Points:** only at a manager's or supervisor's discretion ("Award points", once per BOLO, within the usual limits). Never automatic, so guards are not tempted to send BOLOs for points.
+- **POPIA:** BOLO photos, videos and voice notes follow the company's retention switch. 90 days is proposed and set on the Privacy page; P-3 and P-5 are to be confirmed by the POPIA specialist.
+
