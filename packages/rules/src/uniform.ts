@@ -99,3 +99,12 @@ export function nextWorkingDay(days: { date: string; working: boolean }[], from:
   return next ? next.date : null;
 }
 
+
+export const UNIFORM_CONDITIONS = {
+  torn: 'Torn or damaged',
+  dirty: 'Dirty',
+  badly_kept: 'Badly kept',
+  missing_items: 'Items missing',
+  other: 'Other',
+} as const;
+export type UniformCondition = keyof typeof UNIFORM_CONDITIONS;

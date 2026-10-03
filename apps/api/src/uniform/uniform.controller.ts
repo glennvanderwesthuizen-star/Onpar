@@ -11,9 +11,14 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UnprocessableEntityException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { z } from 'zod';
 import {
   addDays,
@@ -28,6 +33,7 @@ import {
   UNIFORM_NEXT,
   UNIFORM_STATUS_LABELS,
   UniformStatus,
+  UNIFORM_CONDITIONS,
 } from '@onpar/rules';
 import { CurrentGuard, CurrentUser, GuardAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
@@ -35,6 +41,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { PinService } from '../device-api/pin.service';
 import { RosterService } from '../roster/roster.service';
+import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 
 const isoTime = z.string().datetime({ offset: true }).transform((s) => new Date(s));
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose the date.');
@@ -92,6 +99,12 @@ const ReceiveBody = z.object({
   agreeToPay: z.boolean().default(false),
   trustedAt: isoTime,
   deviceClock: isoTime,
+});
+
+const NoteBody2 = z.object({
+  employeeId: z.string().uuid(),
+  condition: z.enum(Object.keys(UNIFORM_CONDITIONS) as [keyof typeof UNIFORM_CONDITIONS, ...(keyof typeof UNIFORM_CONDITIONS)[]]),
+  note: z.string().trim().min(3, 'Describe what you saw.').max(2000),
 });
 
 const ITEM_COLUMNS = `i.id, i.name, i.variant, i.sizes, i.price_cents AS "priceCents", i.renewal_months AS "renewalMonths", i.active`;
@@ -189,7 +202,79 @@ export class UniformController {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly roster: RosterService,
+    private readonly storage: StorageService,
   ) {}
+
+  // --- Uniform condition notes: HR records (D-33, item 10) ---------------------
+
+  /** A supervisor notes the state of a guard's uniform, with an optional photo. Multipart with `data` and `photo`, or JSON. */
+  @Post('condition-notes')
+  @RequirePermission('hr.uniform_notes.write')
+  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async addNote(@CurrentUser() user: UserPrincipal, @Body() body: Record<string, unknown>, @UploadedFile() photo?: { mimetype: string; buffer: Buffer }) {
+    let raw: unknown = body;
+    if (typeof body?.data === 'string') {
+      try {
+        raw = JSON.parse(body.data);
+      } catch {
+        throw new BadRequestException('The form data could not be read.');
+      }
+    }
+    const b = parseBody(NoteBody2, raw);
+    if (photo && !IMAGE_TYPES[photo.mimetype]) throw new BadRequestException('The photo must be a JPEG, PNG or WebP image.');
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const e = (await tx.query('SELECT id, home_site_id FROM employees WHERE id = $1', [b.employeeId])).rows[0];
+      if (!e || (user.siteIds && !user.siteIds.includes(e.home_site_id))) throw new NotFoundException('Officer not found.');
+      const key = photo ? await this.storage.put(user.companyId, `hr/uniform/${e.id}`, photo.buffer, IMAGE_TYPES[photo.mimetype]) : null;
+      const { id } = (
+        await tx.query(
+          `INSERT INTO hr_uniform_notes (company_id, employee_id, noted_by, condition, note, photo_key, photo_content_type)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6) RETURNING id`,
+          [e.id, user.userId, b.condition, b.note, key, photo?.mimetype ?? null],
+        )
+      ).rows[0];
+      await this.audit.byUser(tx, user, { action: 'hr.uniform_note_add', entityType: 'employee', entityId: e.id, after: { condition: b.condition, photo: !!key } });
+      return { id };
+    });
+  }
+
+  /** A guard's uniform condition notes. Every view is audited. */
+  @Get('condition-notes')
+  @RequirePermission('hr.uniform_notes.view')
+  notes(@CurrentUser() user: UserPrincipal, @Query('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const e = (await tx.query('SELECT id, home_site_id FROM employees WHERE id = $1', [employeeId])).rows[0];
+      if (!e || (user.siteIds && !user.siteIds.includes(e.home_site_id))) throw new NotFoundException('Officer not found.');
+      const rows = (
+        await tx.query(
+          `SELECT n.id, n.condition, n.note, n.photo_key IS NOT NULL AS "hasPhoto", n.created_at AS "createdAt", u.full_name AS "notedBy"
+             FROM hr_uniform_notes n JOIN users u ON u.id = n.noted_by WHERE n.employee_id = $1 ORDER BY n.created_at DESC`,
+          [employeeId],
+        )
+      ).rows.map((r) => ({ ...r, conditionLabel: UNIFORM_CONDITIONS[r.condition as keyof typeof UNIFORM_CONDITIONS] }));
+      await this.audit.byUser(tx, user, { action: 'hr.uniform_notes_view', entityType: 'employee', entityId: employeeId });
+      return rows;
+    });
+  }
+
+  @Get('condition-notes/:id/photo')
+  @RequirePermission('hr.uniform_notes.view')
+  async notePhoto(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const n = await this.db.withTenant(user.companyId, async (tx) => {
+      const row = (
+        await tx.query(
+          `SELECT n.photo_key AS key, n.photo_content_type AS type, e.home_site_id FROM hr_uniform_notes n JOIN employees e ON e.id = n.employee_id WHERE n.id = $1`,
+          [id],
+        )
+      ).rows[0];
+      if (!row?.key || (user.siteIds && !user.siteIds.includes(row.home_site_id))) throw new NotFoundException('Photo not found.');
+      await this.audit.byUser(tx, user, { action: 'hr.uniform_note_photo_view', entityType: 'hr_uniform_note', entityId: id });
+      return row;
+    });
+    res.setHeader('Content-Type', n.type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await this.storage.get(n.key));
+  }
 
   @Get('items')
   @RequirePermission('uniform.view')

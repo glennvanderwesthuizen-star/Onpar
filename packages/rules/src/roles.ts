@@ -72,6 +72,9 @@ export const PERMISSIONS = {
   'uniform.deliver': ['company_manager', 'site_manager', 'site_supervisor'],
   'uniform.catalogue': ['system_admin', 'company_manager'],
   'uniform.issue': ['system_admin', 'company_manager', 'site_manager'],
+  // Uniform condition notes: HR records (D-33). Written by supervisors; read by managers and HR; every view audited.
+  'hr.uniform_notes.write': ['company_manager', 'site_manager', 'site_supervisor'],
+  'hr.uniform_notes.view': ['company_manager', 'site_manager', 'hr_admin'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sastDate } from '@onpar/rules';
-import { enrol, enrolmentData, ownerQuery, setupWorld, World } from './helpers';
+import { enrol, enrolmentData, ownerQuery, PNG, setupWorld, World } from './helpers';
 
 /**
  * Uniform (owner's decision D-33): catalogue and site list, the guard's order from the post
@@ -163,9 +163,30 @@ describe('uniform orders (D-33)', () => {
     await expect(ownerQuery("UPDATE uniform_order_history SET note = 'x' WHERE order_id = $1", [orderId])).rejects.toThrow();
   });
 
+  it('a supervisor notes the state of a uniform, with a photo; only managers and HR read it, and every view is logged', async () => {
+    const r = await w
+      .http()
+      .post('/api/uniform/condition-notes')
+      .set(auth(supervisor))
+      .field('data', JSON.stringify({ employeeId: guard.id, condition: 'torn', note: 'Shirt torn at the shoulder, not reported' }))
+      .attach('photo', PNG, { filename: 'shirt.png', contentType: 'image/png' });
+    expect(r.status).toBe(201);
+    expect((await w.http().get(`/api/uniform/condition-notes?employeeId=${guard.id}`).set(auth(supervisor))).status).toBe(403);
+    expect((await w.http().get(`/api/uniform/condition-notes?employeeId=${guard.id}`).set(auth(stores))).status).toBe(403);
+    const list = await w.http().get(`/api/uniform/condition-notes?employeeId=${guard.id}`).set(auth(manager));
+    expect(list.body[0]).toMatchObject({ condition: 'torn', conditionLabel: 'Torn or damaged', hasPhoto: true, notedBy: 'Peter Supervisor' });
+    expect((await w.http().get(`/api/uniform/condition-notes/${list.body[0].id}/photo`).set(auth(manager))).status).toBe(200);
+    const [views] = await ownerQuery("SELECT count(*)::int AS n FROM audit_log WHERE action IN ('hr.uniform_notes_view','hr.uniform_note_photo_view')");
+    expect(views.n).toBe(2);
+    await expect(ownerQuery('DELETE FROM hr_uniform_notes')).rejects.toThrow();
+    // Never on the post phone.
+    expect(JSON.stringify(await mine())).not.toContain('torn at the shoulder');
+  });
+
   it('is never visible to another company', async () => {
     expect((await w.http().get(`/api/uniform/orders/${orderId}`).set(auth(managerB))).status).toBe(404);
     expect((await w.http().get('/api/uniform/orders').set(auth(managerB))).body).toEqual([]);
     expect((await w.http().get('/api/uniform/items').set(auth(managerB))).body).toEqual([]);
+    expect((await w.http().get(`/api/uniform/condition-notes?employeeId=${guard.id}`).set(auth(managerB))).status).toBe(404);
   });
 });

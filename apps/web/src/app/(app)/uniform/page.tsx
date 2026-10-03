@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { formatRand, sastDate } from '@onpar/rules';
+import { formatRand, sastDate, UNIFORM_CONDITIONS } from '@onpar/rules';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from '@/components/ui';
 import { STATUS_TONE } from '@/components/uniform';
+import { AuthPhoto } from '@/components/AuthPhoto';
 
 interface Item {
   id?: string;
@@ -55,6 +56,7 @@ export default function UniformPage() {
     can('uniform.view') && ['catalogue', 'Catalogue'],
     can('uniform.view') && ['sites', 'Site lists'],
     can('uniform.issue') && ['guards', 'Guards'],
+    (can('hr.uniform_notes.write') || can('hr.uniform_notes.view')) && ['notes', 'Condition notes'],
   ].filter(Boolean) as [string, string][];
   const [tab, setTab] = useState('');
   useEffect(() => {
@@ -85,6 +87,7 @@ export default function UniformPage() {
       {tab === 'catalogue' && <Catalogue editable={can('uniform.catalogue')} />}
       {tab === 'sites' && <SiteLists editable={can('uniform.catalogue')} />}
       {tab === 'guards' && <Guards />}
+      {tab === 'notes' && <ConditionNotes />}
     </>
   );
 }
@@ -505,6 +508,111 @@ function Guards() {
             </table>
           </div>
         </>
+      )}
+    </>
+  );
+}
+
+interface Note {
+  id: string;
+  condition: string;
+  conditionLabel: string;
+  note: string;
+  hasPhoto: boolean;
+  createdAt: string;
+  notedBy: string;
+}
+
+/**
+ * Uniform condition notes (D-33): an HR record. Supervisors write them; managers and HR read
+ * them (every view is logged). They never trigger anything by themselves and never show on
+ * the post phone.
+ */
+function ConditionNotes() {
+  const { can } = useSession();
+  const officers = useLoad(() => api<{ id: string; full_name: string; employee_number: string; site_name: string }[]>('/officers'));
+  const [employeeId, setEmployeeId] = useState('');
+  const canView = can('hr.uniform_notes.view');
+  const notes = useLoad(() => (employeeId && canView ? api<Note[]>(`/uniform/condition-notes?employeeId=${employeeId}`) : Promise.resolve(null)), [employeeId]);
+  const [condition, setCondition] = useState('torn');
+  const [text, setText] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [saved, setSaved] = useState(false);
+  const save = async () => {
+    setErr(null);
+    setSaved(false);
+    const form = new FormData();
+    form.append('data', JSON.stringify({ employeeId, condition, note: text }));
+    if (photo) form.append('photo', photo);
+    try {
+      await api('/uniform/condition-notes', { method: 'POST', body: form });
+      setText('');
+      setPhoto(null);
+      setSaved(true);
+      notes.reload();
+    } catch (e) {
+      setErr(e);
+    }
+  };
+  return (
+    <>
+      <div className="banner warn small">
+        An HR record. It never leads to a warning or a deduction by itself, and it is never shown on the post phone. Managers may refer to it when deciding
+        whether a replacement is on the guard&apos;s account.
+      </div>
+      <div className="card" style={{ maxWidth: 520 }}>
+        <Field label="Guard">
+          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
+            <option value="">Choose a guard…</option>
+            {officers.data?.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.full_name} #{o.employee_number} · {o.site_name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {employeeId && can('hr.uniform_notes.write') && (
+        <div className="card">
+          <h2>Add a note</h2>
+          <ErrorBanner error={err} />
+          {saved && <div className="banner ok">Saved.</div>}
+          <div className="grid g2">
+            <Field label="Condition">
+              <select value={condition} onChange={(e) => setCondition(e.target.value)}>
+                {Object.entries(UNIFORM_CONDITIONS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Photo (optional)">
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
+            </Field>
+          </div>
+          <Field label="What you saw">
+            <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="For example: shirt torn at the shoulder, not reported" />
+          </Field>
+          <button className="btn" onClick={save} disabled={text.trim().length < 3}>
+            Save note
+          </button>
+        </div>
+      )}
+      {employeeId && canView && (
+        <div className="card">
+          <h2>Notes</h2>
+          <ErrorBanner error={notes.error} />
+          {notes.data && !notes.data.length && <p className="mute">No notes for this guard.</p>}
+          {notes.data?.map((n) => (
+            <div key={n.id} style={{ borderTop: '1px solid var(--line)', padding: '10px 0' }}>
+              <b>{n.conditionLabel}</b> <span className="mute small">· {formatDateTime(n.createdAt)} · {n.notedBy}</span>
+              <div>{n.note}</div>
+              {n.hasPhoto && <AuthPhoto path={`/uniform/condition-notes/${n.id}/photo`} alt={n.note} />}
+            </div>
+          ))}
+        </div>
       )}
     </>
   );
