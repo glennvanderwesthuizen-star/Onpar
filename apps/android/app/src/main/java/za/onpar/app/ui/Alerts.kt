@@ -235,27 +235,76 @@ fun PanicSentScreen(vm: AppViewModel, state: UiState) {
     OutlinedButton(onClick = { vm.panicDone() }, enabled = p.stage != PanicStage.Sending, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 }
 
-/** BOLO, "be on the lookout": a photo and a short note, sent to the supervisors under Reports. */
+/** Which part of the BOLO the guard is adding. */
+private enum class BoloPart { Photo, Video, Voice, Write }
+
+/**
+ * BOLO, "be on the lookout" (owner, 3 Oct 2026): big buttons for PHOTO, VIDEO, VOICE NOTE and
+ * WRITE, and the PANIC button. Several can go in one BOLO; each shows a tick once added.
+ * Managers and supervisors get an orange alert on the website.
+ */
 @Composable
 fun BoloScreen(vm: AppViewModel, state: UiState) {
     val context = LocalContext.current
     val photoFile = remember { File(context.cacheDir, "bolo-new.jpg") }
-    var photo by remember { mutableStateOf(photoFile.takeIf { it.exists() && it.length() > 0 }) }
+    val voiceFile = remember { File(context.cacheDir, "bolo-voice.m4a") }
+    val videoFile = remember { File(context.cacheDir, "bolo-video.mp4") }
+    val present = { f: File -> f.takeIf { it.exists() && it.length() > 0 } }
+    var photo by remember { mutableStateOf(present(photoFile)) }
+    var voice by remember { mutableStateOf(present(voiceFile)) }
+    var video by remember { mutableStateOf(present(videoFile)) }
     var note by remember { mutableStateOf("") }
+    var part by remember { mutableStateOf<BoloPart?>(null) }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("BOLO: be on the lookout", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = { vm.go(Page.Home) }) { Text("Back") }
     }
-    Text("Take a photo of the person or vehicle and say what to look out for. Your supervisors see it under Reports.", color = Color.Gray)
-    PhotoTaker(photoFile, front = false) { photo = it }
-    OutlinedTextField(
-        note, { note = it.take(2000) },
-        label = { Text("What to look out for") },
-        placeholder = { Text("For example: white Toyota Hilux CA 123-456, circled the block three times") },
-        minLines = 3, modifier = Modifier.fillMaxWidth(),
-    )
-    BigButton(if (state.busy) "Sending…" else "Send BOLO", enabled = !state.busy && note.trim().length >= 3) {
-        vm.bolo(note, photo)
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        BoloTile("📷", "PHOTO", photo != null, part == BoloPart.Photo, Modifier.weight(1f)) { part = BoloPart.Photo }
+        BoloTile("🎥", "VIDEO", video != null, part == BoloPart.Video, Modifier.weight(1f)) { part = BoloPart.Video }
     }
-    if (photo == null) Text("A photo is best, but you can send the note on its own.", color = Color.Gray, fontSize = 13.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        BoloTile("🎤", "VOICE NOTE", voice != null, part == BoloPart.Voice, Modifier.weight(1f)) { part = BoloPart.Voice }
+        BoloTile("✏️", "WRITE", note.trim().length >= 3, part == BoloPart.Write, Modifier.weight(1f)) { part = BoloPart.Write }
+    }
+    PanicButton(vm, Modifier.fillMaxWidth(), height = 72.dp, big = false)
+
+    when (part) {
+        BoloPart.Photo -> PhotoTaker(photoFile, front = false) { photo = it }
+        BoloPart.Video -> VideoTaker(videoFile) { video = it }
+        BoloPart.Voice -> VoiceRecorder(voiceFile) { voice = it }
+        BoloPart.Write -> OutlinedTextField(
+            note, { note = it.take(2000) },
+            label = { Text("What to look out for") },
+            placeholder = { Text("For example: white Toyota Hilux CA 123-456, circled the block three times") },
+            minLines = 3, modifier = Modifier.fillMaxWidth(),
+        )
+        null -> Text("Tap what you want to add. You can add more than one.", color = Color.Gray)
+    }
+
+    val ready = photo != null || video != null || voice != null || note.trim().length >= 3
+    BigButton(if (state.busy) "Sending…" else "SEND BOLO", enabled = !state.busy && ready) {
+        vm.bolo(note, photo, voice, video)
+    }
+    if (video != null) Text("A video can take a while to send on a weak signal. It waits on the phone until it is sent.", color = Color.Gray, fontSize = 13.sp)
+}
+
+@Composable
+private fun BoloTile(symbol: String, label: String, done: Boolean, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .height(110.dp)
+            .clip(shape)
+            .background(if (selected) BoloBlue else Color(0xFFE8EEF6))
+            .then(if (done) Modifier.border(3.dp, Green, shape) else Modifier)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(symbol, fontSize = 34.sp)
+            Text(if (done) "$label ✓" else label, color = if (selected) Color.White else BoloBlue, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        }
+    }
 }

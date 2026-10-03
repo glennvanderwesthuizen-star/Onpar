@@ -632,11 +632,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun panicDone() = _state.update { it.copy(panic = null, page = Page.Home) }
 
     /** A BOLO: what to look out for, with a photo if taken. Works offline. */
-    fun bolo(note: String, photo: File?) = run {
+    fun bolo(note: String, photo: File?, voice: File? = null, video: File? = null) = run {
         try {
-            val r = device.alerts.bolo(note, photo)
-            // The outbox keeps its own copy of the photo.
-            if (r !is Submitted.Refused) photo?.delete()
+            val r = device.alerts.bolo(note, photo, voice, video)
+            // The outbox keeps its own copies of the files.
+            if (r !is Submitted.Refused) listOfNotNull(photo, voice, video).forEach { it.delete() }
             done(r, "BOLO sent.", Page.Home)
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }

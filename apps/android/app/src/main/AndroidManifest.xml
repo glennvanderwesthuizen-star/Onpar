@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Setup and patrol QR codes, and the Duty On/From selfie. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- BOLO voice notes and video sound (D-33): recorded only while the guard holds the button or films. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <!-- Location is read only at the moment of a patrol scan, never in the background (brief section 9). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

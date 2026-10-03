@@ -112,6 +112,18 @@ class AlertsTest {
     }
 
     @Test
+    fun `a BOLO can carry a video and a voice note without any written note`() {
+        val voice = File(dir, "v.m4a").apply { writeBytes(byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112)) }
+        val video = File(dir, "v.mp4").apply { writeBytes(byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112)) }
+        server.enqueue(MockResponse().setBody("{}"))
+        assertTrue(device.alerts.bolo("", null, voice, video) is Submitted.Sent)
+        val text = server.takeRequest().body.readUtf8()
+        assertTrue(text.contains("name=\"voice\"") && text.contains("audio/mp4"))
+        assertTrue(text.contains("name=\"video\"") && text.contains("video/mp4"))
+        assertThrows<IllegalArgumentException> { device.alerts.bolo("", null, null, null) }
+    }
+
+    @Test
     fun `a BOLO without a photo is plain`() {
         server.enqueue(MockResponse().setBody("{}"))
         assertTrue(device.alerts.bolo("Man in red jacket", null) is Submitted.Sent)

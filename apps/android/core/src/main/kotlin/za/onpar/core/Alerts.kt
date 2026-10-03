@@ -49,9 +49,18 @@ class AlertActions(private val device: OnParDevice) {
         }
     }
 
-    /** A BOLO: what to look out for, and a photo if one was taken. Works offline through the outbox. */
-    fun bolo(note: String, photo: File?): Submitted {
-        require(note.trim().length >= 3) { "Say what to look out for." }
+    /**
+     * A BOLO: any of a photo, a short video (up to 30 seconds), a voice note and a written
+     * note, sent together. Works offline through the outbox.
+     */
+    fun bolo(note: String, photo: File?, voice: File? = null, video: File? = null): Submitted {
+        val usable = { f: File? -> f?.takeIf { it.exists() && it.length() > 0 } }
+        val files = listOfNotNull(
+            usable(photo)?.let { Upload("photo", it, "image/jpeg") },
+            usable(voice)?.let { Upload("voice", it, "audio/mp4") },
+            usable(video)?.let { Upload("video", it, "video/mp4") },
+        )
+        require(files.isNotEmpty() || note.trim().length >= 3) { "Add a photo, a video, a voice note or a written note." }
         val eventId = UUID.randomUUID().toString()
         val body = buildJsonObject {
             put("eventId", eventId)
@@ -59,7 +68,6 @@ class AlertActions(private val device: OnParDevice) {
             put("trustedAt", device.clock.now().toString())
             put("deviceClock", device.clock.deviceClock().toString())
         }
-        val files = photo?.takeIf { it.exists() && it.length() > 0 }?.let { listOf(Upload("photo", it, "image/jpeg")) } ?: emptyList()
         return device.outbox.submit(device.client(), eventId, "BOLO", "/device/bolo", body, device.guardToken, files)
     }
 }
