@@ -92,6 +92,7 @@ On Par already makes an encrypted backup every night at 02:15, kept on the serve
 | See that everything is running | `deploy/onpar.sh status` |
 | See recent messages if something is wrong | `deploy/onpar.sh logs` |
 | Make a backup now | `deploy/onpar.sh backup` |
+| Start again with new secrets (deletes all data; asks you to type DELETE EVERYTHING) | `deploy/onpar.sh reset` |
 
 ## Connecting the phones
 

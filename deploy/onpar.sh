@@ -7,6 +7,7 @@
 #   deploy/onpar.sh company "Company name" "Admin full name" admin@example.co.za
 #   deploy/onpar.sh demo                load the demo company (for testing only)
 #   deploy/onpar.sh backup              encrypted backup now (kept in backups/, newest 14)
+#   deploy/onpar.sh reset               DELETES ALL DATA and makes new secrets (before real data, or if the secrets leaked)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEPLOY=deploy
@@ -17,6 +18,17 @@ rand() { openssl rand -hex "${1:-24}"; }
 fix_uploads() { compose exec -T -u root api chown node:node /data/uploads 2>/dev/null || true; }
 
 case "${1:-}" in
+  reset)
+    # Start again with new secrets: every company, user, guard, photo and backup on this server is deleted.
+    echo "This deletes ALL On Par data on this server (companies, users, guards, photos, backups)"
+    echo "and creates a new DATA_KEY and backup passphrase. It cannot be undone."
+    read -r -p 'To continue, type DELETE EVERYTHING and press Enter: ' answer
+    if [ "$answer" != "DELETE EVERYTHING" ]; then echo "Stopped. Nothing was deleted."; exit 1; fi
+    if [ -f "$ENV_FILE" ]; then compose --profile tools down -v --remove-orphans || true; fi
+    rm -f "$ENV_FILE" "$DEPLOY/backup-passphrase" backups/onpar-*.tar.enc backups/onpar-*.tar.enc.sha256
+    echo "Everything deleted. Installing again with new secrets..."
+    exec "$0" install "${2:-}"
+    ;;
   install)
     if [ ! -f "$ENV_FILE" ]; then
       address="${2:-}"
