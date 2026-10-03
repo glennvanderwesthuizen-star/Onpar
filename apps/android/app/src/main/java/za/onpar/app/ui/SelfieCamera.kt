@@ -96,8 +96,14 @@ fun PhotoTaker(file: File, front: Boolean, onTaken: (File?) -> Unit) {
                     ContextCompat.getMainExecutor(context),
                     object : ImageCapture.OnImageSavedCallback {
                         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                            taken = true
-                            onTaken(file)
+                            // Turn it upright off the main thread, then show it.
+                            Thread {
+                                runCatching { makeUpright(file) }
+                                ContextCompat.getMainExecutor(context).execute {
+                                    taken = true
+                                    onTaken(file)
+                                }
+                            }.start()
                         }
 
                         override fun onError(e: ImageCaptureException) {

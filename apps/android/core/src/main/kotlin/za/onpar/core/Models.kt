@@ -23,6 +23,20 @@ data class Attendance(
     val arrivalStatus: String,
     val lateMinutes: Int = 0,
     val siteName: String? = null,
+    /** Whether he may log Duty From yet (D-33). */
+    val relief: Relief? = null,
+)
+
+/** Relief at shift change, as the server sees it (D-33). */
+@Serializable
+data class Relief(
+    val canLeave: Boolean = true,
+    /** no_rule, relieved, no_relief or wait. */
+    val outcome: String = "no_rule",
+    val message: String = "",
+    val unlocksAt: String? = null,
+    val canGiveTurn: Boolean = false,
+    val reliever: String? = null,
 )
 
 @Serializable

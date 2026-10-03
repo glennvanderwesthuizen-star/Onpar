@@ -246,9 +246,27 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
             }
         }
     }
+    var askTurnPin by remember { mutableStateOf(false) }
     if (home != null) {
         if (shift == null) BigButton("DUTY ON", enabled = !state.busy) { askPin = DutyKind.ON }
-        else BigButton("DUTY FROM", enabled = !state.busy) { askPin = DutyKind.FROM }
+        else {
+            // Duty From waits for the relief (D-33). Without signal the phone cannot check, so it lets him try.
+            val relief = shift.relief
+            val blocked = relief != null && !relief.canLeave && state.online
+            if (relief != null && relief.message.isNotBlank()) {
+                Card(Modifier.fillMaxWidth()) {
+                    Text(
+                        relief.message,
+                        Modifier.background(if (blocked) Color(0xFFFFF4D6) else Color(0xFFDFF3E7)).padding(12.dp).fillMaxWidth(),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            BigButton(if (blocked) "DUTY FROM (wait for relief)" else "DUTY FROM", enabled = !state.busy && !blocked) { askPin = DutyKind.FROM }
+            if (relief?.canGiveTurn == true) {
+                OutlinedButton(onClick = { askTurnPin = true }, modifier = Modifier.fillMaxWidth()) { Text("Let my partner go first") }
+            }
+        }
     }
     OutlinedButton(onClick = { vm.go(Page.Patrols) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Patrols", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }
@@ -261,7 +279,18 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     OutlinedButton(onClick = { vm.go(Page.Roster) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("My roster", fontSize = 18.sp) }
     Button(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Call", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
-    OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
+    // On duty: Lock, never Log out (D-33). The only way off duty is Duty From.
+    if (shift != null) {
+        OutlinedButton(onClick = { vm.lock() }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Lock (stay on duty)", fontSize = 18.sp) }
+    } else {
+        OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
+    }
+    if (askTurnPin) {
+        PinDialog("Let my partner go first", onCancel = { askTurnPin = false }) { pin ->
+            askTurnPin = false
+            vm.giveTurn(pin)
+        }
+    }
 
     askPin?.let { kind ->
         PinDialog(kind.label, onCancel = { askPin = null }) { pin ->

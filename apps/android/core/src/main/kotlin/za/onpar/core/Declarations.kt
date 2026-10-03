@@ -7,11 +7,12 @@ package za.onpar.core
  */
 object DeclarationText {
     val DUTY_ON = DeclarationWording(
-        1,
+        2,
         listOf(
             "I am fit and free of injury and ready to commence and complete my shift",
             "I have read the OB and understand the tasks for the day",
             "I have taken receipt of all equipment handed over from the previous shift, all in good order",
+            "I understand that I may not leave the site until my relief has arrived, for up to 30 minutes after my shift ends, unless my supervisor releases me",
         ),
     )
     val DUTY_FROM = DeclarationWording(

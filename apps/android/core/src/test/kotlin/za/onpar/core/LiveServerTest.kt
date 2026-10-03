@@ -1,6 +1,7 @@
 package za.onpar.core
 
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -68,7 +69,7 @@ class LiveServerTest {
         val s = device.state()
         assertTrue(s.attendance != null)
         assertEquals("duty_on", s.pendingDeclaration?.kind)
-        assertEquals(3, s.pendingDeclaration?.wording?.statements?.size)
+        assertEquals(4, s.pendingDeclaration?.wording?.statements?.size)
     }
 
     @Test @Order(5)
@@ -78,35 +79,46 @@ class LiveServerTest {
         assertEquals(DeclarationText.DUTY_ON, owed.wording)
         assertEquals(DeclarationText.DUTY_FROM, DeclarationText.forKind("duty_from"))
         val jpeg = File(dir, "selfie.jpg").apply { writeBytes(byteArrayOf(-1, -40, -1, -32, 0, 16, 74, 70, 73, 70, 0, 1)) }
-        val r = device.declare(owed, listOf(true, true, true), "Torch at Gate 2 does not work", true, "amber", jpeg)
+        val r = device.declare(owed, listOf(true, true, true, true), "Torch at Gate 2 does not work", true, "amber", jpeg)
         assertTrue(r is Submitted.Sent, "$r")
         assertTrue(device.outbox.pending().isEmpty(), "selfie sent too")
         assertEquals(null, device.owedDeclaration(device.state()))
     }
 
     @Test @Order(6)
-    fun `the same action sent twice (a retry after lost signal) is recorded once`() {
+    fun `Duty From is refused until the relief arrives, and the refusal is not queued to retry (D-33)`() {
         assumeTrue(url.isNotEmpty())
-        val before = device.state().attendance!!.id
-        val (eventId, r) = device.duty(DutyKind.FROM, pin)
-        assertTrue(r is Submitted.Sent, "$r")
-        // The phone lost the reply and sends the same event again.
-        device.outbox.add(eventId, "Duty From (retry)", "/device/duty", lastBody(eventId), device.guardToken)
-        val again = device.sync()[eventId]
-        assertTrue(again is Submitted.Sent, "$again")
-        assertTrue(device.outbox.failed().isEmpty())
-        assertEquals(before, (again as Submitted.Sent).reply.jsonObject["attendance"]!!.jsonObject["id"]!!.jsonPrimitive.content)
+        val (_, r) = device.duty(DutyKind.FROM, pin)
+        assertTrue(r is Submitted.Refused && r.message.contains("relief"), "$r")
+        assertTrue(device.outbox.pending().isEmpty())
+        assertTrue(device.state().attendance!!.relief!!.canLeave.not())
     }
 
-    private fun lastBody(eventId: String) = buildJsonObject {
+    @Test @Order(7)
+    fun `the same action sent twice (a retry after lost signal) is recorded once`() {
+        assumeTrue(url.isNotEmpty())
+        val eventId = java.util.UUID.randomUUID().toString()
+        device.outbox.add(eventId, "BOLO", "/device/bolo", boloBody(eventId), device.guardToken)
+        val first = device.sync()[eventId]
+        assertTrue(first is Submitted.Sent, "$first")
+        // The phone lost the reply and sends the same event again.
+        device.outbox.add(eventId, "BOLO (retry)", "/device/bolo", boloBody(eventId), device.guardToken)
+        val again = device.sync()[eventId]
+        assertTrue(again is Submitted.Sent, "$again")
+        assertTrue(device.outbox.failed().none { it.eventId == eventId })
+        val f = LiveFixture(url)
+        val list = f.call("GET", "/bolos", f.managerToken)["list"]!!.jsonArray
+        assertEquals(1, list.count { it.jsonObject["id"]!!.jsonPrimitive.content == eventId })
+    }
+
+    private fun boloBody(eventId: String) = buildJsonObject {
         put("eventId", eventId)
-        put("kind", "duty_from")
-        put("pin", pin)
+        put("note", "Grey Polo parked at the gate")
         put("trustedAt", device.clock.now().toString())
         put("deviceClock", device.clock.deviceClock().toString())
     }
 
-    @Test @Order(7)
+    @Test @Order(8)
     fun `signing out keeps nothing of the guard on the phone`() {
         assumeTrue(url.isNotEmpty())
         device.signOut()

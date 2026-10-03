@@ -1,5 +1,6 @@
 package za.onpar.core
 
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -41,6 +42,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     /** Forgets the setup (for example when the phone moves to another company). */
     fun clearSetup() {
         signOut()
+        store["sessions"] = null
         store["serverUrl"] = null
         store["deviceToken"] = null
     }
@@ -57,32 +59,124 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         )
     }
 
-    // --- The signed-in guard -------------------------------------------------
+    // --- The guards signed in on this phone -----------------------------------
+    //
+    // Several guards can be signed in on one post phone: at shift change the night guard does
+    // Duty On while the day guards are still on duty (D-33). One of them is "active" (using the
+    // phone); the others are locked. A locked guard stays on duty; only his PIN unlocks him.
 
-    val guardToken: String? get() = store["guardToken"]
-    val guardName: String? get() = store["guardName"]
+    private val sessionList = ListSerializer(GuardSession.serializer())
+
+    private fun sessions(): List<GuardSession> {
+        store["sessions"]?.let { return runCatching { OnParJson.decodeFromString(sessionList, it) }.getOrDefault(emptyList()) }
+        // A phone updated while a guard was signed in under the old single sign-in keeps him signed in.
+        val legacy = store["guardToken"] ?: return emptyList()
+        val s = listOf(GuardSession(number = "", name = store["guardName"] ?: "", token = legacy))
+        saveSessions(s)
+        store["active"] = ""
+        store["guardToken"] = null
+        store["guardName"] = null
+        return s
+    }
+
+    private fun saveSessions(list: List<GuardSession>) {
+        store["sessions"] = OnParJson.encodeToString(sessionList, list)
+    }
+
+    private val active: GuardSession?
+        get() {
+            val number = store["active"] ?: return null
+            return sessions().firstOrNull { it.number == number }
+        }
+
+    val guardToken: String? get() = active?.token
+    val guardName: String? get() = active?.name
+
+    /** Guards signed in on this phone but locked (on duty, away from the phone). */
+    fun lockedGuards(): List<GuardSession> {
+        val number = store["active"]
+        return sessions().filter { it.number != number }
+    }
 
     /** Employee number and PIN. Needs signal: the server checks the PIN and locks after five wrong tries. */
     fun signIn(employeeNumber: String, pin: String): Employee {
+        val number = employeeNumber.trim()
         val reply = api.post("/device/login", buildJsonObject {
-            put("employeeNumber", employeeNumber.trim())
+            put("employeeNumber", number)
             put("pin", pin)
         })
         val r = OnParJson.decodeFromJsonElement(LoginReply.serializer(), reply)
-        store["guardToken"] = r.token
-        store["guardName"] = r.employee.name
+        val salt = PinCheck.newSalt()
+        val session = GuardSession(number, r.employee.name, r.token, salt, PinCheck.hash(pin, salt))
+        saveSessions(sessions().filter { it.number != number && it.token != r.token } + session)
+        store["active"] = number
+        clearGuardData()
         return r.employee
     }
 
-    /** Signs the guard out on this phone. Anything still waiting in the outbox is kept and sent later. */
+    /**
+     * Locks the phone: the guard stays signed in and on duty, and the phone goes back to the
+     * front screen (PANIC, BOLO and Call still work). Only his PIN unlocks it.
+     */
+    fun lock() {
+        store["active"] = null
+        clearGuardData()
+    }
+
+    /**
+     * Unlocks a locked guard with his PIN, checked on the phone so it works without signal.
+     * Five wrong PINs and he must sign in again with signal (the server then checks it).
+     */
+    fun unlock(employeeNumber: String, pin: String) {
+        val list = sessions()
+        val s = list.firstOrNull { it.number == employeeNumber } ?: throw IllegalArgumentException("That guard is not signed in on this phone.")
+        if (s.pinHash.isEmpty()) {
+            // No PIN kept on the phone (too many wrong tries, or signed in before this version): sign in with signal.
+            signIn(employeeNumber, pin)
+            return
+        }
+        if (!PinCheck.matches(pin, s.pinSalt, s.pinHash)) {
+            val tries = s.failedUnlocks + 1
+            val updated = if (tries >= PinCheck.MAX_TRIES) s.copy(pinHash = "", failedUnlocks = 0) else s.copy(failedUnlocks = tries)
+            saveSessions(list.map { if (it.number == s.number) updated else it })
+            throw IllegalArgumentException(
+                if (tries >= PinCheck.MAX_TRIES) "Too many wrong PINs. Sign in again with your employee number and PIN when the phone has signal."
+                else "Wrong PIN. ${PinCheck.MAX_TRIES - tries} tries left.",
+            )
+        }
+        saveSessions(list.map { if (it.number == s.number) it.copy(failedUnlocks = 0) else it })
+        store["active"] = s.number
+        clearGuardData()
+    }
+
+    /** Signs the active guard out of this phone. Anything still waiting in the outbox is kept and sent later. */
     fun signOut() {
-        store["guardToken"] = null
-        store["guardName"] = null
+        val number = store["active"]
+        if (number != null) saveSessions(sessions().filter { it.number != number })
+        store["active"] = null
+        clearGuardData()
+    }
+
+    /** Forgets a locked guard who is no longer on duty (for example a supervisor ended his shift). */
+    fun forget(employeeNumber: String) {
+        saveSessions(sessions().filter { it.number != employeeNumber })
+        if (store["active"] == employeeNumber) store["active"] = null
+    }
+
+    /** The server's view of a locked guard: used to forget him once he is off duty. */
+    fun stateOf(session: GuardSession): GuardState = OnParJson.decodeFromJsonElement(GuardState.serializer(), api.get("/device/me", session.token))
+
+    private fun clearGuardData() {
         tasks.clear()
         patrols.clear()
         reports.clear()
         reorders.clear()
         profile.clear()
+    }
+
+    /** "Let my partner go first" at shift change (D-33). Needs signal and his PIN. */
+    fun giveTurn(pin: String) {
+        api.post("/device/relief/give-turn", buildJsonObject { put("pin", pin) }, requireGuard())
     }
 
     fun state(): GuardState = OnParJson.decodeFromJsonElement(GuardState.serializer(), api.get("/device/me", requireGuard()))
@@ -99,7 +193,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         }
         val result = outbox.submit(api, eventId, kind.label, "/device/duty", body, requireGuard())
         // The declaration is owed at once, even with no signal to ask the server.
-        if (result !is Submitted.Refused) store["owedDeclaration"] = "${kind.wire}|$eventId"
+        if (result !is Submitted.Refused) store[owedKey] = "${kind.wire}|$eventId"
         return eventId to result
     }
 
@@ -109,11 +203,11 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
      */
     fun owedDeclaration(fromServer: GuardState?): PendingDeclaration? {
         fromServer?.pendingDeclaration?.let { return it }
-        val (kind, dutyEventId) = store["owedDeclaration"]?.split('|')?.takeIf { it.size == 2 } ?: return null
+        val (kind, dutyEventId) = store[owedKey]?.split('|')?.takeIf { it.size == 2 } ?: return null
         // The server has answered and owes nothing, and the duty event is no longer waiting to be sent:
         // it was either declared or refused, so nothing is owed.
         if (fromServer != null && outbox.pending().none { it.eventId == dutyEventId }) {
-            store["owedDeclaration"] = null
+            store[owedKey] = null
             return null
         }
         return PendingDeclaration(kind, dutyEventId, DeclarationText.forKind(kind))
@@ -152,13 +246,15 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         val label = if (owed.kind == "duty_from") "Duty From declaration" else "Duty On declaration"
         outbox.add(eventId, label, "/device/declarations", body, token)
         outbox.add("$eventId-selfie", "Selfie", "/device/declarations/$eventId/selfie", buildJsonObject { }, token, listOf(Upload("selfie", selfie, "image/jpeg")))
-        store["owedDeclaration"] = null
+        store[owedKey] = null
         val results = runCatching { outbox.flush(api) }.getOrDefault(emptyMap())
         return results[eventId] ?: Submitted.Queued
     }
 
     /** Sends anything waiting. Call when the phone gets signal and every minute or so. */
     fun sync(): Map<String, Submitted> = if (setup == null) emptyMap() else outbox.flush(api)
+
+    private val owedKey: String get() = "owedDeclaration:" + (store["active"] ?: "")
 
     internal fun requireGuard(): String = guardToken ?: throw ApiException(401, "Please log in with your employee number and PIN.")
 

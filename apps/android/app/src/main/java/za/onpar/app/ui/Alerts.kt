@@ -153,6 +153,27 @@ fun FrontScreen(vm: AppViewModel, state: UiState) {
         Tile("📷", "BOLO", BoloBlue, Modifier.weight(1f)) { vm.go(Page.Bolo) }
         Tile("📞", "Call", Green, Modifier.weight(1f), outlined = true) { vm.go(Page.Call) }
     }
+    // Guards on duty on this phone who locked it (D-33): only their PIN brings them back.
+    var unlocking by remember { mutableStateOf<za.onpar.core.GuardSession?>(null) }
+    if (state.lockedGuards.isNotEmpty()) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("On duty on this phone", fontWeight = FontWeight.Bold)
+                state.lockedGuards.forEach { g ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(g.name.ifBlank { "Guard" }, Modifier.weight(1f), fontSize = 18.sp)
+                        Button(onClick = { unlocking = g }, colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Unlock") }
+                    }
+                }
+            }
+        }
+    }
+    unlocking?.let { g ->
+        PinDialog("Unlock: ${g.name}", onCancel = { unlocking = null }) { pin ->
+            unlocking = null
+            vm.unlock(g.number, pin)
+        }
+    }
     Text("PANIC calls the control room and alerts your supervisors. BOLO sends a photo of something to look out for.", color = Color.Gray, fontSize = 13.sp)
     if (state.waiting > 0) Text("${state.waiting} waiting on the phone to be sent.", color = Color.Gray, fontSize = 13.sp)
 }

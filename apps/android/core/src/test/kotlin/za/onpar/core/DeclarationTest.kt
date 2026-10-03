@@ -36,7 +36,7 @@ class DeclarationTest {
         val owed = d.owedDeclaration(null)!!
         assertEquals("duty_on", owed.kind)
         assertEquals(dutyId, owed.dutyEventId)
-        assertEquals(3, owed.wording.statements.size)
+        assertEquals(4, owed.wording.statements.size)
         server.shutdown()
     }
 
@@ -46,8 +46,8 @@ class DeclarationTest {
         val d = device(server)
         val owed = PendingDeclaration("duty_on", "d1", DeclarationText.DUTY_ON)
         assertEquals("Tick every statement to continue.", assertThrows<IllegalArgumentException> { d.declare(owed, listOf(true, false, true), "", false, "green", selfie) }.message)
-        assertEquals("Take your selfie to continue.", assertThrows<IllegalArgumentException> { d.declare(owed, listOf(true, true, true), "", false, "green", File(dir, "none.jpg")) }.message)
-        assertTrue(assertThrows<IllegalArgumentException> { d.declare(owed, listOf(true, true, true), " ", true, "amber", selfie) }.message!!.startsWith("Describe the problem"))
+        assertEquals("Take your selfie to continue.", assertThrows<IllegalArgumentException> { d.declare(owed, listOf(true, true, true, true), "", false, "green", File(dir, "none.jpg")) }.message)
+        assertTrue(assertThrows<IllegalArgumentException> { d.declare(owed, listOf(true, true, true, true), " ", true, "amber", selfie) }.message!!.startsWith("Describe the problem"))
         server.shutdown()
     }
 
@@ -60,7 +60,7 @@ class DeclarationTest {
         server.takeRequest()
         server.enqueue(MockResponse().setBody("""{"id":"x"}"""))
         server.enqueue(MockResponse().setBody("{}"))
-        val r = d.declare(d.owedDeclaration(null)!!, listOf(true, true, true), "Torch at Gate 2 does not work", true, "amber", selfie)
+        val r = d.declare(d.owedDeclaration(null)!!, listOf(true, true, true, true), "Torch at Gate 2 does not work", true, "amber", selfie)
         assertTrue(r is Submitted.Sent)
         val text = server.takeRequest()
         assertEquals("/api/device/declarations", text.path)

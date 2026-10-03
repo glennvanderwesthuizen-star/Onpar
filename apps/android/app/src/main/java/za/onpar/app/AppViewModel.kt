@@ -96,6 +96,8 @@ data class UiState(
     val roster: za.onpar.core.GuardRoster? = null,
     val contacts: List<Contact> = emptyList(),
     val panic: PanicStatus? = null,
+    /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
+    val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -129,6 +131,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         },
         guardName = device.guardName,
         waiting = device.outbox.pending().size,
+        lockedGuards = device.lockedGuards(),
     )
 
     private suspend fun background() = withContext(Dispatchers.IO) {
@@ -136,7 +139,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val online = runCatching { device.heartbeat(version, battery(), Kiosk.status(getApplication())) }.isSuccess
         runCatching { device.profile.contacts() }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list) } }
         runCatching { device.sync() }
-        _state.update { it.copy(online = online, waiting = device.outbox.pending().size) }
+        // A locked guard whose shift has ended (for example a supervisor released him) is forgotten.
+        if (online) {
+            for (g in device.lockedGuards()) {
+                val off = try {
+                    val st = device.stateOf(g)
+                    st.attendance == null && st.pendingDeclaration == null
+                } catch (e: ApiException) {
+                    e.unauthorised
+                } catch (e: OfflineException) {
+                    false
+                }
+                if (off) device.forget(g.number)
+            }
+        }
+        _state.update { it.copy(online = online, waiting = device.outbox.pending().size, lockedGuards = device.lockedGuards()) }
         if (online && device.guardToken != null) refreshHome()
     }
 
@@ -208,13 +225,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signIn(employeeNumber: String, pin: String) = run {
         val e = device.signIn(employeeNumber, pin)
-        _state.update { it.copy(screen = Screen.Home, guardName = e.name, page = Page.Home) }
+        _state.update { it.copy(screen = Screen.Home, guardName = e.name, page = Page.Home, lockedGuards = device.lockedGuards()) }
         refreshHome()
     }
 
     fun signOut() {
         device.signOut()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, page = Page.Home, tasks = emptyList()) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), lockedGuards = device.lockedGuards()) }
+    }
+
+    /** Lock: the guard stays on duty; the phone goes back to the front screen (D-33). */
+    fun lock() {
+        device.lock()
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), lockedGuards = device.lockedGuards()) }
+    }
+
+    /** Unlocks a locked guard with his PIN (works without signal). */
+    fun unlock(number: String, pin: String) = run {
+        try {
+            device.unlock(number, pin)
+            _state.update { it.copy(screen = Screen.Home, guardName = device.guardName, page = Page.Home, lockedGuards = device.lockedGuards()) }
+            refreshHome()
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message, lockedGuards = device.lockedGuards()) }
+        }
+    }
+
+    /** "Let my partner go first" at shift change (D-33). */
+    fun giveTurn(pin: String) = run {
+        device.giveTurn(pin)
+        _state.update { it.copy(message = "Your partner may go first. You go when the next relief arrives.") }
+        refreshHome()
     }
 
     fun go(page: Page) {
