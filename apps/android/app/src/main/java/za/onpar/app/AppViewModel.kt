@@ -54,6 +54,7 @@ sealed interface Page {
     data object Score : Page
     data object Training : Page
     data object Roster : Page
+    data object Uniform : Page
     data object Call : Page
     /** Employee number and PIN, from the front screen. */
     data object SignIn : Page
@@ -94,6 +95,7 @@ data class UiState(
     val score: Score? = null,
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
+    val uniform: za.onpar.core.UniformState? = null,
     val contacts: List<Contact> = emptyList(),
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
@@ -267,6 +269,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Score) loadScore()
         if (page == Page.Training) loadTraining()
         if (page == Page.Roster) loadRoster()
+        if (page == Page.Uniform) loadUniform()
         if (page == Page.Call) loadContacts()
     }
 
@@ -348,6 +351,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // --- Re-orders -----------------------------------------------------------
+
+    // --- Uniform (D-33) --------------------------------------------------------
+
+    fun loadUniform() = run {
+        _state.update { it.copy(uniform = device.uniform.state()) }
+    }
+
+    fun orderUniform(choices: List<za.onpar.core.UniformChoice>) = run {
+        try {
+            val r = device.uniform.order(choices)
+            done(r, "Uniform order sent. A manager will approve it.", Page.Uniform)
+            _state.update { it.copy(uniform = device.uniform.state()) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    /** Signs for a delivery with his PIN (and agrees to pay for guard's-account items). */
+    fun receiveUniform(order: za.onpar.core.UniformOrder, pin: String, agree: Boolean) = run {
+        try {
+            device.uniform.receive(order, pin, agree)
+            _state.update { it.copy(message = "Signed for. Your uniform is recorded as received today.", uniform = device.uniform.state()) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
 
     fun loadReorders() = run {
         val list = device.reorders.list()

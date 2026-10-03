@@ -95,6 +95,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.NewReport -> if (state.owed != null) HomeScreen(vm, state) else NewReportScreen(vm, state)
                     is Page.Report -> if (state.owed != null) HomeScreen(vm, state) else ReportScreen(vm, state, page.id)
                     Page.Reorders -> if (state.owed != null) HomeScreen(vm, state) else ReordersScreen(vm, state)
+                    Page.Uniform -> if (state.owed != null) HomeScreen(vm, state) else UniformScreen(vm, state)
                     Page.NewReorder -> if (state.owed != null) HomeScreen(vm, state) else NewReorderScreen(vm, state)
                     Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
@@ -271,7 +272,10 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     OutlinedButton(onClick = { vm.go(Page.Patrols) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Patrols", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Reports) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Report", fontSize = 18.sp) }
-    OutlinedButton(onClick = { vm.go(Page.Reorders) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Re-order", fontSize = 18.sp) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { vm.go(Page.Uniform) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Uniform", fontSize = 18.sp) }
+        OutlinedButton(onClick = { vm.go(Page.Reorders) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Re-order", fontSize = 18.sp) }
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { vm.go(Page.Score) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Score", fontSize = 18.sp) }
         OutlinedButton(onClick = { vm.go(Page.Training) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Training", fontSize = 18.sp) }

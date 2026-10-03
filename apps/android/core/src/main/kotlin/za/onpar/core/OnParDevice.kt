@@ -21,6 +21,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     val reorders = ReorderActions(this, dataDir)
     val profile = ProfileActions(this, dataDir)
     val alerts = AlertActions(this)
+    val uniform = UniformActions(this, dataDir)
 
     val setup: DeviceSetup?
         get() {
@@ -172,6 +173,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         reports.clear()
         reorders.clear()
         profile.clear()
+        uniform.clear()
     }
 
     /** "Let my partner go first" at shift change (D-33). Needs signal and his PIN. */
