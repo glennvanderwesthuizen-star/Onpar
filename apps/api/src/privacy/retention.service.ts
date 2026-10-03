@@ -6,11 +6,13 @@ export interface RetentionSettings {
   enabled: boolean;
   selfieMonths: number;
   patrolPhotoMonths: number;
+  /** BOLO photos, videos and voice notes (POPIA P-3, P-5). */
+  boloMediaDays: number;
 }
-export const DEFAULT_RETENTION: RetentionSettings = { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12 };
+export const DEFAULT_RETENTION: RetentionSettings = { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90 };
 
 /**
- * Removes selfies and patrol photos once they pass the company's retention period
+ * Removes selfies, patrol photos and BOLO media once they pass the company's retention period
  * (brief section 9: proposed 12 months, to be confirmed with legal). Off until a
  * company switches it on. The record stays; only the image is removed, and logged.
  */
@@ -36,7 +38,7 @@ export class RetentionService implements OnModuleDestroy {
   }
 
   async settings(tx: Tx): Promise<RetentionSettings> {
-    const r = (await tx.query('SELECT enabled, selfie_months AS "selfieMonths", patrol_photo_months AS "patrolPhotoMonths" FROM retention_settings')).rows[0];
+    const r = (await tx.query('SELECT enabled, selfie_months AS "selfieMonths", patrol_photo_months AS "patrolPhotoMonths", bolo_media_days AS "boloMediaDays" FROM retention_settings')).rows[0];
     return r ?? DEFAULT_RETENTION;
   }
 
@@ -53,8 +55,13 @@ export class RetentionService implements OnModuleDestroy {
            FROM patrol_visits v
           WHERE v.photo_key IS NOT NULL AND v.scanned_at < $1::timestamptz - make_interval(months => $3)
             AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = v.photo_key)
+         UNION ALL
+         SELECT 'bolo_media', m.key, b.id, b.reported_at
+           FROM bolos b CROSS JOIN LATERAL (VALUES (b.photo_key), (b.voice_key), (b.video_key)) AS m(key)
+          WHERE m.key IS NOT NULL AND b.reported_at < $1::timestamptz - make_interval(days => $4)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = m.key)
           ORDER BY 4`,
-        [now, s.selfieMonths, s.patrolPhotoMonths],
+        [now, s.selfieMonths, s.patrolPhotoMonths, s.boloMediaDays],
       )
     ).rows as { kind: string; key: string; source_id: string; taken_at: Date }[];
   }

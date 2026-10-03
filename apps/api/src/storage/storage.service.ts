@@ -73,6 +73,14 @@ const SIGNATURES: Record<string, (b: Buffer) => boolean> = {
   '.png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
   '.webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
   '.pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
+  // BOLO voice notes and videos: MP4/M4A/3GP share the ISO "ftyp" box; the others by their own headers.
+  '.mp4': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  '.m4a': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  '.3gp': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  '.webm': (b) => b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
+  '.ogg': (b) => b.subarray(0, 4).toString('latin1') === 'OggS',
+  '.mp3': (b) => b.subarray(0, 3).toString('latin1') === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0),
+  '.aac': (b) => b[0] === 0xff && (b[1] & 0xf6) === 0xf0,
 };
 
 export function matchesType(data: Buffer, ext: string): boolean {
@@ -102,7 +110,7 @@ export class StorageService {
   }
 
   async put(companyId: string, folder: string, data: Buffer, ext: string): Promise<string> {
-    if (!matchesType(data, ext)) throw new BadRequestException('This file is not the kind it claims to be. Please choose the original photo or PDF.');
+    if (!matchesType(data, ext)) throw new BadRequestException('This file is not the kind it claims to be. Please choose the original file.');
     const key = `${companyId}/${folder}/${randomUUID()}${ext}`;
     await this.driver.write(key, this.seal(data));
     return key;
@@ -154,3 +162,7 @@ export class StorageService {
 export const IMAGE_TYPES: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 export const CERTIFICATE_TYPES: Record<string, string> = { ...IMAGE_TYPES, 'application/pdf': '.pdf' };
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+/** BOLO voice notes and short videos (up to 30 seconds). */
+export const AUDIO_TYPES: Record<string, string> = { 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/webm': '.webm', 'audio/3gpp': '.3gp' };
+export const VIDEO_TYPES: Record<string, string> = { 'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/webm': '.webm' };
+export const MAX_VIDEO_BYTES = 40 * 1024 * 1024;

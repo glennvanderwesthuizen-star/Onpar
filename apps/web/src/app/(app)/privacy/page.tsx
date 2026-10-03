@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { ErrorBanner, Field, formatDateTime, useLoad } from '@/components/ui';
 
 interface Retention {
-  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number };
+  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number; boloMediaDays: number };
   wouldRemoveNow: { selfies: number; patrolPhotos: number };
   removed: { selfies: number; patrolPhotos: number; last: string | null };
 }
@@ -70,6 +70,9 @@ export default function PrivacyPage() {
               </Field>
               <Field label="Patrol photos (months)" error={errors.patrolPhotoMonths}>
                 <input type="number" min={1} max={120} value={v.patrolPhotoMonths} onChange={(e) => setV({ ...v, patrolPhotoMonths: Number(e.target.value) })} />
+              </Field>
+              <Field label="BOLO photos, videos and voice notes (days)" error={errors.boloMediaDays} hint="They record members of the public. 90 days proposed; confirm with the POPIA specialist.">
+                <input type="number" min={7} max={3650} value={v.boloMediaDays ?? 90} onChange={(e) => setV({ ...v, boloMediaDays: Number(e.target.value) })} />
               </Field>
             </div>
             <Field label="Why the change (kept in the audit log)" error={errors.reason}>

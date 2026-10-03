@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { enrol, enrolmentData, ownerQuery, PNG, setupWorld, World } from './helpers';
 
 /** First versions of Panic and BOLO (owner's decisions D-27, D-28). */
+// The start of an MP4 file (an "ftyp" box), enough for the file-type check.
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(16)]);
+
 describe('panic and BOLO', () => {
   let w: World;
   let admin: string;
@@ -160,6 +163,55 @@ describe('panic and BOLO', () => {
       const [{ n }] = await ownerQuery('SELECT count(*)::int AS n FROM bolos WHERE id = $1', [eventId]);
       expect(n).toBe(1);
       await expect(ownerQuery("UPDATE bolos SET note = 'x' WHERE id = $1", [eventId])).rejects.toThrow();
+    });
+
+    it('takes a video and a voice note too, and can be sent without a written note', async () => {
+      const r = await w
+        .http()
+        .post('/api/device/bolo')
+        .set('X-Device-Token', deviceToken)
+        .set(auth(guard.token))
+        .field('data', JSON.stringify({ eventId: randomUUID(), trustedAt: now(), deviceClock: now() }))
+        .attach('voice', MP4, { filename: 'v.m4a', contentType: 'audio/mp4' })
+        .attach('video', MP4, { filename: 'v.mp4', contentType: 'video/mp4' });
+      expect(r.status).toBe(200);
+      const b = (await w.http().get('/api/bolos').set(auth(manager))).body.find((x: { id: string }) => x.id === r.body.id);
+      expect(b).toMatchObject({ hasVoice: true, hasVideo: true, hasPhoto: false, note: '' });
+      const video = await w.http().get(`/api/bolos/${r.body.id}/video`).set(auth(manager));
+      expect(video.status).toBe(200);
+      expect(video.headers['content-type']).toBe('video/mp4');
+      expect((await w.http().get(`/api/bolos/${r.body.id}/voice`).set(auth(manager))).status).toBe(200);
+      // Nothing at all is refused.
+      expect((await bolo(deviceToken, '', false)).status).toBe(400);
+    });
+
+    it('raises an orange alert that is acknowledged, then closed with what was done', async () => {
+      const id = (await bolo(deviceToken, 'Blue Corolla, no plates, at the back gate')).body.id;
+      const open = (await w.http().get('/api/bolos?status=open').set(auth(supervisor))).body;
+      expect(open.some((x: { id: string }) => x.id === id)).toBe(true);
+      expect((await w.http().post(`/api/bolos/${id}/acknowledge`).set(auth(supervisor))).status).toBe(200);
+      expect((await w.http().post(`/api/bolos/${id}/resolve`).set(auth(supervisor)).send({ note: '' })).status).toBe(400);
+      expect((await w.http().post(`/api/bolos/${id}/resolve`).set(auth(supervisor)).send({ note: 'SAPS informed; vehicle left' })).status).toBe(200);
+      expect((await w.http().post(`/api/bolos/${id}/resolve`).set(auth(supervisor)).send({ note: 'again' })).status).toBe(409);
+      expect((await w.http().get('/api/bolos?status=open').set(auth(supervisor))).body.some((x: { id: string }) => x.id === id)).toBe(false);
+      await expect(ownerQuery("UPDATE bolos SET note = 'changed' WHERE id = $1", [id])).rejects.toThrow(/immutable/);
+      await expect(ownerQuery("UPDATE bolos SET resolution_note = 'changed' WHERE id = $1", [id])).rejects.toThrow(/immutable/);
+    });
+
+    it('points only at a manager or supervisor discretion, once per BOLO, within the award limits', async () => {
+      const id = (await bolo(deviceToken, 'Man photographing the gate', false, guard.token)).body.id;
+      const [{ n: before }] = await ownerQuery("SELECT count(*)::int AS n FROM performance_events WHERE employee_id = $1", [guard.id]);
+      expect(before).toBe(0); // nothing automatic
+      expect((await w.http().post(`/api/bolos/${id}/award`).set(auth(supervisor)).send({ points: 3 })).status).toBe(403); // supervisor limit is 2
+      expect((await w.http().post(`/api/bolos/${id}/award`).set(auth(supervisor)).send({ points: 2 })).status).toBe(200);
+      expect((await w.http().post(`/api/bolos/${id}/award`).set(auth(manager)).send({ points: 1 })).status).toBe(409);
+      const [ev] = await ownerQuery("SELECT impact, evidence, source_type FROM performance_events WHERE employee_id = $1", [guard.id]);
+      expect(ev).toMatchObject({ source_type: 'bolo' });
+      expect(Number(ev.impact)).toBe(2);
+      expect(ev.evidence).toContain('Useful BOLO');
+      // A BOLO sent with nobody signed in has nobody to award.
+      const anon = (await bolo(deviceToken, 'Dog loose in the street', false)).body.id;
+      expect((await w.http().post(`/api/bolos/${anon}/award`).set(auth(manager)).send({ points: 1 })).status).toBe(409);
     });
 
     it('keeps to site scope and company', async () => {

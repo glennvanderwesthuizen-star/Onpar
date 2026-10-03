@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   NotFoundException,
@@ -13,20 +14,21 @@ import {
   Req,
   Res,
   UnprocessableEntityException,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
-import { reconcileTime } from '@onpar/rules';
+import { can, reconcileTime, sastDate } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentDevice, CurrentUser, DeviceAuthGuard, DevicePrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
-import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
+import { AUDIO_TYPES, IMAGE_TYPES, MAX_VIDEO_BYTES, StorageService, VIDEO_TYPES } from '../storage/storage.service';
+import { ScoringService } from '../scoring/scoring.service';
 
 const isoTime = z.string().datetime({ offset: true, message: 'Send times in ISO 8601 format.' }).transform((s) => new Date(s));
 
@@ -43,7 +45,7 @@ const PanicBody = z.object({
 
 const BoloBody = z.object({
   eventId: z.string().uuid(),
-  note: z.string().trim().min(3, 'Say what to look out for.').max(2000),
+  note: z.string().trim().max(2000).default(''),
   trustedAt: isoTime,
   deviceClock: isoTime,
 });
@@ -127,24 +129,40 @@ export class DevicePanicBoloController {
     });
   }
 
-  /** A BOLO: a note and an optional photo. Multipart with `data` and `photo`, or JSON. Safe to retry. */
+  /**
+   * A BOLO ("be on the lookout"): any of a photo, a short video (up to 30 seconds), a voice
+   * note and a written note, in one. Multipart with `data` and the files, or JSON. Safe to retry.
+   */
   @Post('bolo')
   @HttpCode(200)
-  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
-  async bolo(@CurrentDevice() device: DevicePrincipal, @Req() req: Request, @Body() body: Record<string, unknown>, @UploadedFile() photo?: Upload) {
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'photo', maxCount: 1 }, { name: 'voice', maxCount: 1 }, { name: 'video', maxCount: 1 }], { limits: { fileSize: MAX_VIDEO_BYTES } }))
+  async bolo(
+    @CurrentDevice() device: DevicePrincipal,
+    @Req() req: Request,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files: { photo?: Upload[]; voice?: Upload[]; video?: Upload[] } = {},
+  ) {
     const b = parseBody(BoloBody, jsonField(body));
     const time = reconcileTime(b.trustedAt, b.deviceClock, new Date());
     if (!time.ok) throw new UnprocessableEntityException(time.reason);
+    const photo = files?.photo?.[0];
+    const voice = files?.voice?.[0];
+    const video = files?.video?.[0];
     if (photo && !IMAGE_TYPES[photo.mimetype]) throw new BadRequestException('The photo must be a JPEG, PNG or WebP image.');
+    if (voice && !AUDIO_TYPES[voice.mimetype]) throw new BadRequestException('The voice note is not in a format On Par accepts.');
+    if (video && !VIDEO_TYPES[video.mimetype]) throw new BadRequestException('The video must be MP4.');
+    if (!photo && !voice && !video && b.note.length < 3) throw new BadRequestException('Add a photo, a video, a voice note or a written note.');
     const employeeId = await optionalGuard(this.jwt, req, device);
     return this.db.withTenant(device.companyId, async (tx) => {
       const existing = (await tx.query('SELECT id FROM bolos WHERE id = $1', [b.eventId])).rows[0];
       if (existing) return { id: existing.id };
-      const key = photo ? await this.storage.put(device.companyId, 'bolos', photo.buffer, IMAGE_TYPES[photo.mimetype]) : null;
+      const put = (f: Upload | undefined, types: Record<string, string>) => (f ? this.storage.put(device.companyId, 'bolos', f.buffer, types[f.mimetype]) : Promise.resolve(null));
+      const [photoKey, voiceKey, videoKey] = [await put(photo, IMAGE_TYPES), await put(voice, AUDIO_TYPES), await put(video, VIDEO_TYPES)];
       await tx.query(
-        `INSERT INTO bolos (id, company_id, device_id, site_id, employee_id, note, photo_key, photo_content_type, reported_at, late_synced)
-         VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [b.eventId, device.deviceId, device.siteId, employeeId, b.note, key, photo?.mimetype ?? null, time.officialAt, time.lateSynced],
+        `INSERT INTO bolos (id, company_id, device_id, site_id, employee_id, note, photo_key, photo_content_type, voice_key, voice_content_type,
+                            video_key, video_content_type, reported_at, late_synced)
+         VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [b.eventId, device.deviceId, device.siteId, employeeId, b.note, photoKey, photo?.mimetype ?? null, voiceKey, voice?.mimetype ?? null, videoKey, video?.mimetype ?? null, time.officialAt, time.lateSynced],
       );
       await this.audit.record(tx, {
         actorType: employeeId ? 'employee' : 'device',
@@ -153,7 +171,7 @@ export class DevicePanicBoloController {
         action: 'bolo.create',
         entityType: 'bolo',
         entityId: b.eventId,
-        after: { siteId: device.siteId, note: b.note, photo: !!key },
+        after: { siteId: device.siteId, note: b.note, photo: !!photoKey, voice: !!voiceKey, video: !!videoKey },
       });
       return { id: b.eventId };
     });
@@ -168,6 +186,7 @@ export class PanicBoloController {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly scoring: ScoringService,
   ) {}
 
   /** Open panics (not yet resolved), or all of the last 30 days with `status=all`. */
@@ -224,36 +243,121 @@ export class PanicBoloController {
     return p;
   }
 
-  /** BOLOs, newest first, optionally for one site. */
+  /**
+   * BOLOs, newest first. `status=open` gives those not yet closed (the orange alert);
+   * otherwise the last 200, optionally for one site.
+   */
   @Get('bolos')
   @RequirePermission('reports.view')
-  bolos(@CurrentUser() user: UserPrincipal, @Query('siteId') siteId?: string) {
+  bolos(@CurrentUser() user: UserPrincipal, @Query('siteId') siteId?: string, @Query('status') status?: string) {
     return this.db.withTenant(user.companyId, async (tx) =>
       (
         await tx.query(
-          `SELECT b.id, b.note, b.reported_at AS "reportedAt", b.late_synced AS "lateSynced", b.photo_key IS NOT NULL AS "hasPhoto",
+          `SELECT b.id, b.note, b.reported_at AS "reportedAt", b.late_synced AS "lateSynced",
+                  b.photo_key IS NOT NULL AS "hasPhoto", b.voice_key IS NOT NULL AS "hasVoice", b.video_key IS NOT NULL AS "hasVideo",
+                  b.acknowledged_at AS "acknowledgedAt", ua.full_name AS "acknowledgedBy", b.resolved_at AS "resolvedAt",
+                  ur.full_name AS "resolvedBy", b.resolution_note AS "resolutionNote",
+                  pe.impact AS "awardedPoints", b.employee_id AS "employeeId",
                   s.id AS "siteId", s.name AS "siteName", d.label AS "deviceLabel", d.post_name AS "postName",
                   e.full_name AS "employeeName", e.employee_number AS "employeeNumber"
              FROM bolos b JOIN devices d ON d.id = b.device_id LEFT JOIN sites s ON s.id = b.site_id LEFT JOIN employees e ON e.id = b.employee_id
+             LEFT JOIN users ua ON ua.id = b.acknowledged_by LEFT JOIN users ur ON ur.id = b.resolved_by
+             LEFT JOIN performance_events pe ON pe.id = b.award_event_id
             WHERE ($1::uuid[] IS NULL OR b.site_id = ANY($1::uuid[])) AND ($2::uuid IS NULL OR b.site_id = $2::uuid)
+              AND ($3::text IS DISTINCT FROM 'open' OR b.resolved_at IS NULL)
             ORDER BY b.reported_at DESC LIMIT 200`,
-          [user.siteIds, siteId && /^[0-9a-f-]{36}$/i.test(siteId) ? siteId : null],
+          [user.siteIds, siteId && /^[0-9a-f-]{36}$/i.test(siteId) ? siteId : null, status ?? null],
         )
       ).rows,
     );
   }
 
-  @Get('bolos/:id/photo')
+  @Get('bolos/:id/:media')
   @RequirePermission('reports.view')
-  async boloPhoto(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+  async boloMedia(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Param('media') media: 'photo' | 'voice' | 'video', @Res() res: Response) {
+    if (!['photo', 'voice', 'video'].includes(media)) throw new NotFoundException('Not found.');
     const b = await this.db.withTenant(user.companyId, async (tx) => {
-      const row = (await tx.query('SELECT site_id, photo_key AS key, photo_content_type AS type FROM bolos WHERE id = $1', [id])).rows[0];
-      if (!row?.key || (user.siteIds && !user.siteIds.includes(row.site_id))) throw new NotFoundException('Photo not found.');
-      await this.audit.byUser(tx, user, { action: 'bolo.photo_view', entityType: 'bolo', entityId: id });
+      const row = (await tx.query(`SELECT site_id, ${media}_key AS key, ${media}_content_type AS type FROM bolos WHERE id = $1`, [id])).rows[0];
+      if (!row?.key || (user.siteIds && !user.siteIds.includes(row.site_id))) throw new NotFoundException('Not found.');
+      if ((await tx.query('SELECT 1 FROM retention_log WHERE storage_key = $1', [row.key])).rowCount) {
+        throw new NotFoundException('This was removed under the retention policy. The BOLO itself is kept.');
+      }
+      await this.audit.byUser(tx, user, { action: `bolo.${media}_view`, entityType: 'bolo', entityId: id });
       return row;
     });
     res.setHeader('Content-Type', b.type);
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(await this.storage.get(b.key));
+  }
+
+  /** "I have seen it": stops the alert flashing. */
+  @Post('bolos/:id/acknowledge')
+  @HttpCode(200)
+  @RequirePermission('panic.manage')
+  acknowledgeBolo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const b = await this.loadBolo(tx, user, id);
+      if (!b.acknowledged_at) {
+        await tx.query('UPDATE bolos SET acknowledged_at = now(), acknowledged_by = $2 WHERE id = $1', [id, user.userId]);
+        await this.audit.byUser(tx, user, { action: 'bolo.acknowledge', entityType: 'bolo', entityId: id });
+      }
+      return { ok: true };
+    });
+  }
+
+  /** Closes the BOLO with what was done, for example "SAPS informed". */
+  @Post('bolos/:id/resolve')
+  @HttpCode(200)
+  @RequirePermission('panic.manage')
+  resolveBolo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const n = parseBody(z.object({ note: z.string().trim().min(3, 'Say what was done.').max(2000) }), body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const b = await this.loadBolo(tx, user, id);
+      if (b.resolved_at) throw new ConflictException('This BOLO has already been closed.');
+      await tx.query(
+        `UPDATE bolos SET acknowledged_at = coalesce(acknowledged_at, now()), acknowledged_by = coalesce(acknowledged_by, $2),
+                resolved_at = now(), resolved_by = $2, resolution_note = $3 WHERE id = $1`,
+        [id, user.userId, n.note],
+      );
+      await this.audit.byUser(tx, user, { action: 'bolo.resolve', entityType: 'bolo', entityId: id, reason: n.note });
+      return { ok: true };
+    });
+  }
+
+  /**
+   * Points for a useful BOLO, at a manager's or supervisor's discretion only (owner, 3 Oct 2026):
+   * never automatic. Once per BOLO, within the usual award limits.
+   */
+  @Post('bolos/:id/award')
+  @HttpCode(200)
+  @RequirePermission('scores.award')
+  awardBolo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const a = parseBody(z.object({ points: z.number().int().min(1, 'At least 1 point.').max(10) }), body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const b = await this.loadBolo(tx, user, id);
+      if (!b.employee_id) throw new ConflictException('Nobody was signed in on the phone, so there is nobody to give points to.');
+      if (b.award_event_id) throw new ConflictException('Points have already been awarded for this BOLO.');
+      const c = await this.scoring.config(tx);
+      const limit = can(user.role, 'scores.reverse') ? c.managerAwardLimit : c.supervisorAwardLimit;
+      if (a.points > limit) throw new ForbiddenException(`You can award up to ${limit} points.`);
+      const why = `Useful BOLO${b.note ? `: ${b.note.slice(0, 120)}` : ''}`;
+      const { id: eventId } = (
+        await tx.query(
+          `INSERT INTO performance_events (company_id, employee_id, site_id, event_date, event_type, impact, source_type, source_id, evidence,
+                                           created_by_type, created_by, created_by_label, reason)
+           VALUES (app_company_id(), $1, $2, $3, 'outstanding', $4, 'bolo', $5, $6, 'user', $7, $8, $6) RETURNING id`,
+          [b.employee_id, b.site_id, sastDate(new Date(b.reported_at)), a.points, id, why, user.userId, user.name],
+        )
+      ).rows[0];
+      await tx.query('UPDATE bolos SET award_event_id = $2 WHERE id = $1', [id, eventId]);
+      await this.audit.byUser(tx, user, { action: 'bolo.award', entityType: 'bolo', entityId: id, after: { points: a.points } });
+      return { ok: true, points: a.points };
+    });
+  }
+
+  private async loadBolo(tx: Tx, user: UserPrincipal, id: string) {
+    const b = (await tx.query('SELECT * FROM bolos WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!b || (user.siteIds && !user.siteIds.includes(b.site_id))) throw new NotFoundException('BOLO not found.');
+    return b;
   }
 }

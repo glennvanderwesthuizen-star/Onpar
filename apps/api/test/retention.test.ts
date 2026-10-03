@@ -62,7 +62,7 @@ describe('retention', () => {
 
   it('is off until the company switches it on, so nothing is removed', async () => {
     expect(await settings()).toEqual({
-      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12 },
+      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90 },
       wouldRemoveNow: { selfies: 0, patrolPhotos: 0 },
       removed: { selfies: 0, patrolPhotos: 0, last: null },
     });
