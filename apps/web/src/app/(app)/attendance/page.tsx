@@ -33,6 +33,9 @@ export default function AttendancePage({ searchParams }: { searchParams: Promise
           <h1>Attendance</h1>
           <p className="mute">Shifts are listed on the day they started. All times are South African time.</p>
         </div>
+        <Link className="btn ghost" href="/attendance/selfies">
+          Selfie checks
+        </Link>
       </div>
 
       <div className="card">

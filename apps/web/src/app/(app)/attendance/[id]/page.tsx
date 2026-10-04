@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useEffect, useState } from 'react';
-import { api, imageUrl } from '@/lib/api';
+import { use, useState } from 'react';
+import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from '@/components/ui';
+import { SelfieCompare, SelfieCheck } from '@/components/SelfieCompare';
 import { ArrivalPill, DeparturePill, time } from '@/components/attendance';
 
 interface Detail {
@@ -50,6 +51,7 @@ interface Detail {
     late_synced: boolean;
     drift_flagged: boolean;
     has_selfie: boolean;
+    selfie_check: SelfieCheck | null;
   }[];
 }
 
@@ -150,7 +152,7 @@ export default function AttendanceDetail({ params }: { params: Promise<{ id: str
                   )}
                   <p className="mute small">A declaration is a record of what the officer stated. It is evidence, not proof.</p>
                 </div>
-                <SelfieCompare attendanceId={a.id} kind={kind} hasSelfie={d.has_selfie} />
+                <SelfieCompare attendanceId={a.id} kind={kind} hasSelfie={d.has_selfie} declarationId={d.id} check={d.selfie_check} onChecked={reload} />
               </div>
             )}
           </div>
@@ -201,58 +203,6 @@ function Exception({ detail, canManage, onDone }: { detail: Detail; canManage: b
       ) : (
         <p className="mute">Not approved.</p>
       )}
-    </div>
-  );
-}
-
-/** The declaration selfie next to the registration face photo (section 6.2). Loading either is logged. */
-function SelfieCompare({ attendanceId, kind, hasSelfie }: { attendanceId: string; kind: string; hasSelfie: boolean }) {
-  const [show, setShow] = useState(false);
-  const [urls, setUrls] = useState<{ selfie?: string; face?: string }>({});
-  const [failed, setFailed] = useState<{ selfie?: boolean; face?: boolean }>({});
-  useEffect(() => {
-    if (!show) return;
-    const made: string[] = [];
-    const load = (key: 'selfie' | 'face', path: string) =>
-      imageUrl(path)
-        .then((u) => {
-          made.push(u);
-          setUrls((x) => ({ ...x, [key]: u }));
-        })
-        .catch(() => setFailed((x) => ({ ...x, [key]: true })));
-    if (hasSelfie) load('selfie', `/attendance/${attendanceId}/selfie/${kind}`);
-    load('face', `/attendance/${attendanceId}/registration-photo`);
-    return () => made.forEach((u) => URL.revokeObjectURL(u));
-  }, [show, attendanceId, kind, hasSelfie]);
-
-  if (!show) {
-    return (
-      <div>
-        <button className="btn ghost" onClick={() => setShow(true)}>
-          Compare selfie with registration photo
-        </button>
-        <p className="mute small">Viewing photos is recorded in the audit log.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="grid g2">
-      <div className="photo">
-        {urls.selfie ? (
-          <img src={urls.selfie} alt="Selfie" />
-        ) : (
-          <div className="empty">{!hasSelfie ? 'Selfie still uploading' : failed.selfie ? 'Not available' : 'Loading…'}</div>
-        )}
-        <div className="small">Selfie</div>
-      </div>
-      <div className="photo">
-        {urls.face ? (
-          <img src={urls.face} alt="Registration face photo" />
-        ) : (
-          <div className="empty">{failed.face ? 'Not available' : 'Loading…'}</div>
-        )}
-        <div className="small">Registration photo</div>
-      </div>
     </div>
   );
 }

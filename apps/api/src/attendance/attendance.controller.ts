@@ -111,7 +111,10 @@ export class AttendanceController {
       const declarations = (
         await tx.query(
           `SELECT id, kind, wording_version, statements, comment, raise_equipment_report, official_at, received_at,
-                  late_synced, drift_seconds, drift_flagged, selfie_key IS NOT NULL AS has_selfie
+                  late_synced, drift_seconds, drift_flagged, selfie_key IS NOT NULL AS has_selfie,
+                  (SELECT json_build_object('result', c.result, 'note', c.note, 'checkedAt', c.checked_at, 'checkedBy', u.full_name)
+                     FROM selfie_checks c JOIN users u ON u.id = c.checked_by
+                    WHERE c.declaration_id = declarations.id ORDER BY c.checked_at DESC LIMIT 1) AS selfie_check
              FROM declarations WHERE attendance_id = $1 ORDER BY official_at`,
           [id],
         )

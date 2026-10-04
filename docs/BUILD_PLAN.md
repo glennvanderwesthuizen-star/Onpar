@@ -545,3 +545,11 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Lost or damaged card:** "Reissue" on the officer's page cancels the old card at once (it no longer signs in, and scanning it shows "Cancelled card") and issues a new one. Cards are never deleted.
 - **Printing:** Officers, then Print ID badges: either 10 on an A4 page for your own printer, or one per page with crop marks for a print shop (save as PDF from the print window).
 
+### Selfie checks, face recognition stage 1 (D-36), built 4 Oct 2026
+
+- **Attendance, then Selfie checks:** each Duty On and Duty From selfie next to the guard's enrolment photo, with **Looks right**, **Unclear** and **Not him** and an optional note. Tabs: To check (last 7 days), Weekly spot check (10 at random), Not him or unclear (last 90 days), Checked.
+- The same buttons are on each shift's attendance page, which shows the latest check.
+- Checks are never changed or deleted; a second look adds a new check and the latest counts. Every check and every photo view is in the audit log.
+- "Not him" is a flag for a manager to look into. It does not change the guard's score, lock his login or start anything else.
+- Who checks: supervisors, managers and system administrators. Site managers can see the results.
+

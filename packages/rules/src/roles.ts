@@ -38,6 +38,8 @@ export const PERMISSIONS = {
   'audit.view': ['system_admin', 'company_manager'],
   'attendance.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'attendance.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  // Selfie checks (D-36): look at a Duty On/From selfie next to the enrolment photo and say whether it is him.
+  'attendance.selfie_check': ['system_admin', 'company_manager', 'site_supervisor'],
   'tasks.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'tasks.manage': ['company_manager', 'site_manager', 'site_supervisor'],
   'scores.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
