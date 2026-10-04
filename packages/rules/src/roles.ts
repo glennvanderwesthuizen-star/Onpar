@@ -25,7 +25,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** Roles limited to the sites they are assigned to. Everyone else sees the whole company. */
 export const SITE_SCOPED_ROLES: readonly Role[] = ['site_manager', 'site_supervisor', 'client_manager'];
 
-/** What each role may do in the foundation milestone. Later milestones add to this. */
+/**
+ * What each role may do. The system administrator may do everything (owner's decision D-37,
+ * 4 Oct 2026: one sign-in for all of On Par), including HR records; every action stays audited.
+ */
 export const PERMISSIONS = {
   'sites.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager'],
   'sites.edit': ['system_admin', 'company_manager'],
@@ -37,46 +40,46 @@ export const PERMISSIONS = {
   'users.manage': ['system_admin'],
   'audit.view': ['system_admin', 'company_manager'],
   'attendance.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'attendance.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'attendance.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   // Selfie checks (D-36): look at a Duty On/From selfie next to the enrolment photo and say whether it is him.
   'attendance.selfie_check': ['system_admin', 'company_manager', 'site_supervisor'],
   'tasks.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'tasks.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'tasks.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'scores.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'scores.award': ['company_manager', 'site_manager', 'site_supervisor'],
-  'scores.answer': ['company_manager', 'site_manager', 'site_supervisor'],
-  'scores.reverse': ['company_manager'],
-  'scores.rules': ['company_manager'],
+  'scores.award': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'scores.answer': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'scores.reverse': ['system_admin', 'company_manager'],
+  'scores.rules': ['system_admin', 'company_manager'],
   'reports.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'reports.manage': ['company_manager', 'site_manager', 'site_supervisor'],
-  'reports.close': ['company_manager'],
+  'reports.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'reports.close': ['system_admin', 'company_manager'],
   'people.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'patrols.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'patrols.setup': ['system_admin', 'company_manager', 'site_manager'],
-  'patrols.alerts': ['company_manager', 'site_manager', 'site_supervisor'],
+  'patrols.alerts': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'reorders.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'reorders.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'reorders.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'kit.manage': ['system_admin', 'company_manager'],
   'kit.issue': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'training.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'hr_admin'],
   'training.record': ['system_admin', 'company_manager', 'hr_admin'],
   'privacy.manage': ['system_admin', 'company_manager'],
   'roster.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'roster.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'roster.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'roster.patterns': ['system_admin', 'company_manager'],
   'register.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'hr_admin', 'payroll_clerk'],
   'panic.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
-  'panic.manage': ['company_manager', 'site_manager', 'site_supervisor'],
+  'panic.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   // Uniform (D-33): see orders; decide lines; stores; collect and deliver; catalogue and site lists; record an issue.
   'uniform.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'stores_clerk'],
   'uniform.review': ['system_admin', 'company_manager', 'site_manager'],
   'uniform.stores': ['system_admin', 'company_manager', 'stores_clerk'],
-  'uniform.deliver': ['company_manager', 'site_manager', 'site_supervisor'],
+  'uniform.deliver': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'uniform.catalogue': ['system_admin', 'company_manager'],
   'uniform.issue': ['system_admin', 'company_manager', 'site_manager'],
   // Uniform condition notes: HR records (D-33). Written by supervisors; read by managers and HR; every view audited.
-  'hr.uniform_notes.write': ['company_manager', 'site_manager', 'site_supervisor'],
-  'hr.uniform_notes.view': ['company_manager', 'site_manager', 'hr_admin'],
+  'hr.uniform_notes.write': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'hr.uniform_notes.view': ['system_admin', 'company_manager', 'site_manager', 'hr_admin'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

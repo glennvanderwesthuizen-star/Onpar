@@ -314,13 +314,19 @@ describe('Duty On, Duty From and attendance', () => {
       expect(me.body.pendingDeclaration.kind).toBe('duty_on');
     });
 
-    it('does not let an administrator without the role log attendance for guards', async () => {
+    it('lets the administrator log attendance for a guard too (D-37: one sign-in for everything), still with a reason', async () => {
+      const noReason = await w
+        .http()
+        .post('/api/attendance/on-behalf')
+        .set('Authorization', `Bearer ${admin}`)
+        .send({ employeeId, kind: 'duty_from', reason: '' });
+      expect(noReason.status).toBe(400);
       const r = await w
         .http()
         .post('/api/attendance/on-behalf')
         .set('Authorization', `Bearer ${admin}`)
-        .send({ employeeId, kind: 'duty_from', reason: 'x x x' });
-      expect(r.status).toBe(403);
+        .send({ employeeId, kind: 'duty_from', reason: 'Guard phone broken, confirmed by radio' });
+      expect(r.status).toBe(201);
     });
 
     it("keeps attendance invisible to another company (scenario 14)", async () => {
