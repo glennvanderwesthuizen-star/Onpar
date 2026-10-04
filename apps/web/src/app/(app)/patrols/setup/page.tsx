@@ -20,9 +20,14 @@ interface Point {
   patrolTypeId: string;
   name: string;
   qrCode?: string;
-  lat: number | '';
-  lng: number | '';
+  lat: number | '' | null;
+  lng: number | '' | null;
   radiusM: number;
+  /** 'learned' from the first scans, or 'manual' when typed (owner, 4 Oct 2026). */
+  locationSource?: 'manual' | 'learned' | null;
+  locationSetAt?: string | null;
+  /** While it has no location: good scans that agree so far. */
+  learning?: { agreeing: number; needed: number };
   instruction: string;
   photoMode: 'off' | 'optional' | 'required';
   noteMode: 'off' | 'optional' | 'required';
@@ -232,7 +237,16 @@ function TypeCard({
                   ))}
                 </td>
                 <td className="small mute">
-                  {Number(p.lat).toFixed(5)}, {Number(p.lng).toFixed(5)} · {p.radiusM} m
+                  {p.lat == null || p.lat === '' ? (
+                    <span style={{ color: 'var(--amber)' }}>
+                      Learning location: {p.learning?.agreeing ?? 0} of {p.learning?.needed ?? 10} scans
+                    </span>
+                  ) : (
+                    <>
+                      {Number(p.lat).toFixed(5)}, {Number(p.lng).toFixed(5)} · {p.radiusM} m
+                      {p.locationSource === 'learned' && <div>Learned from the first scans</div>}
+                    </>
+                  )}
                 </td>
                 <td>
                   <div className="row" style={{ flexWrap: 'nowrap' }}>
@@ -390,8 +404,9 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
     <div ref={box} className="card" style={{ borderColor: 'var(--green)', borderWidth: 2, scrollMarginTop: 16 }}>
       <h2>{p.id ? `Edit ${initial.name}` : 'New checkpoint'}</h2>
       <p className="mute small">
-        Give it a name, then set where it is: stand at the checkpoint with a phone or laptop and press <b>Use my current location</b>, or type the
-        coordinates (from Google Maps: right-click the spot and click the numbers to copy them).
+        Give it a name. The location is optional: <b>leave it empty and On Par learns it</b> from the first 10 scans that agree (within 30 m); until then
+        scans are accepted without a distance check. Or set it now: stand at the checkpoint and press <b>Use my current location</b>, or paste the
+        coordinates from Google Maps.
       </p>
       <ErrorBanner error={save.error} />
       <div className="grid g2">
@@ -409,11 +424,11 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
         </Field>
       </div>
       <div className="grid g3">
-        <Field label="Latitude" error={save.errors.lat}>
-          <input type="number" step="any" value={p.lat} onChange={(e) => set({ lat: e.target.value === '' ? '' : Number(e.target.value) })} />
+        <Field label="Latitude (optional)" error={save.errors.lat}>
+          <input type="number" step="any" value={p.lat ?? ''} onChange={(e) => set({ lat: e.target.value === '' ? '' : Number(e.target.value) })} />
         </Field>
-        <Field label="Longitude" error={save.errors.lng}>
-          <input type="number" step="any" value={p.lng} onChange={(e) => set({ lng: e.target.value === '' ? '' : Number(e.target.value) })} />
+        <Field label="Longitude (optional)" error={save.errors.lng}>
+          <input type="number" step="any" value={p.lng ?? ''} onChange={(e) => set({ lng: e.target.value === '' ? '' : Number(e.target.value) })} />
         </Field>
         <Field label="Radius (metres)" hint="A scan counts within this distance.">
           <input type="number" min={5} max={500} value={p.radiusM} onChange={(e) => set({ radiusM: Number(e.target.value) })} />
@@ -428,7 +443,7 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
           }}
         />
       </Field>
-      {p.lat !== '' && p.lng !== '' && (
+      {p.lat !== '' && p.lat !== null && p.lng !== '' && p.lng !== null && (
         <p className="small" style={{ color: 'var(--green)', margin: '0 0 8px' }}>
           ✓ Location set: {p.lat}, {p.lng}
         </p>
@@ -522,7 +537,7 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
         // Say exactly what is still missing, rather than just greying out the button.
         const missing = [
           !p.name.trim() && 'a name',
-          (p.lat === '' || p.lng === '') && 'the location (paste coordinates or use your current location)',
+          (p.lat === '' || p.lat === null) !== (p.lng === '' || p.lng === null) && 'both latitude and longitude (or leave both empty to learn the location)',
           p.checks.some((c) => !c.label.trim()) && 'a "What to check" for every check (or Remove the empty ones)',
         ].filter(Boolean);
         return missing.length ? (
@@ -534,10 +549,19 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
       <div className="row" style={{ marginTop: 14 }}>
         <button
           className="btn"
-          disabled={save.busy || !p.name.trim() || p.lat === '' || p.lng === '' || p.checks.some((c) => !c.label.trim())}
+          disabled={save.busy || !p.name.trim() || (p.lat === '' || p.lat === null) !== (p.lng === '' || p.lng === null) || p.checks.some((c) => !c.label.trim())}
           onClick={() =>
             save.run(async () => {
-              const body = { ...p, qrCode: undefined, id: undefined };
+              const body = {
+                ...p,
+                qrCode: undefined,
+                id: undefined,
+                learning: undefined,
+                locationSource: undefined,
+                locationSetAt: undefined,
+                lat: p.lat === '' ? null : p.lat,
+                lng: p.lng === '' ? null : p.lng,
+              };
               await api(p.id ? `/patrols/points/${p.id}` : '/patrols/points', { method: p.id ? 'PUT' : 'POST', json: body });
               onDone();
             })
@@ -545,6 +569,11 @@ function PointForm({ initial, types, onClose, onDone }: { initial: Point; types:
         >
           {p.id ? 'Save point' : 'Add point'}
         </button>
+        {p.id && p.lat !== '' && p.lat !== null && (
+          <button className="btn ghost" title="Clears the location; it is learned again from the next scans" onClick={() => set({ lat: '', lng: '' })}>
+            Learn the location again
+          </button>
+        )}
         <button className="btn ghost" onClick={onClose}>
           Cancel
         </button>

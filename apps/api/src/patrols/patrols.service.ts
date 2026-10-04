@@ -14,8 +14,10 @@ import {
   Check,
   ReadingValue,
   SCAN_RESULT_LABELS,
+  learnPointLocation,
 } from '@onpar/rules';
 import type { GuardPrincipal } from '../common/auth';
+import { AuditService } from '../audit/audit.service';
 import { DbService, Tx } from '../db/db.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
@@ -52,6 +54,7 @@ export class PatrolsService implements OnModuleDestroy {
     private readonly storage: StorageService,
     private readonly scoring: ScoringService,
     private readonly reports: ReportsService,
+    private readonly audit: AuditService,
   ) {}
 
   /** Checks for overdue patrols, escalations and missed windows every minute. */
@@ -259,6 +262,7 @@ export class PatrolsService implements OnModuleDestroy {
       }
 
       await log('accepted', patrol.id, check.distanceM);
+      if (point.lat === null) await this.learnLocation(tx, point);
       const needsNothing = point.photo_mode !== 'required' && point.note_mode !== 'required' && (point.checks as Check[]).length === 0;
       await tx.query(
         `INSERT INTO patrol_visits (company_id, patrol_id, point_id, scanned_at, done_at) VALUES (app_company_id(), $1, $2, $3, $4)
@@ -451,6 +455,35 @@ export class PatrolsService implements OnModuleDestroy {
       lastFinishedAt: finished.length ? new Date(Math.max(...finished)) : null,
       activePatrol: !!active,
     };
+  }
+
+  /**
+   * A point set up without a location learns it from its first scans that agree (owner,
+   * 4 Oct 2026). From then on scans are checked against it. Recorded in the audit log.
+   */
+  private async learnLocation(tx: Tx, point: { id: string; name: string; location_set_at: Date | null }) {
+    const readings = (
+      await tx.query(
+        `SELECT lat, lng, accuracy_m AS "accuracyM" FROM patrol_scans
+          WHERE point_id = $1 AND result = 'accepted' AND received_at >= coalesce($2, '-infinity'::timestamptz)`,
+        [point.id, point.location_set_at],
+      )
+    ).rows;
+    const learned = learnPointLocation(readings);
+    if (!learned.location) return;
+    await tx.query(
+      `UPDATE patrol_points SET lat = $2, lng = $3, location_source = 'learned', location_set_at = now() WHERE id = $1 AND lat IS NULL`,
+      [point.id, learned.location.lat, learned.location.lng],
+    );
+    await this.audit.record(tx, {
+      actorType: 'system',
+      actorId: null,
+      actorLabel: 'On Par',
+      action: 'patrol.point_location_learned',
+      entityType: 'patrol_point',
+      entityId: point.id,
+      after: { ...learned.location, fromScans: learned.agreeing },
+    });
   }
 
   private async scanReply(tx: Tx, result: string, patrolId: string | null, distanceM?: number | null, point?: Record<string, any>) {

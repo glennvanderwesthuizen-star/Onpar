@@ -263,4 +263,47 @@ describe('patrols', () => {
       expect((await w.http().get(`/api/patrols/setup?siteId=${w.a.siteId}`).set(auth(b))).body.points).toEqual([]);
     });
   });
+
+  describe('a point set up without a location learns it from its first scans (owner, 4 Oct 2026)', () => {
+    let typeD: string;
+    it('can be created without a location, and accepts scans while it learns', async () => {
+      typeD = (await w.http().post('/api/patrols/types').set(auth(manager)).send({ siteId: w.a.siteId, code: 'D', name: 'Pump house check', singleScan: true })).body.id;
+      await w.http().put(`/api/patrols/types/${typeD}/rules`).set(auth(manager)).send({ shiftId: dayShift, perShift: 12, minGapMinutes: 0, maxDurationMinutes: 10 });
+      const r = await w.http().post('/api/patrols/points').set(auth(manager)).send({ patrolTypeId: typeD, name: 'Pump house' });
+      expect(r.status).toBe(201);
+      ids.pump = r.body.id;
+      // Only one of latitude and longitude is refused.
+      expect((await w.http().post('/api/patrols/points').set(auth(manager)).send({ patrolTypeId: typeD, name: 'Half', lat: -26.1 })).status).toBe(400);
+      const setup = (await w.http().get(`/api/patrols/setup?siteId=${w.a.siteId}`).set(auth(manager))).body;
+      const pt = setup.points.find((p: { id: string }) => p.id === ids.pump);
+      codes.pump = pt.qrCode;
+      expect(pt).toMatchObject({ lat: null, lng: null, learning: { agreeing: 0, needed: 10 } });
+    });
+
+    it('learns the location after 10 scans that agree, then checks distance as usual', async () => {
+      // An inaccurate scan is still refused and does not count.
+      expect((await scan('pump', '07:05', randomUUID(), near(), 60)).body.result).toBe('rejected_accuracy');
+      for (let h = 8; h <= 16; h++) {
+        const r = await scan('pump', `${String(h).padStart(2, '0')}:05`, randomUUID(), near((h % 3) * 0.00003, 0));
+        expect(r.body.accepted).toBe(true);
+      }
+      let pt = (await w.http().get(`/api/patrols/setup?siteId=${w.a.siteId}`).set(auth(manager))).body.points.find((p: { id: string }) => p.id === ids.pump);
+      expect(pt.learning.agreeing).toBe(9);
+      expect((await scan('pump', '17:05', randomUUID(), near(0.00003, 0))).body.accepted).toBe(true);
+      pt = (await w.http().get(`/api/patrols/setup?siteId=${w.a.siteId}`).set(auth(manager))).body.points.find((p: { id: string }) => p.id === ids.pump);
+      expect(pt.locationSource).toBe('learned');
+      expect(pt.lat).toBeCloseTo(BASE.lat, 3);
+      const far = await scan('pump', '17:20', randomUUID(), near(480 / 111_320));
+      expect(far.body.result).toBe('rejected_distance');
+      const [audit] = await ownerQuery("SELECT after FROM audit_log WHERE action = 'patrol.point_location_learned'");
+      expect(audit.after.fromScans).toBe(10);
+    });
+
+    it('clearing the location starts learning again', async () => {
+      const body = { patrolTypeId: typeD, name: 'Pump house', lat: null, lng: null };
+      expect((await w.http().put(`/api/patrols/points/${ids.pump}`).set(auth(manager)).send(body)).status).toBe(200);
+      const pt = (await w.http().get(`/api/patrols/setup?siteId=${w.a.siteId}`).set(auth(manager))).body.points.find((p: { id: string }) => p.id === ids.pump);
+      expect(pt).toMatchObject({ lat: null, locationSource: null });
+    });
+  });
 });

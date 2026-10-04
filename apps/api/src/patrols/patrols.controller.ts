@@ -21,7 +21,7 @@ import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { randomBytes } from 'node:crypto';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { ruleErrors, ruleFitWarning, sastDate, shiftLengthMinutes, SCAN_RESULT_LABELS } from '@onpar/rules';
+import { learnPointLocation, ruleErrors, ruleFitWarning, sastDate, shiftLengthMinutes, LEARN_SCANS_NEEDED, SCAN_RESULT_LABELS } from '@onpar/rules';
 import {
   CurrentGuard,
   CurrentUser,
@@ -60,15 +60,16 @@ const CheckSchema = z.discriminatedUnion('kind', [
 const PointBody = z.object({
   patrolTypeId: z.string().uuid(),
   name: z.string().trim().min(2, 'Name the point, for example Generator room.'),
-  lat: z.number().min(-90).max(90),
-  lng: z.number().min(-180).max(180),
+  // Both empty: On Par learns the location from the first scans (owner, 4 Oct 2026).
+  lat: z.number().min(-90).max(90).nullable().default(null),
+  lng: z.number().min(-180).max(180).nullable().default(null),
   radiusM: z.number().int().min(5).max(500).default(30),
   instruction: z.string().trim().max(1000).default(''),
   photoMode: z.enum(['off', 'optional', 'required']).default('off'),
   noteMode: z.enum(['off', 'optional', 'required']).default('off'),
   checks: z.array(CheckSchema).max(20).default([]),
   active: z.boolean().default(true),
-});
+}).refine((p) => (p.lat === null) === (p.lng === null), { message: 'Give both latitude and longitude, or leave both empty to learn the location.', path: ['lat'] });
 const AllocationBody = z.object({ shiftId: z.string().uuid(), points: z.number().min(0).max(1000) });
 const ReviewBody = z.object({ decision: z.enum(['accepted', 'not_accepted']), note: z.string().trim().min(3, 'Add a short note.') });
 const SafeBody = z.object({ note: z.string().trim().min(3, 'Say how you confirmed the guard is safe.') });
@@ -146,11 +147,24 @@ export class PatrolsController {
       });
       const points = (
         await tx.query(
-          `SELECT id, patrol_type_id AS "patrolTypeId", name, qr_code AS "qrCode", lat, lng, radius_m AS "radiusM", instruction,
-                  photo_mode AS "photoMode", note_mode AS "noteMode", checks, active FROM patrol_points WHERE site_id = $1 ORDER BY sort_order, name`,
+          `SELECT pp.id, pp.patrol_type_id AS "patrolTypeId", pp.name, pp.qr_code AS "qrCode", pp.lat, pp.lng, pp.radius_m AS "radiusM", pp.instruction,
+                  pp.photo_mode AS "photoMode", pp.note_mode AS "noteMode", pp.checks, pp.active,
+                  pp.location_source AS "locationSource", pp.location_set_at AS "locationSetAt"
+             FROM patrol_points pp WHERE pp.site_id = $1 ORDER BY pp.sort_order, pp.name`,
           [siteId],
         )
       ).rows;
+      // Points still learning their location: how many good scans agree so far ("4 of 10").
+      for (const pt of points.filter((x) => x.lat === null)) {
+        const readings = (
+          await tx.query(
+            `SELECT lat, lng, accuracy_m AS "accuracyM" FROM patrol_scans
+              WHERE point_id = $1 AND result = 'accepted' AND received_at >= coalesce($2, '-infinity'::timestamptz)`,
+            [pt.id, pt.locationSetAt],
+          )
+        ).rows;
+        pt.learning = { agreeing: learnPointLocation(readings).agreeing, needed: LEARN_SCANS_NEEDED };
+      }
       return { shifts, types, rules, points };
     });
   }
@@ -248,9 +262,10 @@ export class PatrolsController {
       const { id } = (
         await tx.query(
           `INSERT INTO patrol_points (company_id, site_id, patrol_type_id, name, qr_code, lat, lng, radius_m, instruction, photo_mode, note_mode, checks, active,
-                                      sort_order)
+                                      sort_order, location_source, location_set_at)
            VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                   (SELECT coalesce(max(sort_order), 0) + 1 FROM patrol_points WHERE patrol_type_id = $2)) RETURNING id`,
+                   (SELECT coalesce(max(sort_order), 0) + 1 FROM patrol_points WHERE patrol_type_id = $2),
+                   CASE WHEN $5::float8 IS NULL THEN NULL ELSE 'manual' END, now()) RETURNING id`,
           [t.site_id, p.patrolTypeId, p.name, newQrCode(), p.lat, p.lng, p.radiusM, p.instruction, p.photoMode, p.noteMode, JSON.stringify(p.checks), p.active],
         )
       ).rows[0];
@@ -270,7 +285,13 @@ export class PatrolsController {
       if (t.site_id !== before.site_id) throw new BadRequestException('A point cannot move to another site.');
       await tx.query(
         `UPDATE patrol_points SET patrol_type_id = $2, name = $3, lat = $4, lng = $5, radius_m = $6, instruction = $7, photo_mode = $8,
-                note_mode = $9, checks = $10, active = $11 WHERE id = $1`,
+                note_mode = $9, checks = $10, active = $11,
+                -- A typed location is "manual"; clearing it starts learning again from the next scans.
+                location_source = CASE WHEN $4::float8 IS NULL THEN NULL
+                                       WHEN lat IS NOT DISTINCT FROM $4::float8 AND lng IS NOT DISTINCT FROM $5::float8 THEN location_source
+                                       ELSE 'manual' END,
+                location_set_at = CASE WHEN lat IS NOT DISTINCT FROM $4::float8 AND lng IS NOT DISTINCT FROM $5::float8 THEN location_set_at ELSE now() END
+          WHERE id = $1`,
         [id, p.patrolTypeId, p.name, p.lat, p.lng, p.radiusM, p.instruction, p.photoMode, p.noteMode, JSON.stringify(p.checks), p.active],
       );
       await this.audit.byUser(tx, user, { action: 'patrol.point_update', entityType: 'patrol_point', entityId: id, before, after: p });

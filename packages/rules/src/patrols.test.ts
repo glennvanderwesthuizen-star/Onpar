@@ -1,4 +1,4 @@
-import { canStartPatrol, checkScan, distanceMetres, patrolShare, patrolWindows, pointMissing, readingOutOfLimit, ruleFitWarning, Check } from './index';
+import { canStartPatrol, checkScan, distanceMetres, learnPointLocation, patrolShare, patrolWindows, pointMissing, readingOutOfLimit, ruleFitWarning, Check } from './index';
 
 const start = new Date('2026-09-28T06:00:00+02:00');
 const end = new Date('2026-09-28T18:00:00+02:00');
@@ -86,5 +86,29 @@ describe('patrol points (scenario 6)', () => {
   it('gives nothing beyond the required number', () => {
     expect(patrolShare(6, 13, 14)).toBe(0);
     expect(patrolShare(10, 4, 1)).toBe(2.5);
+  });
+});
+
+describe('learning a point location from its first scans (owner, 4 Oct 2026)', () => {
+  // About 11 m per 0.0001 degrees of latitude.
+  const at = (dLat: number, accuracyM = 8) => ({ lat: -26.1 + dLat, lng: 28.05, accuracyM });
+
+  it('accepts scans of a point with no location, still requiring an accurate GPS reading', () => {
+    expect(checkScan(at(0), { lat: null, lng: null, radiusM: 30 }, null)).toEqual({ result: 'accepted', distanceM: null });
+    expect(checkScan(at(0, 40), { lat: null, lng: null, radiusM: 30 }, null).result).toBe('rejected_accuracy');
+  });
+
+  it('needs 10 good readings that agree within 30 m, then uses their average', () => {
+    const nine = Array.from({ length: 9 }, (_, i) => at(i * 0.00002));
+    expect(learnPointLocation(nine)).toEqual({ location: null, agreeing: 9 });
+    const ten = [...nine, at(0.0001)];
+    const r = learnPointLocation(ten);
+    expect(r.agreeing).toBe(10);
+    expect(r.location!.lat).toBeCloseTo(-26.1 + 0.0000856, 5);
+  });
+
+  it('ignores inaccurate readings and readings far from the rest', () => {
+    const readings = [...Array.from({ length: 9 }, () => at(0)), at(0, 60), at(0.01), at(0.0004)];
+    expect(learnPointLocation(readings)).toEqual({ location: null, agreeing: 9 });
   });
 });

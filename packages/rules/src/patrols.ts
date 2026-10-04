@@ -111,14 +111,43 @@ export const SCAN_RESULT_LABELS: Record<ScanResult | 'rejected_unknown_code' | '
  */
 export function checkScan(
   scan: { lat: number; lng: number; accuracyM: number },
-  point: { lat: number; lng: number; radiusM: number },
+  point: { lat: number | null; lng: number | null; radiusM: number },
   secondsSinceLastSameScan: number | null,
-): { result: ScanResult; distanceM: number } {
-  const distanceM = Math.round(distanceMetres(scan.lat, scan.lng, point.lat, point.lng));
+): { result: ScanResult; distanceM: number | null } {
+  // A point still learning its location cannot check distance yet; the accuracy rule still applies.
+  const distanceM = point.lat == null || point.lng == null ? null : Math.round(distanceMetres(scan.lat, scan.lng, point.lat, point.lng));
   if (secondsSinceLastSameScan !== null && secondsSinceLastSameScan < DUPLICATE_SCAN_WINDOW_S) return { result: 'ignored_duplicate', distanceM };
   if (!(scan.accuracyM <= GPS_ACCURACY_REQUIRED_M)) return { result: 'rejected_accuracy', distanceM };
-  if (distanceM > point.radiusM) return { result: 'rejected_distance', distanceM };
+  if (distanceM !== null && distanceM > point.radiusM) return { result: 'rejected_distance', distanceM };
   return { result: 'accepted', distanceM };
+}
+
+/** A point with no location yet learns it from this many good scans that agree (owner, 4 Oct 2026). */
+export const LEARN_SCANS_NEEDED = 10;
+/** Scans "agree" when they are within this distance of each other. */
+export const LEARN_AGREE_M = 30;
+
+/**
+ * Learns a patrol point's location from its first scans, for points set up without one
+ * (owner, 4 Oct 2026). Only readings accurate to 25 m count. It finds the reading with the
+ * most others within 30 m; once that group reaches 10, the location is their average.
+ * `agreeing` is the size of the best group so far ("4 of 10").
+ */
+export function learnPointLocation(
+  readings: { lat: number; lng: number; accuracyM: number }[],
+  needed = LEARN_SCANS_NEEDED,
+  agreeM = LEARN_AGREE_M,
+): { location: { lat: number; lng: number } | null; agreeing: number } {
+  const good = readings.filter((r) => r.accuracyM <= GPS_ACCURACY_REQUIRED_M);
+  let best: typeof good = [];
+  for (const r of good) {
+    const near = good.filter((o) => distanceMetres(r.lat, r.lng, o.lat, o.lng) <= agreeM);
+    if (near.length > best.length) best = near;
+  }
+  if (best.length < needed) return { location: null, agreeing: best.length };
+  const lat = best.reduce((n, r) => n + r.lat, 0) / best.length;
+  const lng = best.reduce((n, r) => n + r.lng, 0) / best.length;
+  return { location: { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 }, agreeing: best.length };
 }
 
 /** What a patrol point asks for (section 6.5). */
