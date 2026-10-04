@@ -245,6 +245,14 @@ export default function RosterPage() {
                   }
                 }}
               />
+              {!manage && (
+                <div className="banner" style={{ margin: '4px 0 14px' }}>
+                  You can see this roster but not change it. Allocating guards and changing days is done by a company manager,
+                  site manager or supervisor. If you are the system administrator and also run the rosters, add yourself as a
+                  <b> Company manager</b> on the Users page (a second sign-in, for example with yourname+manager@gmail.com) and use
+                  that for rostering.
+                </div>
+              )}
               {manage && (
                 <div className="row" style={{ margin: '4px 0 14px' }}>
                   <button className="btn" onClick={() => setPanel({ kind: 'allocate' })}>
