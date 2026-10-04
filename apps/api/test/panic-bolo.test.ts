@@ -45,7 +45,7 @@ describe('panic and BOLO', () => {
         name: 'Office Park',
         address: 'Rosebank',
         client: 'Office Park Body Corporate',
-        minimumGrade: 'E',
+        province: 'GP', minimumGrade: 'E',
         armed: false,
         shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }],
       })

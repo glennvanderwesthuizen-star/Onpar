@@ -530,3 +530,11 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Points:** only at a manager's or supervisor's discretion ("Award points", once per BOLO, within the usual limits). Never automatic, so guards are not tempted to send BOLOs for points.
 - **POPIA:** BOLO photos, videos and voice notes follow the company's retention switch. 90 days is proposed and set on the Privacy page; P-3 and P-5 are to be confirmed by the POPIA specialist.
 
+### TSF number and ID card sign-in (D-34), built 4 Oct 2026
+
+- **Sites** now have a province (Gauteng, Western Cape, KwaZulu-Natal and so on). It is required when a site is saved.
+- **Every guard gets a TSF number** like `BCD 123 GP` at enrolment, from his home site's province. Guards enrolled before this get theirs as soon as their site's province is set. A number never changes once issued (the database refuses it), even if the guard moves to another province.
+- **Website:** the number shows as a number plate (dark blue on white, TSF shield in the middle) on the Officers list and each officer's page. **Print ID cards** makes credit-card-size cards, 10 to an A4 page, with only the logo, the QR code and the guard's name.
+- **Phone:** Log in now opens the camera: the guard scans his ID card, sees his plate, then types his PIN. "No card? Type your TSF number" is the fallback. The employee number still works for older app versions.
+- The PIN is still checked by the server every time, and five wrong PINs still lock the login. The card on its own is not enough to sign in.
+

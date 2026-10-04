@@ -32,11 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import za.onpar.app.AppViewModel
+import za.onpar.core.TsfNumber
 import za.onpar.core.rosterDate
 import za.onpar.core.shiftText
 import za.onpar.core.todayText
@@ -170,30 +172,57 @@ private fun SetupScreen(vm: AppViewModel, busy: Boolean) {
     }
 }
 
+/**
+ * Sign-in: the guard scans his ID card (QR code with his TSF number), sees his number plate,
+ * then types his PIN, every time. Typing the number is the fallback for a lost or damaged card.
+ */
 @Composable
 private fun LoginScreen(vm: AppViewModel, busy: Boolean) {
     var number by remember { mutableStateOf("") }
+    var typing by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
     var pin by remember { mutableStateOf("") }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Log in", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = { vm.go(Page.Home) }) { Text("Back") }
     }
-    OutlinedTextField(
-        number, { number = it.filter(Char::isDigit).take(8) },
-        label = { Text("Employee number") }, singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        pin, { pin = it.filter(Char::isDigit).take(6) },
-        label = { Text("PIN") }, singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    BigButton(if (busy) "Checking…" else "Log in", enabled = !busy && number.isNotEmpty() && pin.length >= 4) {
-        vm.signIn(number, pin)
-        pin = ""
+    if (number.isEmpty() && !typing) {
+        Text("Scan your ID card", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text("Hold the QR code on your card in front of the camera.")
+        QrScanner(onCode = { code ->
+            val n = TsfNumber.fromIdCard(code)
+            if (n != null) {
+                number = n
+                hint = null
+            } else {
+                hint = "That is not an On Par ID card."
+            }
+        })
+        hint?.let { Text(it, color = Color(0xFFB3261E)) }
+        TextButton(onClick = { typing = true }) { Text("No card? Type your TSF number") }
+    } else {
+        if (typing && TsfNumber.normalise(number) == null) {
+            OutlinedTextField(
+                number, { number = it.uppercase().filter { c -> c.isLetterOrDigit() || c == ' ' }.take(12) },
+                label = { Text("TSF number, e.g. BCD 123 GP") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, capitalization = KeyboardCapitalization.Characters),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            TsfPlate(TsfNumber.normalise(number) ?: number)
+        }
+        OutlinedTextField(
+            pin, { pin = it.filter(Char::isDigit).take(6) },
+            label = { Text("PIN") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        BigButton(if (busy) "Checking…" else "Log in", enabled = !busy && number.isNotBlank() && pin.length >= 4) {
+            vm.signIn(number, pin)
+            pin = ""
+        }
+        TextButton(onClick = { number = ""; typing = false; pin = "" }) { Text("Not you? Scan again") }
     }
     Text("Five wrong PINs lock your login until your supervisor resets it.", color = Color.Gray, fontSize = 13.sp)
     OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth()) { Text("Call supervisor or control room") }

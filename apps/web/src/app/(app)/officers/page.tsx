@@ -6,10 +6,12 @@ import { qualificationStatus } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
+import { TsfPlate } from '@/components/TsfPlate';
 
 interface OfficerRow {
   id: string;
   employee_number: string;
+  tsf_number: string | null;
   full_name: string;
   id_number_masked: string;
   psira_grade: string;
@@ -31,11 +33,16 @@ export default function OfficersPage() {
           <h1>Officers</h1>
           <p className="mute">Everyone enrolled at the sites you can see.</p>
         </div>
-        {can('officers.enrol') && (
-          <Link className="btn" href="/officers/new">
-            + Enrol officer
+        <div className="row">
+          <Link className="btn ghost" href="/officers/cards">
+            Print ID cards
           </Link>
-        )}
+          {can('officers.enrol') && (
+            <Link className="btn" href="/officers/new">
+              + Enrol officer
+            </Link>
+          )}
+        </div>
       </div>
       <ErrorBanner error={error} />
       <div className="card scroll">
@@ -45,6 +52,7 @@ export default function OfficersPage() {
             <thead>
               <tr>
                 <th>Officer</th>
+                <th>TSF number</th>
                 <th>Site</th>
                 <th>PSIRA</th>
                 <th>PSIRA expiry</th>
@@ -61,6 +69,9 @@ export default function OfficersPage() {
                     <div className="mute small">
                       #{o.employee_number} · ID {o.id_number_masked}
                     </div>
+                  </td>
+                  <td>
+                    <TsfPlate number={o.tsf_number} size="sm" />
                   </td>
                   <td>{o.site_name}</td>
                   <td>Grade {o.psira_grade}</td>

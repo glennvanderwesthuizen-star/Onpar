@@ -16,6 +16,7 @@ import { assertSiteAccess, CurrentUser, RequirePermission, UserAuthGuard, UserPr
 import { parseBody, throwIfErrors } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { issueMissingTsfNumbers } from '../officers/tsf-numbers';
 
 const Shift = z.object({
   id: z.string().uuid().optional(),
@@ -35,6 +36,7 @@ const SiteBody = z.object({
   name: z.string().trim(),
   address: z.string().trim(),
   client: z.string().trim(),
+  province: z.string().nullable().default(null),
   minimumGrade: z.string(),
   armed: z.boolean(),
   payrollStartDay: z.number().int().default(DEFAULT_PAYROLL_START_DAY),
@@ -59,7 +61,7 @@ export class SitesController {
     return this.db.withTenant(user.companyId, async (tx) => {
       const sites = (
         await tx.query(
-          `SELECT s.id, s.name, s.address, s.client, s.minimum_grade, s.armed, s.payroll_start_day,
+          `SELECT s.id, s.name, s.address, s.client, s.province, s.minimum_grade, s.armed, s.payroll_start_day,
                   (SELECT count(*)::int FROM employees e WHERE e.home_site_id = s.id AND e.status = 'active') AS officers,
                   (SELECT coalesce(sum(guards_required), 0)::int FROM site_shifts sh WHERE sh.site_id = s.id) AS guards_per_day
              FROM sites s
@@ -87,9 +89,9 @@ export class SitesController {
       await this.assertUniqueName(tx, site.name, null);
       const { id } = (
         await tx.query(
-          `INSERT INTO sites (company_id, name, address, client, minimum_grade, armed, payroll_start_day)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6) RETURNING id`,
-          [site.name, site.address, site.client, site.minimumGrade, site.armed, site.payrollStartDay],
+          `INSERT INTO sites (company_id, name, address, client, minimum_grade, armed, payroll_start_day, province)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [site.name, site.address, site.client, site.minimumGrade, site.armed, site.payrollStartDay, site.province],
         )
       ).rows[0];
       await this.writeChildren(tx, id, site);
@@ -109,12 +111,21 @@ export class SitesController {
       await this.assertUniqueName(tx, site.name, id);
       await tx.query(
         `UPDATE sites SET name = $2, address = $3, client = $4, minimum_grade = $5, armed = $6,
-                payroll_start_day = $7, updated_at = now() WHERE id = $1`,
-        [id, site.name, site.address, site.client, site.minimumGrade, site.armed, site.payrollStartDay],
+                payroll_start_day = $7, province = $8, updated_at = now() WHERE id = $1`,
+        [id, site.name, site.address, site.client, site.minimumGrade, site.armed, site.payrollStartDay, site.province],
       );
       await this.writeChildren(tx, id, site);
       const after = await this.load(tx, id);
       await this.audit.byUser(tx, user, { action: 'site.update', entityType: 'site', entityId: id, before, after });
+      // Guards enrolled here before the site had a province get their TSF number now.
+      for (const t of await issueMissingTsfNumbers(tx, { siteId: id })) {
+        await this.audit.byUser(tx, user, {
+          action: 'officer.tsf_number_issued',
+          entityType: 'employee',
+          entityId: t.employeeId,
+          after: { tsfNumber: t.tsfNumber },
+        });
+      }
       return after;
     });
   }
@@ -172,7 +183,7 @@ export class SitesController {
   private async load(tx: Tx, id: string) {
     const site = (
       await tx.query(
-        `SELECT id, name, address, client, minimum_grade AS "minimumGrade", armed,
+        `SELECT id, name, address, client, province, minimum_grade AS "minimumGrade", armed,
                 payroll_start_day AS "payrollStartDay", updated_at AS "updatedAt"
            FROM sites WHERE id = $1`,
         [id],

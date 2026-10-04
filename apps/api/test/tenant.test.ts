@@ -36,7 +36,7 @@ describe('tenant separation', () => {
         name: 'Hijacked',
         address: 'x',
         client: 'x',
-        minimumGrade: 'E',
+        province: 'GP', minimumGrade: 'E',
         armed: false,
         payrollStartDay: 26,
         shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }],

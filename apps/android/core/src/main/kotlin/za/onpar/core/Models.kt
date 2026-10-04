@@ -3,7 +3,7 @@ package za.onpar.core
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Employee(val id: String, val name: String, val employeeNumber: String? = null)
+data class Employee(val id: String, val name: String, val employeeNumber: String? = null, val tsfNumber: String? = null)
 
 @Serializable
 data class LoginReply(val token: String, val employee: Employee)

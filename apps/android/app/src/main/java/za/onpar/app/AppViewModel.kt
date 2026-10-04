@@ -56,7 +56,7 @@ sealed interface Page {
     data object Roster : Page
     data object Uniform : Page
     data object Call : Page
-    /** Employee number and PIN, from the front screen. */
+    /** ID card (TSF number) and PIN, from the front screen. */
     data object SignIn : Page
     data object Bolo : Page
     /** What happened after PANIC was held. */

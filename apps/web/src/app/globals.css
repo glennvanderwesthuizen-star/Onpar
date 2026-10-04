@@ -208,6 +208,21 @@ a.line:hover { background: var(--bg); }
 .qr-plate .qr-foot { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .qr-plate .qr-foot .logo { font-size: 18px; color: #16232b; }
 .qr-plate .qr-id { font-family: monospace; font-size: 9px; color: #777; }
+
+/* TSF number as a number plate (owner's design): dark blue on white, TSF shield in the middle. */
+.plate { display: inline-flex; align-items: center; gap: .28em; background: #fff; color: #10308a; border: .12em solid #10308a; box-shadow: 0 0 0 .06em #fff, 0 0 0 .1em #10308a33; border-radius: .22em; padding: .06em .4em; font-family: "DIN Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif; font-stretch: condensed; font-weight: 800; letter-spacing: .02em; line-height: 1; white-space: nowrap; vertical-align: middle; }
+.plate img { height: 1em; width: auto; }
+.plate span:last-child { margin-left: .18em; }
+.plate-sm { font-size: 15px; }
+.plate-md { font-size: 26px; }
+.plate-lg { font-size: 54px; }
+/* Guard ID card, credit-card size: logo, QR code, name only. */
+.id-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.id-card { background: #fff; color: #111; border: 1px solid #222; border-radius: 12px; aspect-ratio: 85.6 / 54; display: grid; grid-template-columns: 1fr 1.15fr; grid-template-rows: auto 1fr; padding: 10px 12px; gap: 4px 10px; overflow: hidden; }
+.id-card .id-logo { grid-column: 1; width: 62%; height: auto; }
+.id-card .id-qr { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: center; }
+.id-card .id-qr img { width: 100%; max-height: 100%; height: auto; image-rendering: pixelated; }
+.id-card .id-name { grid-column: 1; align-self: end; font-size: 17px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
 @media print {
   .top, .no-print, .panic-banner { display: none !important; }
   .page { max-width: none; padding: 0; margin: 0; }
@@ -215,6 +230,9 @@ a.line:hover { background: var(--bg); }
   .qr-sheet { display: grid; grid-template-columns: 95mm 95mm; gap: 4mm; justify-content: center; }
   .qr-plate { width: 95mm; height: 140mm; aspect-ratio: auto; break-inside: avoid; border: 0.4mm solid #000; border-radius: 3mm; }
   .qr-plate .qr-lines { font-size: 13pt; }
+  .id-sheet { display: grid; grid-template-columns: 85.6mm 85.6mm; gap: 4mm; justify-content: center; }
+  .id-card { width: 85.6mm; height: 54mm; aspect-ratio: auto; break-inside: avoid; border: 0.2mm solid #999; border-radius: 3mm; padding: 3mm 3.5mm; }
+  .id-card .id-name { font-size: 12pt; }
 }
 
 /* Roster (sections 31, 37) */

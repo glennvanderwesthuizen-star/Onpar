@@ -4,7 +4,7 @@ const newSite = (overrides: Record<string, unknown> = {}) => ({
   name: 'Sandton Office Park',
   address: 'Sandton',
   client: 'Demo client',
-  minimumGrade: 'C',
+  province: 'GP', minimumGrade: 'C',
   armed: true,
   payrollStartDay: 26,
   shifts: [

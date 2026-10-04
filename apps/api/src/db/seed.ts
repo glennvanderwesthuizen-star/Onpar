@@ -38,7 +38,7 @@ export async function seedDemo(ownerUrl: string, opts: { companyName?: string; e
     }
     const { id: siteId } = (
       await client.query(
-        `INSERT INTO sites (company_id, name, address, client, minimum_grade, armed) VALUES ($1, 'Estate ABC', 'Sandton', 'Estate ABC HOA', 'D', false) RETURNING id`,
+        `INSERT INTO sites (company_id, name, address, client, minimum_grade, armed, province) VALUES ($1, 'Estate ABC', 'Sandton', 'Estate ABC HOA', 'D', false, 'GP') RETURNING id`,
         [companyId],
       )
     ).rows[0];

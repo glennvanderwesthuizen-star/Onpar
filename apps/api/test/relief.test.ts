@@ -48,7 +48,7 @@ describe('relief at shift change (D-33)', () => {
         name: 'Relief Estate',
         address: 'Sandton',
         client: 'Relief HOA',
-        minimumGrade: 'E',
+        province: 'GP', minimumGrade: 'E',
         armed: false,
         shifts: [
           { name: 'Day', kind: 'day', startTime: sastTime(new Date(later.getTime() - 12 * 3600_000)), endTime: sastTime(later), guardsRequired: 2 },

@@ -19,7 +19,7 @@ describe('officer enrolment', () => {
         name: 'Armed Site',
         address: 'Midrand',
         client: 'Bank',
-        minimumGrade: 'B',
+        province: 'GP', minimumGrade: 'B',
         armed: true,
         shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }],
       });

@@ -254,7 +254,7 @@ describe('Duty On, Duty From and attendance', () => {
         .http()
         .post('/api/sites')
         .set('Authorization', `Bearer ${admin}`)
-        .send({ name: 'Home Site', address: 'x', client: 'x', minimumGrade: 'E', armed: false,
+        .send({ name: 'Home Site', address: 'x', client: 'x', province: 'GP', minimumGrade: 'E', armed: false,
                 shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }] });
       const o = await enrol(w, admin, enrolmentData(elsewhere.body.id, { idNumber: '9202204720083', fullName: 'Relief Guard' }));
       const on = await w

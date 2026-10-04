@@ -99,17 +99,25 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         return sessions().filter { it.number != number }
     }
 
-    /** Employee number and PIN. Needs signal: the server checks the PIN and locks after five wrong tries. */
-    fun signIn(employeeNumber: String, pin: String): Employee {
-        val number = employeeNumber.trim()
+    /**
+     * The scanned ID card (or a typed TSF number or employee number), then the PIN. Needs signal:
+     * the server checks the PIN and locks after five wrong tries.
+     */
+    fun signIn(login: String, pin: String): Employee {
+        val typed = login.trim()
+        val sent = TsfNumber.fromIdCard(typed) ?: TsfNumber.normalise(typed) ?: typed
         val reply = api.post("/device/login", buildJsonObject {
-            put("employeeNumber", number)
+            put("login", sent)
+            put("employeeNumber", sent)
             put("pin", pin)
         })
         val r = OnParJson.decodeFromJsonElement(LoginReply.serializer(), reply)
+        // One session per guard, however he signed in (card, TSF number or employee number).
+        val number = r.employee.tsfNumber ?: r.employee.employeeNumber ?: sent
+        val same = setOfNotNull(number, sent, r.employee.employeeNumber, r.employee.tsfNumber)
         val salt = PinCheck.newSalt()
         val session = GuardSession(number, r.employee.name, r.token, salt, PinCheck.hash(pin, salt))
-        saveSessions(sessions().filter { it.number != number && it.token != r.token } + session)
+        saveSessions(sessions().filter { it.number !in same && it.token != r.token } + session)
         store["active"] = number
         clearGuardData()
         return r.employee
@@ -141,7 +149,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
             val updated = if (tries >= PinCheck.MAX_TRIES) s.copy(pinHash = "", failedUnlocks = 0) else s.copy(failedUnlocks = tries)
             saveSessions(list.map { if (it.number == s.number) updated else it })
             throw IllegalArgumentException(
-                if (tries >= PinCheck.MAX_TRIES) "Too many wrong PINs. Sign in again with your employee number and PIN when the phone has signal."
+                if (tries >= PinCheck.MAX_TRIES) "Too many wrong PINs. Scan your ID card and type your PIN again when the phone has signal."
                 else "Wrong PIN. ${PinCheck.MAX_TRIES - tries} tries left.",
             )
         }

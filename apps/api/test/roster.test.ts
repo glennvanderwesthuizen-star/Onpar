@@ -48,7 +48,7 @@ describe('rostering', () => {
         name: 'Office Park',
         address: 'Rosebank',
         client: 'Office Park Body Corporate',
-        minimumGrade: 'E',
+        province: 'GP', minimumGrade: 'E',
         armed: false,
         shifts: [
           { name: 'Morning', kind: 'day', startTime: '07:00', endTime: '15:00', guardsRequired: 1 },
@@ -61,7 +61,7 @@ describe('rostering', () => {
         name: 'Bank Vault',
         address: 'Midrand',
         client: 'Bank',
-        minimumGrade: 'B',
+        province: 'GP', minimumGrade: 'B',
         armed: true,
         shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }],
       })

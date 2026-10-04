@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { normaliseTsfNumber, parseIdCardQr } from '@onpar/rules';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { CurrentDevice, DeviceAuthGuard, DevicePrincipal } from '../common/auth';
@@ -12,8 +13,11 @@ const HeartbeatBody = z.object({
   kioskStatus: z.string().max(40).optional(),
 });
 
+// `login` is the scanned ID card, a typed TSF number or an employee number. Older app
+// versions send `employeeNumber`.
 const LoginBody = z.object({
-  employeeNumber: z.string().trim().min(1, 'Enter your employee number.'),
+  login: z.string().trim().max(200).optional(),
+  employeeNumber: z.string().trim().max(200).optional(),
   pin: z.string().regex(/^\d{4,6}$/, 'Your PIN is 4 to 6 digits.'),
 });
 
@@ -59,17 +63,21 @@ export class DeviceController {
     return { serverTime: new Date().toISOString() };
   }
 
-  /** Guard login with employee number and PIN. */
+  /** Guard login: ID card QR (or TSF number, or employee number), then the PIN, every time. */
   @Post('login')
   @HttpCode(200)
   async login(@CurrentDevice() device: DevicePrincipal, @Body() body: unknown) {
-    const { employeeNumber, pin } = parseBody(LoginBody, body);
-    const e = await this.pins.check(device.companyId, { employeeNumber }, pin, device.deviceId, 'guard.login');
+    const { login, employeeNumber, pin } = parseBody(LoginBody, body);
+    const text = login || employeeNumber || '';
+    if (!text) throw new BadRequestException({ message: 'Scan your ID card.', errors: { login: 'Scan your ID card.' } });
+    const tsfNumber = parseIdCardQr(text) ?? normaliseTsfNumber(text);
+    const who = tsfNumber ? { tsfNumber } : { employeeNumber: text };
+    const e = await this.pins.check(device.companyId, who, pin, device.deviceId, 'guard.login');
     const token = await this.jwt.signAsync(
       { sub: e.id, cid: device.companyId, did: device.deviceId, typ: 'guard' },
       { expiresIn: '16h' },
     );
-    return { token, employee: { id: e.id, name: e.name } };
+    return { token, employee: { id: e.id, name: e.name, employeeNumber: e.employeeNumber, tsfNumber: e.tsfNumber } };
   }
 }
 

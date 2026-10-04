@@ -9,6 +9,8 @@ export const PIN_LOCKOUT_ATTEMPTS = 5;
 export interface PinEmployee {
   id: string;
   name: string;
+  employeeNumber: string;
+  tsfNumber: string | null;
 }
 
 /**
@@ -24,21 +26,26 @@ export class PinService {
 
   async check(
     companyId: string,
-    who: { employeeNumber: string } | { employeeId: string },
+    who: { employeeNumber: string } | { employeeId: string } | { tsfNumber: string },
     pin: string,
     deviceId: string,
     successAction: string | null,
   ): Promise<PinEmployee> {
-    const [column, value] = 'employeeId' in who ? ['id', who.employeeId] : ['employee_number', who.employeeNumber];
+    const [column, value] =
+      'employeeId' in who
+        ? ['id', who.employeeId]
+        : 'tsfNumber' in who
+          ? ['tsf_number', who.tsfNumber]
+          : ['employee_number', who.employeeNumber];
     const e = await this.db.withTenant(companyId, async (tx) => {
       return (
         await tx.query(
-          `SELECT id, full_name, pin_hash, pin_locked_at, status FROM employees WHERE ${column} = $1`,
+          `SELECT id, full_name, employee_number, tsf_number, pin_hash, pin_locked_at, status FROM employees WHERE ${column} = $1`,
           [value],
         )
       ).rows[0];
     });
-    const deny = () => new UnauthorizedException('Employee number or PIN is incorrect.');
+    const deny = () => new UnauthorizedException('employeeId' in who ? 'That PIN is incorrect.' : 'ID card or PIN is incorrect.');
     if (!e || e.status !== 'active' || !e.pin_hash) throw deny();
     if (e.pin_locked_at) throw locked();
 
@@ -74,7 +81,7 @@ export class PinService {
 
     if (result === 'locked') throw locked();
     if (result === 'wrong') throw deny();
-    return { id: e.id, name: e.full_name };
+    return { id: e.id, name: e.full_name, employeeNumber: e.employee_number, tsfNumber: e.tsf_number };
   }
 }
 

@@ -7,10 +7,13 @@ import { api, imageUrl, openFile } from '@/lib/api';
 import { QUALIFICATION_TYPES, PSIRA_GRADES } from '@onpar/rules';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
+import { TsfPlate } from '@/components/TsfPlate';
 
 interface Officer {
   id: string;
   employeeNumber: string;
+  tsfNumber: string | null;
+  siteProvince: string | null;
   fullName: string;
   idNumberMasked: string;
   dateOfBirth: string;
@@ -53,6 +56,25 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
           </p>
         </div>
         <div className="row">{o.locked ? <Pill tone="red">Locked out (PIN)</Pill> : <Pill tone="green">Active</Pill>}</div>
+      </div>
+
+      <div className="card row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div>
+          <div className="small mute" style={{ marginBottom: 6 }}>
+            TSF number: the guard signs in by scanning their ID card, then typing their PIN
+          </div>
+          <TsfPlate number={o.tsfNumber} size="md" />
+          {!o.tsfNumber && (
+            <div className="small" style={{ marginTop: 6 }}>
+              {o.siteProvince ? 'Issued shortly.' : 'Set the province on the site to issue a TSF number.'}
+            </div>
+          )}
+        </div>
+        {o.tsfNumber && (
+          <Link className="btn ghost" href={`/officers/cards?ids=${o.id}`}>
+            Print ID card
+          </Link>
+        )}
       </div>
 
       {o.siteWarnings.length > 0 && (

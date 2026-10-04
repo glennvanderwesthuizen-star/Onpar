@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PSIRA_GRADES, REQUIREMENT_DAYS, siteErrors, guardsNeededPerDay } from '@onpar/rules';
+import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PROVINCES, PSIRA_GRADES, REQUIREMENT_DAYS, siteErrors, guardsNeededPerDay } from '@onpar/rules';
 import { ApiError } from '@/lib/api';
 import { ErrorBanner, Field } from './ui';
 
@@ -26,6 +26,7 @@ export interface SiteValue {
   name: string;
   address: string;
   client: string;
+  province: string | null;
   minimumGrade: string;
   armed: boolean;
   payrollStartDay: number;
@@ -37,6 +38,7 @@ export const EMPTY_SITE: SiteValue = {
   name: '',
   address: '',
   client: '',
+  province: null,
   minimumGrade: 'E',
   armed: false,
   payrollStartDay: DEFAULT_PAYROLL_START_DAY,
@@ -288,6 +290,16 @@ export function SiteForm({
           </Field>
           <Field label="Address or area" error={errors.address}>
             <input value={site.address} onChange={(e) => set({ address: e.target.value })} />
+          </Field>
+          <Field label="Province" error={errors.province} hint="Starts the TSF numbers of guards enrolled here, e.g. BCD 123 GP.">
+            <select value={site.province ?? ''} onChange={(e) => set({ province: e.target.value || null })}>
+              <option value="">Choose…</option>
+              {PROVINCES.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name} ({p.code})
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Minimum PSIRA grade" error={errors.minimumGrade}>
             <select value={site.minimumGrade} onChange={(e) => set({ minimumGrade: e.target.value })}>

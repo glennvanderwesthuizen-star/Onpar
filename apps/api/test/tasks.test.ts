@@ -67,7 +67,7 @@ describe('tasks', () => {
     });
 
     it('refuses a post at another site', async () => {
-      const site = await w.http().post('/api/sites').set(auth(admin)).send({ name: 'Other', address: 'x', client: 'x', minimumGrade: 'E', armed: false, shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }] });
+      const site = await w.http().post('/api/sites').set(auth(admin)).send({ name: 'Other', address: 'x', client: 'x', province: 'GP', minimumGrade: 'E', armed: false, shifts: [{ name: 'Day', kind: 'day', startTime: '06:00', endTime: '18:00', guardsRequired: 1 }] });
       const manager = await w.login('manager@a.test');
       const r = await w.http().post('/api/tasks').set(auth(manager)).send({ title: 'x', siteId: site.body.id, recurrence: 'once', startDate: today, assigneeType: 'post', assigneeDeviceId: deviceId });
       expect(r.status).toBe(400);

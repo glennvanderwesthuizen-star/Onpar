@@ -1,5 +1,6 @@
 'use client';
 
+import { provinceName } from '@onpar/rules';
 import Link from 'next/link';
 import { use, useState } from 'react';
 import { api } from '@/lib/api';
@@ -65,7 +66,7 @@ function ReadOnlySite({ site }: { site: Site }) {
     <>
       <div className="card">
         <p>
-          Minimum grade {site.minimumGrade} · {site.armed ? 'Armed' : 'Unarmed'} · Payroll month starts on day{' '}
+          {site.province ? `${provinceName(site.province)} · ` : 'Province not set · '}Minimum grade {site.minimumGrade} · {site.armed ? 'Armed' : 'Unarmed'} · Payroll month starts on day{' '}
           {site.payrollStartDay}
         </p>
       </div>

@@ -1,3 +1,4 @@
+import { isProvince } from './tsf-number';
 /** Site and shift rules (brief sections 6.13, 36 and 41). */
 
 import { guardsByDayError } from './roster';
@@ -60,6 +61,7 @@ export interface SiteInput {
   name?: string;
   address?: string;
   client?: string;
+  province?: string | null;
   minimumGrade?: string;
   armed?: boolean;
   payrollStartDay?: number;
@@ -72,6 +74,7 @@ export function siteErrors(site: SiteInput): Record<string, string> {
   if (!site.name?.trim()) errors.name = 'The site needs a name.';
   if (!site.address?.trim()) errors.address = 'Enter an address or area.';
   if (!site.client?.trim()) errors.client = 'Enter the client.';
+  if (!isProvince(site.province)) errors.province = 'Choose the province. It starts the TSF numbers of guards based here.';
   if (!site.minimumGrade || !['A', 'B', 'C', 'D', 'E'].includes(site.minimumGrade)) {
     errors.minimumGrade = 'Choose a minimum PSIRA grade, A to E.';
   }

@@ -143,6 +143,7 @@ describe('shifts and sites (sections 6.13, 36, 41)', () => {
     name: 'Estate ABC',
     address: 'Sandton',
     client: 'Estate ABC HOA',
+    province: 'GP',
     minimumGrade: 'C',
     armed: false,
     payrollStartDay: 26,
@@ -158,6 +159,10 @@ describe('shifts and sites (sections 6.13, 36, 41)', () => {
   it('rejects bad times and same start and end', () => {
     expect(shiftErrors({ ...day, startTime: '25:00' }).startTime).toBeDefined();
     expect(shiftErrors({ ...day, endTime: '06:00' }).endTime).toBeDefined();
+  });
+  it('needs a province, which starts the guards\' TSF numbers', () => {
+    expect(siteErrors({ ...site, province: null }).province).toMatch(/province/);
+    expect(siteErrors({ ...site, province: 'XX' }).province).toMatch(/province/);
   });
   it('keys shift errors by position', () => {
     expect(siteErrors({ ...site, shifts: [day, { ...night, name: '' }] })).toEqual({

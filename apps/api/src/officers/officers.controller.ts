@@ -34,6 +34,7 @@ import { parseBody, throwIfErrors } from '../common/validation';
 import { CONFIG, Config } from '../config';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { issueMissingTsfNumbers } from './tsf-numbers';
 import { CERTIFICATE_TYPES, IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter a date.');
@@ -93,7 +94,7 @@ export class OfficersController {
     return this.db.withTenant(user.companyId, async (tx) => {
       const rows = (
         await tx.query(
-          `SELECT e.id, e.employee_number, e.full_name, e.id_number_last4, e.psira_grade, e.psira_expiry, e.status,
+          `SELECT e.id, e.employee_number, e.tsf_number, e.full_name, e.id_number_last4, e.psira_grade, e.psira_expiry, e.status,
                   e.pin_locked_at IS NOT NULL AS locked, s.id AS site_id, s.name AS site_name
              FROM employees e JOIN sites s ON s.id = e.home_site_id
             WHERE ($1::uuid[] IS NULL OR e.home_site_id = ANY($1::uuid[]))
@@ -262,6 +263,7 @@ export class OfficersController {
         );
       }
 
+      await issueMissingTsfNumbers(tx, { employeeId });
       const after = await this.load(tx, user, employeeId);
       await this.audit.byUser(tx, user, {
         action: 'officer.enrol',
@@ -312,11 +314,11 @@ export class OfficersController {
   private async load(tx: Tx, user: UserPrincipal, id: string) {
     const e = (
       await tx.query(
-        `SELECT e.id, e.employee_number AS "employeeNumber", e.full_name AS "fullName", e.id_number_last4,
+        `SELECT e.id, e.employee_number AS "employeeNumber", e.tsf_number AS "tsfNumber", e.full_name AS "fullName", e.id_number_last4,
                 e.date_of_birth AS "dateOfBirth", e.cell_number AS "cellNumber", e.next_of_kin_name AS "nextOfKinName",
                 e.next_of_kin_number AS "nextOfKinNumber", e.psira_number AS "psiraNumber", e.psira_grade AS "psiraGrade",
                 e.psira_expiry AS "psiraExpiry", e.status, e.pin_locked_at IS NOT NULL AS locked, e.created_at AS "createdAt",
-                s.id AS "siteId", s.name AS "siteName", s.minimum_grade AS "siteMinimumGrade", s.armed AS "siteArmed"
+                s.id AS "siteId", s.name AS "siteName", s.province AS "siteProvince", s.minimum_grade AS "siteMinimumGrade", s.armed AS "siteArmed"
            FROM employees e JOIN sites s ON s.id = e.home_site_id WHERE e.id = $1`,
         [id],
       )
