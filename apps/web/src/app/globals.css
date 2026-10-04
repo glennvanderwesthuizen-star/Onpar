@@ -216,13 +216,27 @@ a.line:hover { background: var(--bg); }
 .plate-sm { font-size: 15px; }
 .plate-md { font-size: 26px; }
 .plate-lg { font-size: 54px; }
-/* Guard ID card, credit-card size: logo, QR code, name only. */
-.id-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-.id-card { background: #fff; color: #111; border: 1px solid #222; border-radius: 12px; aspect-ratio: 85.6 / 54; display: grid; grid-template-columns: 1fr 1.15fr; grid-template-rows: auto 1fr; padding: 10px 12px; gap: 4px 10px; overflow: hidden; }
-.id-card .id-logo { grid-column: 1; width: 62%; height: auto; }
-.id-card .id-qr { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: center; }
-.id-card .id-qr img { width: 100%; max-height: 100%; height: auto; image-rendering: pixelated; }
-.id-card .id-name { grid-column: 1; align-self: end; font-size: 17px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+/* Guard ID badge (owner's design): landscape, white/silver, black edging, TSF red accents. */
+.id-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.badge-card { --tsf-red: #a3161d; position: relative; background: linear-gradient(135deg, #ffffff 0%, #f4f5f6 55%, #e3e6e9 100%); color: #111; border: 2px solid #111; border-radius: 12px; aspect-ratio: 86 / 54; display: grid; grid-template-columns: 26% 1fr 30%; align-items: center; gap: 4%; padding: 7% 5% 6%; overflow: hidden; font-family: "Helvetica Neue", Arial, sans-serif; }
+.badge-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5%; background: var(--tsf-red); }
+.badge-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2.5%; background: #111; }
+.badge-card .badge-logo img { width: 100%; height: auto; display: block; mix-blend-mode: multiply; }
+.badge-card .badge-person { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.badge-card .badge-photo { width: 78%; aspect-ratio: 3 / 4; border: 2px solid #111; border-radius: 4px; overflow: hidden; background: #d9dde1; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #666; }
+.badge-card .badge-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.badge-card .badge-name { margin-top: 6%; font-weight: 800; font-size: 15px; line-height: 1.1; text-align: center; text-transform: uppercase; letter-spacing: .03em; border-bottom: 2px solid var(--tsf-red); padding-bottom: 2px; overflow-wrap: anywhere; }
+.badge-card .badge-qr { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.badge-card .badge-qr img { width: 100%; height: auto; image-rendering: pixelated; display: block; }
+.badge-card .badge-qr span { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; color: #444; }
+/* A print shop: one badge per page, with 3 mm extra all round to trim and crop marks. */
+.id-sheet.shop { grid-template-columns: 1fr; justify-items: center; }
+.shop-page { position: relative; padding: 3mm; }
+.shop-page .crop { position: absolute; width: 3mm; height: 3mm; border-color: #000; border-style: solid; border-width: 0; }
+.shop-page .crop.tl { left: 0; top: 0; border-right-width: 1px; border-bottom-width: 1px; }
+.shop-page .crop.tr { right: 0; top: 0; border-left-width: 1px; border-bottom-width: 1px; }
+.shop-page .crop.bl { left: 0; bottom: 0; border-right-width: 1px; border-top-width: 1px; }
+.shop-page .crop.br { right: 0; bottom: 0; border-left-width: 1px; border-top-width: 1px; }
 @media print {
   .top, .no-print, .panic-banner { display: none !important; }
   .page { max-width: none; padding: 0; margin: 0; }
@@ -230,9 +244,13 @@ a.line:hover { background: var(--bg); }
   .qr-sheet { display: grid; grid-template-columns: 95mm 95mm; gap: 4mm; justify-content: center; }
   .qr-plate { width: 95mm; height: 140mm; aspect-ratio: auto; break-inside: avoid; border: 0.4mm solid #000; border-radius: 3mm; }
   .qr-plate .qr-lines { font-size: 13pt; }
-  .id-sheet { display: grid; grid-template-columns: 85.6mm 85.6mm; gap: 4mm; justify-content: center; }
-  .id-card { width: 85.6mm; height: 54mm; aspect-ratio: auto; break-inside: avoid; border: 0.2mm solid #999; border-radius: 3mm; padding: 3mm 3.5mm; }
-  .id-card .id-name { font-size: 12pt; }
+  .id-sheet { display: grid; grid-template-columns: 86mm 86mm; gap: 4mm; justify-content: center; }
+  .badge-card { width: 86mm; height: 54mm; aspect-ratio: auto; break-inside: avoid; border: 0.5mm solid #000; border-radius: 3mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .badge-card .badge-name { font-size: 9pt; }
+  .badge-card .badge-qr span { font-size: 5pt; }
+  .id-sheet.shop { display: block; }
+  .id-sheet.shop .shop-page { width: 92mm; height: 60mm; padding: 3mm; break-after: page; margin: 0 auto; }
+  .id-sheet.shop .badge-card { border-radius: 0; }
 }
 
 /* Roster (sections 31, 37) */

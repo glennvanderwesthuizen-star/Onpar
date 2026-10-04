@@ -23,6 +23,15 @@ class TsfNumberTest {
     }
 
     @Test
+    fun `recognises the new badge link from any address, but not a checkpoint`() {
+        assertTrue(TsfNumber.isIdCard("https://13-247-19-106.sslip.io/b/Xq3_aB-9kLmNoPqRsTuVwXyZ"))
+        assertTrue(TsfNumber.isIdCard("https://onpar.co.za/b/Xq3_aB-9kLmNoPqRsTuVwXyZ"))
+        assertTrue(TsfNumber.isIdCard("ONPAR-ID:BCD123GP"))
+        assertTrue(!TsfNumber.isIdCard("https://onpar.co.za/p/Xq3_aB-9kLmNoPqRsTuVwXyZ"))
+        assertTrue(!TsfNumber.isIdCard("hello"))
+    }
+
+    @Test
     fun `accepts typing with spaces and small letters, and shows plate spacing`() {
         assertEquals("BCD123GP", TsfNumber.normalise("bcd 123-gp"))
         assertNull(TsfNumber.normalise("BCD 000 GP"))
@@ -55,6 +64,12 @@ class TsfNumberTest {
             device.lock()
             device.unlock("BCD123GP", "1234")
             assertEquals("t2", device.guardToken)
+            // The new badge: the link is sent as it is, and the same guard keeps one session.
+            server.enqueue(MockResponse().setBody("""{"token":"t3","employee":{"id":"e1","name":"Sipho","employeeNumber":"1001","tsfNumber":"BCD123GP"}}"""))
+            device.signIn("https://onpar.co.za/b/Xq3_aB-9kLmNoPqRsTuVwXyZ", "1234")
+            assertTrue(server.takeRequest().body.readUtf8().contains("\"login\":\"https://onpar.co.za/b/Xq3_aB-9kLmNoPqRsTuVwXyZ\""))
+            assertEquals("t3", device.guardToken)
+            assertTrue(device.lockedGuards().isEmpty())
         } finally {
             runCatching { server.shutdown() }
         }

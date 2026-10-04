@@ -88,7 +88,7 @@ Technical levers available now:
 | P-2 | **Operator agreements** (POPIA section 21) with the developer and the host (AWS). Each franchisee is a responsible party; TSF's role as franchisor to be defined (D-17). | Owner / legal |
 | P-3 | Confirm the **retention periods**, then switch photo removal on (Privacy page). Decide the process for removing records after 3 and 5 years. | Legal |
 | P-4 | Approve the **employee notice** (section 3) and how it is given (paper at enrolment, signed). | Legal |
-| P-5 | Advice on **photos used to identify people** (selfie against the registration photo) and whether consent or another lawful basis applies. | POPIA specialist |
+| P-5 | Advice on **photos used to identify people** (selfie against the registration photo; the face photo printed on the guard's ID badge; automatic face matching, D-35) and whether consent or another lawful basis applies. The owner's working assumption until the review at the end of the design: reasonable and allowed, with the automatic matching behind a company switch. | POPIA specialist |
 | P-6 | A **Personal Information Impact Assessment** before the pilot. | Information Officer |
 | P-7 | Adopt the **breach-response procedure** (section 4) with names and phone numbers. | Information Officer |
 | P-8 | Labour-law review of the scoring rules and declarations (brief section 9; L-items in OPEN_DECISIONS). | Employment lawyer |

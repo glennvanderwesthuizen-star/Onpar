@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
-import { normaliseTsfNumber, parseIdCardQr } from '@onpar/rules';
+import { BadRequestException, Body, UnauthorizedException, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { normaliseTsfNumber, parseCardQr } from '@onpar/rules';
+import { badgeOwner } from '../officers/badges';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { CurrentDevice, DeviceAuthGuard, DevicePrincipal } from '../common/auth';
@@ -70,8 +71,17 @@ export class DeviceController {
     const { login, employeeNumber, pin } = parseBody(LoginBody, body);
     const text = login || employeeNumber || '';
     if (!text) throw new BadRequestException({ message: 'Scan your ID card.', errors: { login: 'Scan your ID card.' } });
-    const tsfNumber = parseIdCardQr(text) ?? normaliseTsfNumber(text);
-    const who = tsfNumber ? { tsfNumber } : { employeeNumber: text };
+    const card = parseCardQr(text);
+    let who: { employeeId: string } | { tsfNumber: string } | { employeeNumber: string };
+    if (card?.kind === 'badge') {
+      const owner = await this.db.withTenant(device.companyId, (tx) => badgeOwner(tx, card.token));
+      if (owner === 'cancelled') throw new UnauthorizedException('This ID card has been cancelled. Use your new card, or type your TSF number.');
+      if (!owner) throw new UnauthorizedException('ID card or PIN is incorrect.');
+      who = owner;
+    } else {
+      const tsfNumber = card?.kind === 'tsf' ? card.tsfNumber : normaliseTsfNumber(text);
+      who = tsfNumber ? { tsfNumber } : { employeeNumber: text };
+    }
     const e = await this.pins.check(device.companyId, who, pin, device.deviceId, 'guard.login');
     const token = await this.jwt.signAsync(
       { sub: e.id, cid: device.companyId, did: device.deviceId, typ: 'guard' },

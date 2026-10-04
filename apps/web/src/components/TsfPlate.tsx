@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { idCardQr } from '@onpar/rules';
+import { imageUrl } from '@/lib/api';
 
 /**
  * A guard's TSF number shown as a number plate: "BCD [TSF shield] 123 GP", dark blue on white,
@@ -22,20 +22,39 @@ export function TsfPlate({ number, size = 'md' }: { number: string | null | unde
 }
 
 /**
- * The guard's ID card (credit-card size): the company logo, the QR code holding the TSF number,
- * and the guard's name. Nothing else, for POPIA (owner, 4 Oct 2026). Scanning it at the post phone
- * fills in who is signing in; the PIN is still typed every time.
+ * The guard's ID badge (owner's design, 4 Oct 2026), landscape for wearing on the chest: the TSF
+ * logo on the left, his photo in the middle with only his full name beneath, and the QR code on
+ * the right. The QR code holds only a random card code in a link: no name or number.
  */
-export function IdCard({ tsfNumber, name }: { tsfNumber: string; name: string }) {
+export function IdBadge({ qr, name, photoPath }: { qr: string; name: string; photoPath: string | null }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
   useEffect(() => {
-    QRCode.toDataURL(idCardQr(tsfNumber), { margin: 1, width: 500, errorCorrectionLevel: 'M' }).then(setSrc);
-  }, [tsfNumber]);
+    QRCode.toDataURL(qr, { margin: 0, width: 600, errorCorrectionLevel: 'M' }).then(setSrc);
+  }, [qr]);
+  useEffect(() => {
+    if (!photoPath) return;
+    let u: string | null = null;
+    imageUrl(photoPath)
+      .then((x) => setPhoto((u = x)))
+      .catch(() => setPhoto(null));
+    return () => {
+      if (u) URL.revokeObjectURL(u);
+    };
+  }, [photoPath]);
   return (
-    <div className="id-card">
-      <img className="id-logo" src="/tsf-logo.png" alt="The Security Franchise" />
-      <div className="id-qr">{src && <img src={src} alt={`ID card QR code for ${name}`} />}</div>
-      <div className="id-name">{name}</div>
+    <div className="badge-card">
+      <div className="badge-logo">
+        <img src="/tsf-logo.png" alt="The Security Franchise" />
+      </div>
+      <div className="badge-person">
+        <div className="badge-photo">{photo ? <img src={photo} alt={name} /> : <span>No photo</span>}</div>
+        <div className="badge-name">{name}</div>
+      </div>
+      <div className="badge-qr">
+        {src && <img src={src} alt="ID card QR code" />}
+        <span>Scan to verify</span>
+      </div>
     </div>
   );
 }

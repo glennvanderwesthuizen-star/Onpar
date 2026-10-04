@@ -190,9 +190,8 @@ private fun LoginScreen(vm: AppViewModel, busy: Boolean) {
         Text("Scan your ID card", fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Text("Hold the QR code on your card in front of the camera.")
         QrScanner(onCode = { code ->
-            val n = TsfNumber.fromIdCard(code)
-            if (n != null) {
-                number = n
+            if (TsfNumber.isIdCard(code)) {
+                number = code.trim()
                 hint = null
             } else {
                 hint = "That is not an On Par ID card."
@@ -208,8 +207,10 @@ private fun LoginScreen(vm: AppViewModel, busy: Boolean) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, capitalization = KeyboardCapitalization.Characters),
                 modifier = Modifier.fillMaxWidth(),
             )
+        } else if (TsfNumber.normalise(number) != null) {
+            TsfPlate(TsfNumber.normalise(number)!!)
         } else {
-            TsfPlate(TsfNumber.normalise(number) ?: number)
+            Text("ID card read. Now type your PIN.", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Green)
         }
         OutlinedTextField(
             pin, { pin = it.filter(Char::isDigit).take(6) },

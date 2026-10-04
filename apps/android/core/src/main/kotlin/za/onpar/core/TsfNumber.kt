@@ -24,6 +24,14 @@ object TsfNumber {
         return normalise(t.substring(ID_QR_PREFIX.length))
     }
 
+    private val BADGE = Regex("^https?://[^/\\s]+/b/([A-Za-z0-9_-]{24})/?$")
+
+    /**
+     * ID badge v2: the QR code is a link with a random card code (no personal information).
+     * True for a badge link from any address, or an older ONPAR-ID card. The server reads it.
+     */
+    fun isIdCard(text: String): Boolean = BADGE.matches(text.trim()) || fromIdCard(text) != null
+
     /** The three parts for showing it as a plate: letters, digits, province. */
     fun parts(n: String): Triple<String, String, String>? =
         PATTERN.matchEntire(n)?.groupValues?.let { Triple(it[1], it[2], it[3]) }

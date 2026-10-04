@@ -19,7 +19,9 @@ export default function LoginPage() {
     setError(null);
     try {
       await api('/auth/login', { method: 'POST', json: { email, password } });
-      router.replace('/');
+      // Only a path on this site, never another address.
+      const next = new URLSearchParams(window.location.search).get('next') ?? '';
+      router.replace(next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/');
     } catch (err) {
       setError(err);
       setBusy(false);

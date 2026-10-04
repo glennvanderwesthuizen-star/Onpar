@@ -538,3 +538,10 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Phone:** Log in now opens the camera: the guard scans his ID card, sees his plate, then types his PIN. "No card? Type your TSF number" is the fallback. The employee number still works for older app versions.
 - The PIN is still checked by the server every time, and five wrong PINs still lock the login. The card on its own is not enough to sign in.
 
+### ID badge v2 (D-35), built 4 Oct 2026
+
+- **The badge:** landscape, credit-card size: TSF logo on the left, the guard's face photo (from enrolment) in the middle with only his full name beneath, and the QR code on the right. White and silver, black edging, TSF red stripe.
+- **The QR code** holds only a random card code inside a link, with no name or number. At the post phone the guard scans it, then types his PIN. A supervisor who scans it with any phone camera is asked to sign in first; then the guard's record opens, only if the supervisor may see that guard. Every scan is in the audit log.
+- **Lost or damaged card:** "Reissue" on the officer's page cancels the old card at once (it no longer signs in, and scanning it shows "Cancelled card") and issues a new one. Cards are never deleted.
+- **Printing:** Officers, then Print ID badges: either 10 on an A4 page for your own printer, or one per page with crop marks for a print shop (save as PDF from the print window).
+

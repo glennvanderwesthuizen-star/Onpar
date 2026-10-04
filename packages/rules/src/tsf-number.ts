@@ -73,3 +73,31 @@ export function parseIdCardQr(text: string): string | null {
   if (!t.toUpperCase().startsWith(ID_QR_PREFIX)) return null;
   return normaliseTsfNumber(t.slice(ID_QR_PREFIX.length));
 }
+
+/**
+ * ID badge v2 (owner, 4 Oct 2026): the QR code holds only a random card code inside a link to
+ * the company's On Par address, e.g. https://onpar.example/b/Xq3…; no name or number. A
+ * supervisor who scans it with any phone camera must sign in before the guard's record opens.
+ * The post phone reads the code from the same link. A lost card is cancelled by reissuing it.
+ */
+export const BADGE_PATH = '/b/';
+const BADGE_TOKEN = /^[A-Za-z0-9_-]{24}$/;
+
+export function isBadgeToken(t: string): boolean {
+  return BADGE_TOKEN.test(t);
+}
+
+export function badgeUrl(origin: string, token: string): string {
+  return origin.replace(/\/+$/, '') + BADGE_PATH + token;
+}
+
+export type ScannedCard = { kind: 'badge'; token: string } | { kind: 'tsf'; tsfNumber: string };
+
+/** Reads a scanned ID card: a badge link (any address, so a change of address keeps cards working on the phone) or an older ONPAR-ID card. */
+export function parseCardQr(text: string): ScannedCard | null {
+  const t = (text ?? '').trim();
+  const m = /^https?:\/\/[^/\s]+\/b\/([A-Za-z0-9_-]{24})\/?$/.exec(t);
+  if (m) return { kind: 'badge', token: m[1] };
+  const n = parseIdCardQr(t);
+  return n ? { kind: 'tsf', tsfNumber: n } : null;
+}

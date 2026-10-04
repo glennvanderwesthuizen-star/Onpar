@@ -6,6 +6,9 @@ import {
   normaliseTsfNumber,
   parseIdCardQr,
   provinceName,
+  badgeUrl,
+  isBadgeToken,
+  parseCardQr,
   tsfNumberProvince,
 } from './tsf-number';
 
@@ -54,5 +57,24 @@ describe('TSF number (plate-style guard username)', () => {
   it('names the provinces', () => {
     expect(provinceName('NC')).toBe('Northern Cape');
     expect(provinceName(null)).toBe('');
+  });
+});
+
+describe('ID badge v2 (opaque card code)', () => {
+  const token = 'Xq3_aB-9kLmNoPqRsTuVwXyZ';
+  it('puts only a random code in a link to the company address', () => {
+    expect(badgeUrl('https://13-247-19-106.sslip.io/', token)).toBe(`https://13-247-19-106.sslip.io/b/${token}`);
+    expect(isBadgeToken(token)).toBe(true);
+    expect(isBadgeToken('short')).toBe(false);
+  });
+  it('reads a badge from any address, and still reads older cards', () => {
+    expect(parseCardQr(`https://onpar.co.za/b/${token}`)).toEqual({ kind: 'badge', token });
+    expect(parseCardQr(` http://localhost:3000/b/${token}/ `)).toEqual({ kind: 'badge', token });
+    expect(parseCardQr('ONPAR-ID:BCD123GP')).toEqual({ kind: 'tsf', tsfNumber: 'BCD123GP' });
+  });
+  it('refuses checkpoint codes and other links', () => {
+    expect(parseCardQr(`https://onpar.co.za/p/${token}`)).toBeNull();
+    expect(parseCardQr(`https://onpar.co.za/b/${token}x`)).toBeNull();
+    expect(parseCardQr('hello')).toBeNull();
   });
 });

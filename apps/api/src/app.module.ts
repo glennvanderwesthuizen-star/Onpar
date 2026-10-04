@@ -7,6 +7,7 @@ import { AuditController } from './audit/audit.controller';
 import { AuthController } from './auth/auth.controller';
 import { SitesController } from './sites/sites.controller';
 import { OfficersController } from './officers/officers.controller';
+import { BadgesController } from './officers/badges';
 import { DevicesController } from './devices/devices.controller';
 import { DeviceController } from './device-api/device.controller';
 import { StorageService } from './storage/storage.service';
@@ -51,6 +52,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       AuthController,
       SitesController,
       OfficersController,
+      BadgesController,
       DevicesController,
       DeviceController,
       GuardController,

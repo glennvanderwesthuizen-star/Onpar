@@ -4,34 +4,36 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { ErrorBanner, useLoad } from '@/components/ui';
-import { IdCard } from '@/components/TsfPlate';
+import { IdBadge } from '@/components/TsfPlate';
 
-interface OfficerRow {
+interface BadgeRow {
   id: string;
-  full_name: string;
-  tsf_number: string | null;
-  status: string;
-  site_id: string;
-  site_name: string;
+  fullName: string;
+  tsfNumber: string | null;
+  siteId: string;
+  siteName: string;
+  hasPhoto: boolean;
+  qr: string;
 }
 
 /**
- * Guard ID cards to print: credit-card size, 10 to an A4 page. Each card has only the company
- * logo, the QR code with the guard's TSF number, and their name (owner, 4 Oct 2026, for POPIA).
+ * Guard ID badges to print (owner's design, 4 Oct 2026). Every active guard has a card ready
+ * from enrolment. Two layouts: a sheet of 10 for your own printer, or one badge per page with
+ * crop marks for a print shop (save it as a PDF from the print window).
  */
 export default function IdCardsPage() {
-  const { data, error } = useLoad(() => api<OfficerRow[]>('/officers'));
-  const [ids, setIds] = useState<string[] | null>(null);
+  const sites = useLoad(() => api<{ id: string; name: string }[]>('/sites'));
   const [siteId, setSiteId] = useState('');
+  const { data, error } = useLoad(() => api<BadgeRow[]>(`/badges${siteId ? `?siteId=${siteId}` : ''}`), [siteId]);
+  const [ids, setIds] = useState<string[] | null>(null);
+  const [shop, setShop] = useState(false);
   useEffect(() => {
     const v = new URLSearchParams(window.location.search).get('ids');
     if (v) setIds(v.split(',').filter(Boolean));
   }, []);
 
-  const withNumber = (data ?? []).filter((o) => o.status === 'active' && o.tsf_number);
-  const waiting = (data ?? []).filter((o) => o.status === 'active' && !o.tsf_number && (!siteId || o.site_id === siteId));
-  const shown = ids ? withNumber.filter((o) => ids.includes(o.id)) : withNumber.filter((o) => !siteId || o.site_id === siteId);
-  const sites = [...new Map((data ?? []).map((o) => [o.site_id, o.site_name])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const shown = (data ?? []).filter((o) => !ids || ids.includes(o.id));
+  const noPhoto = shown.filter((o) => !o.hasPhoto).length;
 
   return (
     <>
@@ -40,10 +42,10 @@ export default function IdCardsPage() {
           <Link href="/officers" className="mute small">
             ← Officers
           </Link>
-          <h1>ID cards</h1>
+          <h1>ID badges</h1>
           <p className="mute">
-            Each card shows only the QR code and the guard&apos;s name. At the post phone the guard scans it, then types
-            their PIN. Print on card stock, 10 to an A4 page, and cut out.
+            Logo, photo, full name and a QR code, nothing else. The QR code holds only a random card code: the guard
+            scans it at the post phone and types his PIN; a supervisor who scans it must sign in to see his record.
           </p>
         </div>
         <div className="row">
@@ -55,31 +57,50 @@ export default function IdCardsPage() {
             <div style={{ width: 220 }}>
               <select value={siteId} onChange={(e) => setSiteId(e.target.value)} aria-label="Site">
                 <option value="">All my sites</option>
-                {sites.map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
+                {sites.data?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
                   </option>
                 ))}
               </select>
             </div>
           )}
+          <select style={{ width: 230 }} value={shop ? 'shop' : 'sheet'} onChange={(e) => setShop(e.target.value === 'shop')} aria-label="Layout">
+            <option value="sheet">My printer: 10 on an A4 page</option>
+            <option value="shop">Print shop: 1 per page, crop marks</option>
+          </select>
           <button className="btn" disabled={!shown.length} onClick={() => window.print()}>
-            Print {shown.length} card{shown.length === 1 ? '' : 's'}
+            {shop ? 'Print or save as PDF' : 'Print'} ({shown.length})
           </button>
         </div>
       </div>
       <ErrorBanner error={error} />
-      {!ids && waiting.length > 0 && (
-        <div className="banner warn no-print">
-          {waiting.length} guard{waiting.length === 1 ? ' has' : 's have'} no TSF number yet because their site has no
-          province. Set the province on the site and the numbers are issued straight away.
+      {shop && (
+        <div className="banner no-print">
+          For a print shop: press the button, choose <b>Save as PDF</b> as the printer, and set the paper size to the
+          shop&apos;s size (each page is 92 × 60 mm: an 86 × 54 mm badge with 3 mm to trim all round). Send them the PDF.
         </div>
       )}
-      {data && !shown.length && <div className="card mute no-print">No ID cards to print.</div>}
-      <div className="id-sheet">
-        {shown.map((o) => (
-          <IdCard key={o.id} tsfNumber={o.tsf_number!} name={o.full_name} />
-        ))}
+      {noPhoto > 0 && (
+        <div className="banner warn no-print">
+          {noPhoto} guard{noPhoto === 1 ? ' has' : 's have'} no face photo, so the badge shows a blank space.
+        </div>
+      )}
+      {data && !shown.length && <div className="card mute no-print">No badges to print.</div>}
+      <div className={`id-sheet${shop ? ' shop' : ''}`}>
+        {shown.map((o) => {
+          const badge = <IdBadge key={o.id} qr={o.qr} name={o.fullName} photoPath={o.hasPhoto ? `/officers/${o.id}/photos/face?purpose=badge` : null} />;
+          return shop ? (
+            <div key={o.id} className="shop-page">
+              {['tl', 'tr', 'bl', 'br'].map((c) => (
+                <span key={c} className={`crop ${c}`} />
+              ))}
+              {badge}
+            </div>
+          ) : (
+            badge
+          );
+        })}
       </div>
     </>
   );

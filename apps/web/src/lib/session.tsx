@@ -25,7 +25,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const refresh = () =>
     api<Me>('/auth/me')
       .then(setMe)
-      .catch(() => router.replace('/login'));
+      .catch(() => {
+        // Come back here after signing in (for example a scanned ID badge).
+        const here = window.location.pathname + window.location.search;
+        router.replace(here && here !== '/' ? `/login?next=${encodeURIComponent(here)}` : '/login');
+      });
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps

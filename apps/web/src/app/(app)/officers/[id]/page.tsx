@@ -8,12 +8,14 @@ import { QUALIFICATION_TYPES, PSIRA_GRADES } from '@onpar/rules';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
 import { TsfPlate } from '@/components/TsfPlate';
+import { BadgeActions } from '@/components/BadgeActions';
 
 interface Officer {
   id: string;
   employeeNumber: string;
   tsfNumber: string | null;
   siteProvince: string | null;
+  badges: { issuedAt: string; cancelledAt: string | null; cancelReason: string | null }[];
   fullName: string;
   idNumberMasked: string;
   dateOfBirth: string;
@@ -58,10 +60,10 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
         <div className="row">{o.locked ? <Pill tone="red">Locked out (PIN)</Pill> : <Pill tone="green">Active</Pill>}</div>
       </div>
 
-      <div className="card row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+      <div className="card row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <div className="small mute" style={{ marginBottom: 6 }}>
-            TSF number: the guard signs in by scanning their ID card, then typing their PIN
+            TSF number: typed at the post phone if the guard has no card
           </div>
           <TsfPlate number={o.tsfNumber} size="md" />
           {!o.tsfNumber && (
@@ -70,13 +72,8 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
         </div>
-        {o.tsfNumber && (
-          <Link className="btn ghost" href={`/officers/cards?ids=${o.id}`}>
-            Print ID card
-          </Link>
-        )}
+        {can('officers.enrol') && <BadgeActions officer={o} onDone={reload} />}
       </div>
-
       {o.siteWarnings.length > 0 && (
         <div className="banner warn">
           <b>Site check</b>

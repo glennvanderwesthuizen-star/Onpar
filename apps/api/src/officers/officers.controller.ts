@@ -9,6 +9,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseGuards,
@@ -35,6 +36,7 @@ import { CONFIG, Config } from '../config';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { issueMissingTsfNumbers } from './tsf-numbers';
+import { ensureBadge } from './badges';
 import { CERTIFICATE_TYPES, IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter a date.');
@@ -120,6 +122,7 @@ export class OfficersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('kind') kind: string,
     @Res() res: Response,
+    @Query('purpose') purpose?: string,
   ) {
     const photo = await this.db.withTenant(user.companyId, async (tx) => {
       const e = (await tx.query('SELECT home_site_id FROM employees WHERE id = $1', [id])).rows[0];
@@ -132,7 +135,7 @@ export class OfficersController {
         ])
       ).rows[0];
       if (!p) throw new NotFoundException('Photo not found.');
-      await this.audit.byUser(tx, user, { action: 'officer.photo_view', entityType: 'employee', entityId: id, after: { kind } });
+      await this.audit.byUser(tx, user, { action: 'officer.photo_view', entityType: 'employee', entityId: id, after: { kind, ...(purpose === 'badge' ? { purpose: 'ID badge' } : {}) } });
       return p;
     });
     res.setHeader('Content-Type', photo.content_type);
@@ -264,6 +267,7 @@ export class OfficersController {
       }
 
       await issueMissingTsfNumbers(tx, { employeeId });
+      await ensureBadge(tx, employeeId, user.userId);
       const after = await this.load(tx, user, employeeId);
       await this.audit.byUser(tx, user, {
         action: 'officer.enrol',
@@ -347,6 +351,13 @@ export class OfficersController {
     const photos = (await tx.query('SELECT kind FROM employee_photos WHERE employee_id = $1', [id])).rows.map(
       (p) => p.kind as PhotoKind,
     );
+    const badges = (
+      await tx.query(
+        `SELECT issued_at AS "issuedAt", revoked_at AS "cancelledAt", revoke_reason AS "cancelReason"
+           FROM employee_badges WHERE employee_id = $1 ORDER BY issued_at DESC`,
+        [id],
+      )
+    ).rows;
     const { id_number_last4, siteMinimumGrade, siteArmed, ...rest } = e;
     return {
       ...rest,
@@ -355,6 +366,7 @@ export class OfficersController {
       qualifications,
       issuedItems,
       photos,
+      badges,
       siteWarnings: siteFitWarnings(
         { psiraGrade: e.psiraGrade, qualifications },
         { name: e.siteName, minimumGrade: siteMinimumGrade, armed: siteArmed },

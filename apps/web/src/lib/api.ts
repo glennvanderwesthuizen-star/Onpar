@@ -33,7 +33,9 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   }
   if (res.status === 401 && path !== '/auth/login') {
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-      window.location.href = '/login';
+      // Come back here after signing in (for example a scanned ID badge).
+      const here = window.location.pathname + window.location.search;
+      window.location.href = here && here !== '/' ? `/login?next=${encodeURIComponent(here)}` : '/login';
     }
   }
   const text = await res.text();

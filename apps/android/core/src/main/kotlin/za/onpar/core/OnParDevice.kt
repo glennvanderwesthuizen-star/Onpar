@@ -105,7 +105,9 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
      */
     fun signIn(login: String, pin: String): Employee {
         val typed = login.trim()
-        val sent = TsfNumber.fromIdCard(typed) ?: TsfNumber.normalise(typed) ?: typed
+        // A badge link goes as it is (the server reads the card code); a typed number is tidied.
+        val sent = if (TsfNumber.isIdCard(typed) && TsfNumber.fromIdCard(typed) == null) typed
+            else TsfNumber.fromIdCard(typed) ?: TsfNumber.normalise(typed) ?: typed
         val reply = api.post("/device/login", buildJsonObject {
             put("login", sent)
             put("employeeNumber", sent)
