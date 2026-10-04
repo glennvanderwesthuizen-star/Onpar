@@ -91,6 +91,7 @@ On Par already makes an encrypted backup every night at 02:15, kept on the serve
 | Get the newest version | `deploy/onpar.sh update` |
 | See that everything is running | `deploy/onpar.sh status` |
 | See recent messages if something is wrong | `deploy/onpar.sh logs` |
+| Give someone a new temporary password (for example the only administrator forgot theirs; also lifts a sign-in pause) | `deploy/onpar.sh password their@email.co.za` |
 | Make a backup now | `deploy/onpar.sh backup` |
 | Start again with new secrets (deletes all data; asks you to type DELETE EVERYTHING) | `deploy/onpar.sh reset` |
 

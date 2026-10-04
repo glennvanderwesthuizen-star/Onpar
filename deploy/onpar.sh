@@ -6,6 +6,7 @@
 #   deploy/onpar.sh logs                the last lines from each part
 #   deploy/onpar.sh company "Company name" "Admin full name" admin@example.co.za
 #   deploy/onpar.sh demo                load the demo company (for testing only)
+#   deploy/onpar.sh password their@email.co.za   new temporary password for a user (and lifts a sign-in lock)
 #   deploy/onpar.sh backup              encrypted backup now (kept in backups/, newest 14)
 #   deploy/onpar.sh reset               DELETES ALL DATA and makes new secrets (before real data, or if the secrets leaked)
 set -euo pipefail
@@ -86,6 +87,10 @@ ENV
     ;;
   demo)
     compose exec api node dist/db/seed-cli.js
+    ;;
+  password)
+    shift
+    compose exec api node dist/db/password-cli.js "$@"
     ;;
   backup)
     compose --profile tools run --rm tools /scripts/backup.sh

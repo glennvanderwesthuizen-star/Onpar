@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [forgot, setForgot] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,6 +52,21 @@ export default function LoginPage() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <button type="button" className="linkish small" style={{ marginTop: 12 }} onClick={() => setForgot(!forgot)} aria-expanded={forgot}>
+          Forgot your password?
+        </button>
+        {forgot && (
+          <div className="small" style={{ textAlign: 'left', marginTop: 8 }}>
+            <p style={{ marginTop: 0 }}>
+              Ask your company&apos;s system administrator to reset it. They open <b>Users</b>, choose your name and press{' '}
+              <b>Reset password</b>. You get a temporary password, sign in with it once, then choose your own.
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              If you are the only administrator, whoever looks after your On Par server can reset it with the server&apos;s{' '}
+              <b>password</b> command. After too many wrong tries, sign-in pauses for 15 minutes; a reset also lifts that pause.
+            </p>
+          </div>
+        )}
       </div>
     </main>
   );

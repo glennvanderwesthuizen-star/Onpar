@@ -267,3 +267,6 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 @keyframes bolo-flash { 50% { background: #8a4300; } }
 @media (prefers-reduced-motion: reduce) { .bolo-banner.flash { animation: none; } }
 @media print { .bolo-banner { display: none !important; } }
+
+/* A button that looks like a link (e.g. "Forgot your password?"). */
+.linkish { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
