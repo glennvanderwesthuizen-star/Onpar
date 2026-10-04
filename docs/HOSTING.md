@@ -88,7 +88,8 @@ On Par already makes an encrypted backup every night at 02:15, kept on the serve
 
 | To | Type |
 |---|---|
-| Get the newest version | `deploy/onpar.sh update` |
+| Get the newest version (keeps going on the server even if the window closes; 10 to 20 minutes) | `deploy/onpar.sh update` |
+| See how the last update is going, or how it ended | `deploy/onpar.sh progress` |
 | See that everything is running | `deploy/onpar.sh status` |
 | See recent messages if something is wrong | `deploy/onpar.sh logs` |
 | Give someone a new temporary password (for example the only administrator forgot theirs; also lifts a sign-in pause) | `deploy/onpar.sh password their@email.co.za` |

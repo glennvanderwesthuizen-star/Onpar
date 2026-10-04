@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # On Par on a server. Run from the repository folder, for example /opt/onpar:
 #   deploy/onpar.sh install [address]   first time: secrets, build, start (address defaults to <public-ip>.sslip.io)
-#   deploy/onpar.sh update              fetch the latest code, rebuild and restart (migrations run automatically)
+#   deploy/onpar.sh update              fetch the latest code, rebuild and restart (migrations run automatically);
+#                                       keeps going on the server even if this window closes
+#   deploy/onpar.sh progress            how the last update is going (or how it ended)
 #   deploy/onpar.sh status              what is running, and the web address
 #   deploy/onpar.sh logs                the last lines from each part
 #   deploy/onpar.sh company "Company name" "Admin full name" admin@example.co.za
@@ -18,6 +20,8 @@ rand() { openssl rand -hex "${1:-24}"; }
 # Photos and certificates are written by the app's own user, so it must own the folder.
 fix_uploads() { compose exec -T -u root api chown node:node /data/uploads 2>/dev/null || true; }
 
+# Everything below is read in full before it runs, so an update that replaces this file mid-way is safe.
+main() {
 case "${1:-}" in
   reset)
     # Start again with new secrets: every company, user, guard, photo and backup on this server is deleted.
@@ -67,12 +71,35 @@ ENV
     echo "The first visit can take a minute while the HTTPS certificate is fetched."
     ;;
   update)
+    if [ -z "${ONPAR_IN_BACKGROUND:-}" ]; then
+      # Run on the server itself, not tied to this window: if the browser loses its connection the
+      # update carries on. Progress goes to a log file; this window just shows it.
+      mkdir -p logs
+      log="logs/update-$(date +%Y%m%d-%H%M%S).log"
+      ln -sf "$(basename "$log")" logs/update-latest.log
+      ONPAR_IN_BACKGROUND=1 setsid nohup "$PWD/deploy/onpar.sh" update >"$log" 2>&1 </dev/null &
+      echo "Updating on the server. It keeps going even if you close this window."
+      echo "To see how it is going later: deploy/onpar.sh progress"
+      echo
+      tail -n +1 -f "$log" --pid=$! || true
+      exit 0
+    fi
+    echo $$ > logs/update.pid
+    echo "Update started $(date)."
     git pull --ff-only
-    compose --profile tools build
+    # Plain progress lines, so the log file is easy to read.
+    BUILDKIT_PROGRESS=plain compose --profile tools build
     compose up -d
     fix_uploads
     docker image prune -f >/dev/null
-    echo "Updated."
+    # Old build leftovers fill the disk over time.
+    docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
+    echo "Updated. Finished $(date)."
+    ;;
+  progress)
+    if [ ! -e logs/update-latest.log ]; then echo "No update has been run this way yet."; exit 0; fi
+    if [ -f logs/update.pid ] && kill -0 "$(cat logs/update.pid)" 2>/dev/null; then echo "An update is still running. Last lines:"; else echo "No update running now. The last one ended like this:"; fi
+    tail -n 15 logs/update-latest.log
     ;;
   status)
     compose ps
@@ -101,3 +128,6 @@ ENV
     exit 1
     ;;
 esac
+}
+main "$@"
+exit $?

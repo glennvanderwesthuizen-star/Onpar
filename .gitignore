@@ -18,3 +18,4 @@ apps/android/.kotlin/
 deploy/.env
 deploy/backup-passphrase
 backups/
+logs/
