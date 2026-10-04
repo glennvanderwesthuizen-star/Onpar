@@ -14,6 +14,11 @@ const RetentionBody = z.object({
   reason: z.string().trim().min(3, 'Say why, for example "periods confirmed by our POPIA adviser".'),
 });
 
+const FaceBody = z.object({
+  enabled: z.boolean(),
+  reason: z.string().trim().min(3, 'Say why, for example "trial agreed with the guards at Estate ABC".'),
+});
+
 /** POPIA settings (brief section 9). Retention periods are for legal to confirm; On Par only applies them. */
 @Controller('privacy')
 @UseGuards(UserAuthGuard)
@@ -42,6 +47,40 @@ export class PrivacyController {
           last: removed.reduce<string | null>((m, r) => (!m || r.last > m ? r.last : m), null),
         },
       };
+    });
+  }
+
+  /** Automatic face matching (D-36 stage 2): off until switched on here. */
+  @Get('face-matching')
+  @RequirePermission('privacy.manage')
+  faceMatching(@CurrentUser() user: UserPrincipal) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const r = (await tx.query('SELECT face_matching FROM retention_settings')).rows[0];
+      const counts = (await tx.query(`SELECT verdict, count(*)::int AS n FROM face_matches GROUP BY verdict`)).rows;
+      return { enabled: !!r?.face_matching, results: Object.fromEntries(counts.map((c) => [c.verdict, c.n])) };
+    });
+  }
+
+  @Put('face-matching')
+  @RequirePermission('privacy.manage')
+  setFaceMatching(@CurrentUser() user: UserPrincipal, @Body() body: unknown) {
+    const b = parseBody(FaceBody, body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const before = !!(await tx.query('SELECT face_matching FROM retention_settings')).rows[0]?.face_matching;
+      await tx.query(
+        `INSERT INTO retention_settings (company_id, face_matching, updated_by, updated_at) VALUES (app_company_id(), $1, $2, now())
+         ON CONFLICT (company_id) DO UPDATE SET face_matching = $1, updated_by = $2, updated_at = now()`,
+        [b.enabled, user.userId],
+      );
+      await this.audit.byUser(tx, user, {
+        action: 'privacy.face_matching',
+        entityType: 'company',
+        entityId: user.companyId,
+        before: { enabled: before },
+        after: { enabled: b.enabled },
+        reason: b.reason,
+      });
+      return { enabled: b.enabled };
     });
   }
 

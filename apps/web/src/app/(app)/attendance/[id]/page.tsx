@@ -5,7 +5,8 @@ import { use, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from '@/components/ui';
-import { SelfieCompare, SelfieCheck } from '@/components/SelfieCompare';
+import type { FaceVerdict } from '@onpar/rules';
+import { AutoPill, BlinkPill, SelfieCompare, SelfieCheck } from '@/components/SelfieCompare';
 import { ArrivalPill, DeparturePill, time } from '@/components/attendance';
 
 interface Detail {
@@ -52,6 +53,8 @@ interface Detail {
     drift_flagged: boolean;
     has_selfie: boolean;
     selfie_check: SelfieCheck | null;
+    face_match: { verdict: FaceVerdict; distance: number | null } | null;
+    liveness: 'passed' | 'not_passed' | null;
   }[];
 }
 
@@ -152,7 +155,14 @@ export default function AttendanceDetail({ params }: { params: Promise<{ id: str
                   )}
                   <p className="mute small">A declaration is a record of what the officer stated. It is evidence, not proof.</p>
                 </div>
-                <SelfieCompare attendanceId={a.id} kind={kind} hasSelfie={d.has_selfie} declarationId={d.id} check={d.selfie_check} onChecked={reload} />
+                <div>
+                  {(d.face_match || d.liveness) && (
+                    <div style={{ marginBottom: 6 }}>
+                      {d.face_match && <AutoPill verdict={d.face_match.verdict} distance={d.face_match.distance} />} <BlinkPill liveness={d.liveness} />
+                    </div>
+                  )}
+                  <SelfieCompare attendanceId={a.id} kind={kind} hasSelfie={d.has_selfie} declarationId={d.id} check={d.selfie_check} onChecked={reload} />
+                </div>
               </div>
             )}
           </div>

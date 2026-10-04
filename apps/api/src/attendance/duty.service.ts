@@ -28,6 +28,7 @@ import { AuditService } from '../audit/audit.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { ReportsService } from '../reports/reports.service';
+import { FaceMatchService } from '../face/face-match.service';
 import { RosterService } from '../roster/roster.service';
 
 export interface DutyInput {
@@ -47,6 +48,8 @@ export interface DeclarationInput {
   trustedAt: Date;
   deviceClock: Date;
   selfieToFollow: boolean;
+  /** The blink check before the selfie (D-36); null from older phones. */
+  liveness?: 'passed' | 'not_passed' | null;
 }
 
 export interface Upload {
@@ -67,6 +70,7 @@ export class DutyService {
     private readonly scoring: ScoringService,
     private readonly reports: ReportsService,
     private readonly roster: RosterService,
+    private readonly faces: FaceMatchService,
   ) {}
 
   /**
@@ -195,8 +199,8 @@ export class DutyService {
         await tx.query(
           `INSERT INTO declarations (id, company_id, attendance_id, duty_event_id, employee_id, device_id, kind, wording_version,
                                      statements, comment, raise_equipment_report, official_at, device_clock, received_at,
-                                     late_synced, drift_seconds, drift_flagged, selfie_key, selfie_content_type, selfie_received_at)
-           VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+                                     late_synced, drift_seconds, drift_flagged, selfie_key, selfie_content_type, selfie_received_at, liveness)
+           VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
           [
             input.eventId,
             duty.attendance_id,
@@ -217,6 +221,7 @@ export class DutyService {
             selfieKey,
             selfie?.mimetype ?? null,
             selfie ? receivedAt : null,
+            input.liveness ?? null,
           ],
         );
       } catch (e) {
@@ -256,6 +261,7 @@ export class DutyService {
         after: { kind: duty.kind, wordingVersion: wording.version, comment: input.comment.trim(), selfie: !!selfie },
       });
     });
+    if (selfie) this.faces.afterSelfie(guard.companyId, input.eventId);
     return this.declarationSummary(guard, input.eventId);
   }
 
@@ -272,6 +278,7 @@ export class DutyService {
         [declarationId, key, selfie.mimetype],
       );
     });
+    this.faces.afterSelfie(guard.companyId, declarationId);
     return this.declarationSummary(guard, declarationId);
   }
 

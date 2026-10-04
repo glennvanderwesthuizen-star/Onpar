@@ -68,13 +68,14 @@ fun DeclarationScreen(vm: AppViewModel, owed: PendingDeclaration, busy: Boolean)
         }
     }
     Text("Selfie", style = MaterialTheme.typography.titleMedium)
-    PhotoTaker(selfieFile, front = true) { selfie = it }
+    var liveness by remember { mutableStateOf<String?>(null) }
+    PhotoTaker(selfieFile, front = true, onLiveness = { liveness = it }) { selfie = it }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val ready = ticks.all { it } && selfie != null && (!report || comment.isNotBlank())
         if (!ticks.all { it }) Text("Tick every statement to continue.", color = Color(0xFFB86E00))
         else if (selfie == null) Text("Take your selfie to continue.", color = Color(0xFFB86E00))
         BigButton(if (busy) "Saving…" else "Submit declaration", enabled = ready && !busy) {
-            vm.declare(owed, ticks.toList(), comment, report && comment.isNotBlank(), priority, selfieFile)
+            vm.declare(owed, ticks.toList(), comment, report && comment.isNotBlank(), priority, selfieFile, liveness)
         }
     }
 }

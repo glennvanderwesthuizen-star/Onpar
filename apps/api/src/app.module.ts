@@ -9,6 +9,7 @@ import { SitesController } from './sites/sites.controller';
 import { OfficersController } from './officers/officers.controller';
 import { BadgesController } from './officers/badges';
 import { SelfieChecksController } from './attendance/selfie-checks.controller';
+import { FaceMatchService } from './face/face-match.service';
 import { DevicesController } from './devices/devices.controller';
 import { DeviceController } from './device-api/device.controller';
 import { StorageService } from './storage/storage.service';
@@ -93,6 +94,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       ReportsService,
       PatrolsService,
       RosterService,
+      FaceMatchService,
     ],
   })
   class AppModule {}

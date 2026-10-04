@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { FACE_VERDICT_LABEL, FaceVerdict, faceSimilarity } from '@onpar/rules';
 import { api, imageUrl } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Pill, formatDateTime } from './ui';
@@ -14,6 +15,25 @@ export interface SelfieCheck {
 
 export const CHECK_LABEL = { match: 'Looks right', not_match: 'Not him', unclear: 'Unclear' } as const;
 export const CHECK_TONE = { match: 'green', not_match: 'red', unclear: 'amber' } as const;
+
+/** The automatic face matching result (D-36 stage 2), shown next to the person's check. */
+export function AutoPill({ verdict, distance }: { verdict: FaceVerdict | null | undefined; distance?: number | null }) {
+  if (!verdict) return null;
+  const tone = verdict === 'match' ? 'green' : verdict === 'no_match' ? 'red' : 'amber';
+  const pct = faceSimilarity(distance);
+  return (
+    <Pill tone={tone}>
+      Automatic: {FACE_VERDICT_LABEL[verdict]}
+      {pct != null ? ` (${pct}% alike)` : ''}
+    </Pill>
+  );
+}
+
+/** The blink check on the phone before the selfie (D-36). Nothing is shown for older phones. */
+export function BlinkPill({ liveness }: { liveness: 'passed' | 'not_passed' | null | undefined }) {
+  if (!liveness) return null;
+  return liveness === 'passed' ? <Pill tone="green">Blinked</Pill> : <Pill tone="amber">Did not pass the blink check</Pill>;
+}
 
 export function CheckPill({ check }: { check: SelfieCheck | null }) {
   if (!check) return <Pill tone="blue">Not checked</Pill>;

@@ -553,3 +553,13 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - "Not him" is a flag for a manager to look into. It does not change the guard's score, lock his login or start anything else.
 - Who checks: supervisors, managers and system administrators. Site managers can see the results.
 
+### Automatic face matching and the blink check, face recognition stage 2 (D-36), built 4 Oct 2026
+
+- **The switch:** Privacy page, "Automatic face matching". Off until someone switches it on, with a reason (audited).
+- **At enrolment:** the face photo is compared with the ID document and the PSIRA card. The result shows on the officer's page.
+- **At every Duty On and Duty From:** the selfie is compared with the enrolment photo. "Possibly a different person" and "Uncertain" go to the Flagged tab of Selfie checks for a person to look at; once a person has checked it, it leaves the list.
+- **How:** open-source face software (face-api, MIT licence; TensorFlow.js, Apache 2.0) on On Par's own server. No photo or face data is sent anywhere. Only the result is kept (how alike, and a verdict), never a face template. About half a second per photo; about 430 MB of memory, only once switched on. Tested with public-domain photos (same person 0.24 to 0.29 apart, different people 0.67; the cut-off is 0.6).
+- **Blink check on the phone:** before the Duty On / Duty From selfie the guard looks at the camera and blinks; a printed photo or a still picture cannot. The face finder (Google ML Kit, bundled with the app) runs on the phone. If it cannot pass after 20 seconds (too dark, faulty camera), he can take the selfie anyway; it is marked and flagged for a person. It never stops him working.
+- A result is always a flag for a person, never a decision: no score change, no lock, no warning.
+- **Still to do:** a trial on TSF's own guards to see how accurate it is on them (lighting at night, darker skin tones), before relying on it.
+

@@ -61,4 +61,5 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.camerax.video)
     implementation(libs.zxing.core)
+    implementation(libs.mlkit.face)
 }

@@ -103,6 +103,65 @@ export default function PrivacyPage() {
           </div>
         </div>
       )}
+      <FaceMatching />
     </>
+  );
+}
+
+/** Automatic face matching (D-36 stage 2): a company switch, off until someone turns it on with a reason. */
+function FaceMatching() {
+  const { data, error, reload } = useLoad(() => api<{ enabled: boolean; results: Record<string, number> }>('/privacy/face-matching'));
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<unknown>(null);
+  async function toggle() {
+    if (!data) return;
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await api('/privacy/face-matching', { method: 'PUT', json: { enabled: !data.enabled, reason } });
+      setReason('');
+      reload();
+    } catch (e) {
+      setSaveError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const r = data?.results ?? {};
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <h2>Automatic face matching</h2>
+      <ErrorBanner error={error ?? saveError} />
+      <p>
+        When this is on, On Par compares each guard&apos;s enrolment face photo with his ID document and PSIRA card, and
+        every Duty On and Duty From selfie with his enrolment photo. It runs on your own On Par server: no photo or face
+        data is sent anywhere, and only the result is kept (how alike, and a verdict), never a face template.
+      </p>
+      <p>
+        A possible mismatch only appears under <b>Attendance, Selfie checks</b> for a supervisor or manager to look at. It never
+        blocks a guard, changes his score or starts a warning by itself.
+      </p>
+      <div className="banner warn">
+        Face data is biometric, which POPIA treats as special personal information. The owner&apos;s approach (D-35) is to
+        design on what is reasonable and have the POPIA adviser review the whole design at the end (P-5). Tell your
+        guards that face matching is used.
+      </div>
+      {data && (
+        <>
+          <p>
+            Face matching is <b>{data.enabled ? 'on' : 'off'}</b>.
+            {(r.match || r.uncertain || r.no_match || r.no_face) &&
+              ` Results so far: ${r.match ?? 0} likely the same, ${r.uncertain ?? 0} uncertain, ${r.no_match ?? 0} possibly different, ${r.no_face ?? 0} with no clear face.`}
+          </p>
+          <div className="row">
+            <input style={{ flex: 1, minWidth: 220 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why (kept in the audit log)" />
+            <button className="btn" disabled={busy || reason.trim().length < 3} onClick={toggle}>
+              {data.enabled ? 'Switch off' : 'Switch on'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

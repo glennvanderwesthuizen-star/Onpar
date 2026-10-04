@@ -238,6 +238,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         raiseEquipmentReport: Boolean,
         reportPriority: String,
         selfie: File,
+        liveness: String? = null,
     ): Submitted {
         require(accepted.size == owed.wording.statements.size && accepted.all { it }) { "Tick every statement to continue." }
         require(selfie.exists() && selfie.length() > 0) { "Take your selfie to continue." }
@@ -253,6 +254,8 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
             put("trustedAt", clock.now().toString())
             put("deviceClock", clock.deviceClock().toString())
             put("selfieToFollow", true)
+            // "passed" or "not_passed" (the blink check, D-36); left out by older phones.
+            if (liveness != null) put("liveness", liveness)
         }
         val token = requireGuard()
         val label = if (owed.kind == "duty_from") "Duty From declaration" else "Duty On declaration"

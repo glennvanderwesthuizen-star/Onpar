@@ -43,6 +43,7 @@ const DeclarationBody = z.object({
   trustedAt: isoTime,
   deviceClock: isoTime,
   selfieToFollow: z.boolean().default(false),
+  liveness: z.enum(['passed', 'not_passed']).nullable().default(null),
 });
 
 /**

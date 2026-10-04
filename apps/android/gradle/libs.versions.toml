@@ -11,6 +11,7 @@ lifecycle = "2.8.7"
 camerax = "1.4.1"
 zxing = "3.5.3"
 coreKtx = "1.15.0"
+mlkitFace = "16.1.7"
 
 [libraries]
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
@@ -35,6 +36,8 @@ camerax-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref =
 camerax-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 camerax-video = { module = "androidx.camera:camera-video", version.ref = "camerax" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+# Face finder for the blink check (runs on the phone, model bundled, no Google services needed).
+mlkit-face = { module = "com.google.mlkit:face-detection", version.ref = "mlkitFace" }
 
 [plugins]
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

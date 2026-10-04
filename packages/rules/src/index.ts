@@ -15,3 +15,4 @@ export * from './roster';
 export * from './relief';
 export * from './uniform';
 export * from './tsf-number';
+export * from './face';

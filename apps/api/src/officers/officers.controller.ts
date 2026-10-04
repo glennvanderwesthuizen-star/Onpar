@@ -37,6 +37,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { issueMissingTsfNumbers } from './tsf-numbers';
 import { ensureBadge } from './badges';
+import { FaceMatchService } from '../face/face-match.service';
 import { CERTIFICATE_TYPES, IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter a date.');
@@ -88,6 +89,7 @@ export class OfficersController {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     @Inject(CONFIG) private readonly config: Config,
+    private readonly faces: FaceMatchService,
   ) {}
 
   @Get()
@@ -278,6 +280,7 @@ export class OfficersController {
       });
       return after;
     }));
+    this.faces.afterEnrolment(user.companyId, officer.id);
     return { officer, initialPin: pin };
   }
 
@@ -358,6 +361,13 @@ export class OfficersController {
         [id],
       )
     ).rows;
+    const faceChecks = (
+      await tx.query(
+        `SELECT DISTINCT ON (kind) kind, distance::float AS distance, verdict, created_at AS "createdAt"
+           FROM face_matches WHERE employee_id = $1 AND kind <> 'duty_selfie' ORDER BY kind, created_at DESC`,
+        [id],
+      )
+    ).rows;
     const { id_number_last4, siteMinimumGrade, siteArmed, ...rest } = e;
     return {
       ...rest,
@@ -367,6 +377,7 @@ export class OfficersController {
       issuedItems,
       photos,
       badges,
+      faceChecks,
       siteWarnings: siteFitWarnings(
         { psiraGrade: e.psiraGrade, qualifications },
         { name: e.siteName, minimumGrade: siteMinimumGrade, armed: siteArmed },

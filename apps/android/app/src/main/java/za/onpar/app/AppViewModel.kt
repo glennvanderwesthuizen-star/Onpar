@@ -549,9 +549,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun declare(owed: PendingDeclaration, accepted: List<Boolean>, comment: String, report: Boolean, priority: String, selfie: File) = run {
+    fun declare(owed: PendingDeclaration, accepted: List<Boolean>, comment: String, report: Boolean, priority: String, selfie: File, liveness: String? = null) = run {
         try {
-            val r = device.declare(owed, accepted, comment, report, priority, selfie)
+            val r = device.declare(owed, accepted, comment, report, priority, selfie, liveness)
             when (r) {
                 is Submitted.Refused -> _state.update { it.copy(error = r.message) }
                 else -> {

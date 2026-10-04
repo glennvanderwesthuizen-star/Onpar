@@ -9,6 +9,8 @@ import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
 import { TsfPlate } from '@/components/TsfPlate';
 import { BadgeActions } from '@/components/BadgeActions';
+import { AutoPill } from '@/components/SelfieCompare';
+import { FACE_CHECK_LABEL, FaceCheckKind, FaceVerdict } from '@onpar/rules';
 
 interface Officer {
   id: string;
@@ -16,6 +18,7 @@ interface Officer {
   tsfNumber: string | null;
   siteProvince: string | null;
   badges: { issuedAt: string; cancelledAt: string | null; cancelReason: string | null }[];
+  faceChecks: { kind: FaceCheckKind; verdict: FaceVerdict; distance: number | null; createdAt: string }[];
   fullName: string;
   idNumberMasked: string;
   dateOfBirth: string;
@@ -74,6 +77,20 @@ export default function OfficerPage({ params }: { params: Promise<{ id: string }
         </div>
         {can('officers.enrol') && <BadgeActions officer={o} onDone={reload} />}
       </div>
+      {o.faceChecks.length > 0 && (
+        <div className="card">
+          <h2>Automatic face check at enrolment</h2>
+          {o.faceChecks.map((c) => (
+            <p key={c.kind} style={{ margin: '4px 0' }}>
+              {FACE_CHECK_LABEL[c.kind]}: <AutoPill verdict={c.verdict} distance={c.distance} />
+            </p>
+          ))}
+          <p className="mute small" style={{ marginBottom: 0 }}>
+            A flag for a person to look at, never a decision. Compare the photos below if it says uncertain or possibly different.
+          </p>
+        </div>
+      )}
+
       {o.siteWarnings.length > 0 && (
         <div className="banner warn">
           <b>Site check</b>

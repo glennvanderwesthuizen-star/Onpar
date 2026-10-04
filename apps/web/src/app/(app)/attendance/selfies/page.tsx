@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ErrorBanner, formatDateTime, useLoad } from '@/components/ui';
-import { CheckPill, SelfieCheck, SelfieCompare } from '@/components/SelfieCompare';
+import type { FaceVerdict } from '@onpar/rules';
+import { AutoPill, BlinkPill, CheckPill, SelfieCheck, SelfieCompare } from '@/components/SelfieCompare';
 
 interface Row {
   declarationId: string;
@@ -19,12 +20,15 @@ interface Row {
   note: string | null;
   checkedAt: string | null;
   checkedBy: string | null;
+  autoVerdict: FaceVerdict | null;
+  autoDistance: number | null;
+  liveness: 'passed' | 'not_passed' | null;
 }
 
 const TABS = [
   ['todo', 'To check'],
   ['spot', 'Weekly spot check'],
-  ['flagged', 'Not him or unclear'],
+  ['flagged', 'Flagged'],
   ['done', 'Checked'],
 ] as const;
 
@@ -93,7 +97,12 @@ export default function SelfieChecksPage() {
                   <Link href={`/attendance/${r.attendanceId}`}>shift</Link>
                 </div>
               </div>
-              <CheckPill check={r.result ? { result: r.result, note: r.note ?? '', checkedAt: r.checkedAt!, checkedBy: r.checkedBy ?? '' } : null} />
+              <div style={{ textAlign: 'right' }}>
+                <CheckPill check={r.result ? { result: r.result, note: r.note ?? '', checkedAt: r.checkedAt!, checkedBy: r.checkedBy ?? '' } : null} />
+                <div style={{ marginTop: 4 }}>
+                  <AutoPill verdict={r.autoVerdict} distance={r.autoDistance} /> <BlinkPill liveness={r.liveness} />
+                </div>
+              </div>
             </div>
             {!r.hasFacePhoto && <p className="small">No enrolment photo to compare with.</p>}
             <SelfieCompare

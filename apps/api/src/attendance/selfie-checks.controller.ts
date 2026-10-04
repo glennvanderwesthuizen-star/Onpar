@@ -39,7 +39,8 @@ export class SelfieChecksController {
     const where = {
       todo: `d.received_at > now() - interval '7 days' AND lc.result IS NULL`,
       spot: `d.received_at > now() - interval '7 days' AND lc.result IS NULL`,
-      flagged: `lc.result IN ('not_match','unclear') AND lc.checked_at > now() - interval '90 days'`,
+      flagged: `((lc.result IN ('not_match','unclear') AND lc.checked_at > now() - interval '90 days')
+                 OR (lc.result IS NULL AND (fm.verdict IN ('no_match','uncertain') OR d.liveness = 'not_passed') AND d.received_at > now() - interval '90 days'))`,
       done: `lc.checked_at > now() - interval '30 days'`,
     }[view as (typeof VIEWS)[number]];
     const order = view === 'spot' ? 'random()' : view === 'todo' ? 'd.official_at DESC' : 'lc.checked_at DESC';
@@ -50,13 +51,15 @@ export class SelfieChecksController {
           `SELECT d.id AS "declarationId", d.attendance_id AS "attendanceId", d.kind, d.official_at AS "officialAt",
                   e.id AS "employeeId", e.full_name AS "employeeName", e.tsf_number AS "tsfNumber", s.name AS "siteName",
                   EXISTS (SELECT 1 FROM employee_photos p WHERE p.employee_id = e.id AND p.kind = 'face') AS "hasFacePhoto",
-                  lc.result, lc.note, lc.checked_at AS "checkedAt", u.full_name AS "checkedBy"
+                  lc.result, lc.note, lc.checked_at AS "checkedAt", u.full_name AS "checkedBy",
+                  fm.verdict AS "autoVerdict", fm.distance::float AS "autoDistance", d.liveness
              FROM declarations d
              JOIN attendance a ON a.id = d.attendance_id
              JOIN employees e ON e.id = d.employee_id
              JOIN sites s ON s.id = a.site_id
              LEFT JOIN LATERAL (SELECT c.* FROM selfie_checks c WHERE c.declaration_id = d.id ORDER BY c.checked_at DESC LIMIT 1) lc ON true
              LEFT JOIN users u ON u.id = lc.checked_by
+             LEFT JOIN LATERAL (SELECT f.verdict, f.distance FROM face_matches f WHERE f.declaration_id = d.id ORDER BY f.created_at DESC LIMIT 1) fm ON true
             WHERE d.selfie_key IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM retention_log r WHERE r.storage_key = d.selfie_key)
               AND ($1::uuid[] IS NULL OR a.site_id = ANY($1::uuid[]))
@@ -69,9 +72,11 @@ export class SelfieChecksController {
       const counts = (
         await tx.query(
           `SELECT count(*) FILTER (WHERE lc.result IS NULL AND d.received_at > now() - interval '7 days')::int AS todo,
-                  count(*) FILTER (WHERE lc.result IN ('not_match','unclear') AND lc.checked_at > now() - interval '90 days')::int AS flagged
+                  count(*) FILTER (WHERE (lc.result IN ('not_match','unclear') AND lc.checked_at > now() - interval '90 days')
+                                      OR (lc.result IS NULL AND (fm.verdict IN ('no_match','uncertain') OR d.liveness = 'not_passed') AND d.received_at > now() - interval '90 days'))::int AS flagged
              FROM declarations d JOIN attendance a ON a.id = d.attendance_id
              LEFT JOIN LATERAL (SELECT c.result, c.checked_at FROM selfie_checks c WHERE c.declaration_id = d.id ORDER BY c.checked_at DESC LIMIT 1) lc ON true
+             LEFT JOIN LATERAL (SELECT f.verdict FROM face_matches f WHERE f.declaration_id = d.id ORDER BY f.created_at DESC LIMIT 1) fm ON true
             WHERE d.selfie_key IS NOT NULL AND NOT EXISTS (SELECT 1 FROM retention_log r WHERE r.storage_key = d.selfie_key)
               AND ($1::uuid[] IS NULL OR a.site_id = ANY($1::uuid[]))`,
           [user.siteIds],
