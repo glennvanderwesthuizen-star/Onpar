@@ -69,6 +69,23 @@ describe('devices and guard login', () => {
     expect((await w.http().get('/api/device/contacts')).status).toBe(401);
   });
 
+  it('makes a new setup code for a registered phone; the old code stops working at once', async () => {
+    const r = await w
+      .http()
+      .post('/api/devices')
+      .set('Authorization', `Bearer ${admin}`)
+      .send({ label: 'Device 003', serialOrImei: '356938035643817', siteId: w.a.siteId });
+    const oldToken = r.body.deviceToken;
+    expect((await w.http().post(`/api/devices/${r.body.device.id}/new-key`).set('Authorization', `Bearer ${supervisor}`)).status).toBe(403);
+    const n = await w.http().post(`/api/devices/${r.body.device.id}/new-key`).set('Authorization', `Bearer ${admin}`);
+    expect(n.status).toBe(201);
+    expect(n.body.deviceToken).not.toBe(oldToken);
+    expect((await w.http().post('/api/device/heartbeat').set('X-Device-Token', oldToken).send({})).status).toBe(401);
+    expect((await w.http().post('/api/device/heartbeat').set('X-Device-Token', n.body.deviceToken).send({})).status).toBe(200);
+    const audit = await ownerQuery("SELECT 1 FROM audit_log WHERE action = 'device.new_key' AND entity_id = $1", [r.body.device.id]);
+    expect(audit).toHaveLength(1);
+  });
+
   it('rejects an unknown device', async () => {
     expect((await guardLogin(pin, 'not-a-real-token')).status).toBe(401);
   });

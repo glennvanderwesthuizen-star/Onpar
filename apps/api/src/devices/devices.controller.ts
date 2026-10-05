@@ -78,6 +78,23 @@ export class DevicesController {
     });
   }
 
+  /**
+   * A new setup code for a registered phone, when the first one was lost or the phone was reset.
+   * The old key stops working at once, so the phone must be set up again with the new code.
+   */
+  @Post(':id/new-key')
+  @RequirePermission('devices.manage')
+  newKey(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    const token = newDeviceToken();
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const before = await this.load(tx, id);
+      if (before.status === 'retired') throw new ConflictException('A retired device cannot be set up again.');
+      await tx.query('UPDATE devices SET token_hash = $2 WHERE id = $1', [id, hashToken(token)]);
+      await this.audit.byUser(tx, user, { action: 'device.new_key', entityType: 'device', entityId: id });
+      return { device: before, deviceToken: token };
+    });
+  }
+
   /** Assign, reassign, lock, disable or retire. */
   @Put(':id')
   @RequirePermission('devices.manage')

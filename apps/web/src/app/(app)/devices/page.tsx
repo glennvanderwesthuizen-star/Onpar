@@ -35,6 +35,7 @@ export default function DevicesPage() {
   const devices = useLoad(() => api<Device[]>('/devices'));
   const sites = useLoad(() => api<Site[]>('/sites'));
   const [editing, setEditing] = useState<Device | null>(null);
+  const [newCode, setNewCode] = useState<{ label: string; token: string } | null>(null);
   const manage = can('devices.manage');
 
   return (
@@ -46,6 +47,7 @@ export default function DevicesPage() {
         </div>
       </div>
       <ErrorBanner error={devices.error} />
+      {newCode && <SetupCode label={newCode.label} token={newCode.token} onClose={() => setNewCode(null)} fresh={false} />}
       <div className="card scroll">
         {devices.data && !devices.data.length && <p className="mute">No devices registered yet.</p>}
         {!!devices.data?.length && (
@@ -82,9 +84,26 @@ export default function DevicesPage() {
                   {manage && (
                     <td>
                       {d.status !== 'retired' && (
-                        <button className="btn ghost sm" onClick={() => setEditing(d)}>
-                          Change
-                        </button>
+                        <div className="row" style={{ gap: 6 }}>
+                          <button className="btn ghost sm" onClick={() => setEditing(d)}>
+                            Change
+                          </button>
+                          <button
+                            className="btn ghost sm"
+                            onClick={async () => {
+                              if (!window.confirm(`Make a new setup code for ${d.label}? The old code stops working, so the phone must scan the new one.`)) return;
+                              try {
+                                const r = await api<{ device: Device; deviceToken: string }>(`/devices/${d.id}/new-key`, { method: 'POST' });
+                                setNewCode({ label: r.device.label, token: r.deviceToken });
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              } catch (e) {
+                                window.alert(e instanceof Error ? e.message : 'Could not make a new code.');
+                              }
+                            }}
+                          >
+                            New setup code
+                          </button>
+                        </div>
                       )}
                     </td>
                   )}
@@ -124,6 +143,33 @@ function setupCode(token: string) {
   return `onpar://setup?server=${encodeURIComponent(window.location.origin)}&token=${encodeURIComponent(token)}`;
 }
 
+/** The phone setup code, shown once: right after registering, or after making a new one. */
+function SetupCode({ label, token, onClose, fresh }: { label: string; token: string; onClose: () => void; fresh: boolean }) {
+  return (
+    <div className="banner ok">
+      <p>
+        <b>{label}</b> {fresh ? 'is registered' : 'has a new setup code (the old one no longer works)'}. Open On Par on the phone and scan this
+        code:
+      </p>
+      <SimpleQr code={setupCode(token)} name={label} sub="On Par phone setup" />
+      <p className="small">
+        Or type the details on the phone: server <b>{typeof window === 'undefined' ? '' : window.location.origin}</b>, device key (not the
+        IMEI):
+      </p>
+      <p>
+        <span className="secret long">{token}</span>
+      </p>
+      <p className="small">
+        The code and key are shown only now. Anyone with them can set up a phone as this device, so do not photograph or share them. If they
+        are lost, press <b>New setup code</b> next to the device in the list.
+      </p>
+      <button className="btn ghost sm" onClick={onClose}>
+        The phone is set up
+      </button>
+    </div>
+  );
+}
+
 function RegisterDevice({ sites, onRegistered }: { sites: Site[]; onRegistered: () => void }) {
   const [f, setF] = useState({ label: '', serialOrImei: '', siteId: '', postName: '' });
   const [busy, setBusy] = useState(false);
@@ -153,27 +199,7 @@ function RegisterDevice({ sites, onRegistered }: { sites: Site[]; onRegistered: 
   return (
     <div className="card">
       <h2>Register a device</h2>
-      {token && (
-        <div className="banner ok">
-          <p>
-            <b>{token.label}</b> is registered. Open On Par on the phone and scan this code:
-          </p>
-          <SimpleQr code={setupCode(token.token)} name={token.label} sub="On Par phone setup" />
-          <p className="small">
-            Or type the details on the phone: server <b>{typeof window === 'undefined' ? '' : window.location.origin}</b>, device key:
-          </p>
-          <p>
-            <span className="secret long">{token.token}</span>
-          </p>
-          <p className="small">
-            The code and key are shown only now. Anyone with them can set up a phone as this device, so do not photograph or share them. If
-            they are lost, retire the device and register it again.
-          </p>
-          <button className="btn ghost sm" onClick={() => setToken(null)}>
-            I have saved it
-          </button>
-        </div>
-      )}
+      {token && <SetupCode label={token.label} token={token.token} onClose={() => setToken(null)} fresh />}
       <ErrorBanner error={error} />
       <form onSubmit={submit}>
         <div className="grid g2">
