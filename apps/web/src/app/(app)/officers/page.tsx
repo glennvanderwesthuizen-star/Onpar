@@ -34,6 +34,9 @@ export default function OfficersPage() {
           <p className="mute">Everyone enrolled at the sites you can see.</p>
         </div>
         <div className="row">
+          <Link className="btn ghost" href="/officers/enrolment-form">
+            Print blank enrolment form
+          </Link>
           <Link className="btn ghost" href="/officers/cards">
             Print ID cards
           </Link>

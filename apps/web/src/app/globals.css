@@ -237,6 +237,33 @@ a.line:hover { background: var(--bg); }
 .shop-page .crop.tr { right: 0; top: 0; border-left-width: 1px; border-bottom-width: 1px; }
 .shop-page .crop.bl { left: 0; bottom: 0; border-right-width: 1px; border-top-width: 1px; }
 .shop-page .crop.br { right: 0; bottom: 0; border-left-width: 1px; border-top-width: 1px; }
+
+/* Blank enrolment form to print (two A4 pages). */
+.eform { background: #fff; color: #111; padding: 18px 22px; border: 1px solid var(--line); border-radius: 10px; max-width: 820px; font-size: 13px; }
+.eform-head { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #a3161d; padding-bottom: 8px; }
+.eform-head img { width: 64px; height: auto; mix-blend-mode: multiply; }
+.eform-head h2 { margin: 0; font-size: 22px; }
+.eform-ref { margin-left: auto; display: flex; gap: 6px; align-items: flex-end; }
+.eform-note { margin: 6px 0 4px; font-size: 12px; color: #444; }
+.eform section { margin-top: 12px; break-inside: avoid; }
+.eform h3 { font-size: 14px; margin: 0 0 6px; padding: 3px 8px; background: #eef0f2; border-left: 4px solid #111; }
+.eform-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.eform-field { flex: 1; min-width: 160px; margin-bottom: 8px; }
+.eform-field.short { flex: 0 0 120px; min-width: 120px; }
+.eform-label { font-size: 11px; color: #333; margin-bottom: 2px; }
+.eform .eline { border-bottom: 1px solid #111; height: 22px; }
+.eform .eline.short { display: inline-block; width: 120px; }
+.eform .eline.inline { display: inline-block; width: 160px; height: 14px; vertical-align: bottom; }
+.eform-boxes { display: flex; gap: 2px; }
+.eform-boxes span { width: 22px; height: 24px; border: 1px solid #111; display: inline-block; }
+.eform-ticks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.eform-ticks i { display: inline-block; width: 13px; height: 13px; border: 1px solid #111; vertical-align: -2px; margin-right: 3px; }
+.eform-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+.eform-table th { font-size: 11px; font-weight: 600; text-align: left; border: 1px solid #111; padding: 3px 5px; background: #f6f7f8; }
+.eform-table td { border: 1px solid #111; height: 24px; }
+.eform-list { margin: 0 0 8px; padding-left: 18px; }
+.eform-list li { margin-bottom: 4px; }
+.eform-office { border: 2px dashed #777; border-radius: 6px; padding: 8px 10px; }
 @media print {
   .top, .no-print, .panic-banner { display: none !important; }
   .page { max-width: none; padding: 0; margin: 0; }
@@ -251,6 +278,9 @@ a.line:hover { background: var(--bg); }
   .id-sheet.shop { display: block; }
   .id-sheet.shop .shop-page { width: 92mm; height: 60mm; padding: 3mm; break-after: page; margin: 0 auto; }
   .id-sheet.shop .badge-card { border-radius: 0; }
+  .eform { border: 0; padding: 0; max-width: none; font-size: 10.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .eform-break { break-before: page; }
+  html, body, .page { background: #fff !important; }
 }
 
 /* Roster (sections 31, 37) */
