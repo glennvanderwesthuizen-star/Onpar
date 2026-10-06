@@ -34,8 +34,7 @@ import {
   GuardPrincipal,
   RequirePermission,
   UserAuthGuard,
-  UserPrincipal,
-} from '../common/auth';
+  UserPrincipal, GuardOrSelfAuthGuard } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
@@ -236,7 +235,7 @@ export class TrainingController {
 
 /** The officer's own qualifications on the device: employees can see their own data. */
 @Controller('device/qualifications')
-@UseGuards(GuardAuthGuard)
+@UseGuards(GuardOrSelfAuthGuard)
 export class GuardTrainingController {
   constructor(private readonly db: DbService) {}
 

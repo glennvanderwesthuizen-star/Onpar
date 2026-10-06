@@ -28,7 +28,7 @@ export class PinService {
     companyId: string,
     who: { employeeNumber: string } | { employeeId: string } | { tsfNumber: string },
     pin: string,
-    deviceId: string,
+    deviceId: string | null,
     successAction: string | null,
   ): Promise<PinEmployee> {
     const [column, value] =

@@ -15,7 +15,7 @@ const TABS = [
   { href: '/m/more', label: 'More', icon: 'M5 12h.01M12 12h.01M19 12h.01' },
 ];
 /** Pages reached from More, so its tab stays lit on them. */
-const UNDER_MORE = ['/m/reports', '/m/selfies', '/m/attendance'];
+const UNDER_MORE = ['/m/reports', '/m/selfies', '/m/attendance', '/m/me'];
 
 /**
  * The frame of the supervisor app on a phone: a slim header and three large tabs at the

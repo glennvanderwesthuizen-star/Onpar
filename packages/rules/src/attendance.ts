@@ -169,6 +169,16 @@ const EARLIER_DECLARATIONS: Record<DutyKind, { version: number; statements: read
   duty_from: [],
 };
 
+/**
+ * The wording to show. A supervisor on his own phone (D-42) is outside the wait-for-relief
+ * rule, so he is shown the Duty On wording without that statement (version 1). Whether the
+ * other statements suit a supervisor is for the owner and a labour lawyer (L-02).
+ */
+export function declarationFor(kind: DutyKind, ownPhone: boolean): { version: number; statements: readonly string[] } {
+  if (ownPhone && kind === 'duty_on') return EARLIER_DECLARATIONS.duty_on[0];
+  return DECLARATIONS[kind];
+}
+
 /** The wording a declaration was made against, found by how many statements the phone showed. */
 export function declarationWordingFor(kind: DutyKind, statementCount: number): { version: number; statements: readonly string[] } | null {
   const current = DECLARATIONS[kind];

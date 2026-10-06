@@ -13,8 +13,11 @@ const UserBody = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address.'),
   role: z.enum(ROLES, { message: 'Choose a role.' }),
   siteIds: z.array(z.string().uuid()).default([]),
+  /** This person's own officer record, when he is also an employee with shifts (D-42). */
+  employeeId: z.string().uuid().nullable().default(null),
 });
-const UpdateBody = UserBody.omit({ email: true }).extend({ active: z.boolean() });
+// Leaving `employeeId` out keeps the join as it is; null removes it.
+const UpdateBody = UserBody.omit({ email: true, employeeId: true }).extend({ active: z.boolean(), employeeId: z.string().uuid().nullable().optional() });
 const PasswordBody = z.object({ currentPassword: z.string().min(1, 'Enter your current password.'), newPassword: z.string() });
 
 /** Management users: the system administrator adds them, sets their role and sites, and resets passwords. */
@@ -57,6 +60,7 @@ export class UsersController {
         throw e;
       }
       for (const s of siteIds) await tx.query('INSERT INTO user_sites (company_id, user_id, site_id) VALUES (app_company_id(), $1, $2)', [id, s]);
+      await this.linkOfficer(tx, id, u.employeeId);
       await this.audit.byUser(tx, user, { action: 'user.create', entityType: 'user', entityId: id, after: { ...u, siteIds } });
       return { id, temporaryPassword: password };
     });
@@ -76,6 +80,7 @@ export class UsersController {
       await tx.query('UPDATE users SET full_name = $2, role = $3, active = $4 WHERE id = $1', [id, u.fullName, u.role, u.active]);
       await tx.query('DELETE FROM user_sites WHERE user_id = $1', [id]);
       for (const s of siteIds) await tx.query('INSERT INTO user_sites (company_id, user_id, site_id) VALUES (app_company_id(), $1, $2)', [id, s]);
+      if (u.employeeId !== undefined) await this.linkOfficer(tx, id, u.employeeId);
       const admins = (await tx.query(`SELECT count(*)::int AS n FROM users WHERE role = 'system_admin' AND active`)).rows[0].n;
       if (!admins) throw new BadRequestException('The company must keep at least one active system administrator.');
       await this.audit.byUser(tx, user, { action: 'user.update', entityType: 'user', entityId: id, before, after: { ...u, siteIds } });
@@ -119,6 +124,17 @@ export class UsersController {
     });
   }
 
+  /** Joins a sign-in to the person's own officer record, or removes the join. An officer belongs to one sign-in only. */
+  private async linkOfficer(tx: Tx, userId: string, employeeId: string | null) {
+    if (employeeId) {
+      const e = (await tx.query('SELECT id FROM employees WHERE id = $1', [employeeId])).rows[0];
+      if (!e) throw new BadRequestException({ message: 'Choose an officer from the list.', errors: { employeeId: 'Unknown officer.' } });
+      const taken = (await tx.query('SELECT full_name FROM users WHERE employee_id = $1 AND id <> $2', [employeeId, userId])).rows[0];
+      if (taken) throw new ConflictException({ message: `That officer record is already joined to ${taken.full_name}'s sign-in.`, errors: { employeeId: 'Already joined to another sign-in.' } });
+    }
+    await tx.query('UPDATE users SET employee_id = $2 WHERE id = $1', [userId, employeeId]);
+  }
+
   /** Site-scoped roles need at least one site; everyone else sees the whole company, so sites are cleared. */
   private async checkSites(tx: Tx, role: Role, siteIds: string[]) {
     if (!SITE_SCOPED_ROLES.includes(role)) return [];
@@ -133,7 +149,8 @@ export class UsersController {
     return (
       await tx.query(
         `SELECT u.id, u.full_name AS "fullName", u.email, u.role, u.active, u.must_change_password AS "mustChangePassword",
-                u.created_at AS "createdAt",
+                u.created_at AS "createdAt", u.employee_id AS "employeeId",
+                (SELECT e.full_name || ' (' || coalesce(e.tsf_number, e.employee_number) || ')' FROM employees e WHERE e.id = u.employee_id) AS "employeeLabel",
                 coalesce(array_agg(us.site_id) FILTER (WHERE us.site_id IS NOT NULL), '{}') AS "siteIds",
                 (SELECT max(a.at) FROM audit_log a WHERE a.entity_type = 'user' AND a.entity_id = u.id AND a.action = 'auth.login') AS "lastSignIn"
            FROM users u LEFT JOIN user_sites us ON us.user_id = u.id

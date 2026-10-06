@@ -136,8 +136,12 @@ export interface GuardPrincipal {
   kind: 'guard';
   employeeId: string;
   companyId: string;
-  deviceId: string;
+  /** The post phone. Null when a supervisor acts for himself on his own phone (D-42). */
+  deviceId: string | null;
+  /** The post phone's site; for a supervisor on his own phone, his home site. */
   siteId: string | null;
+  /** A supervisor or site manager acting as the employee he is, signed in to the supervisor app. */
+  ownPhone?: boolean;
 }
 
 export const CurrentGuard = createParamDecorator((_: unknown, ctx: ExecutionContext): GuardPrincipal => {
@@ -171,6 +175,44 @@ export class GuardAuthGuard implements CanActivate {
       throw new UnauthorizedException('Please log in with your employee number and PIN.');
     }
     req.principal = { kind: 'guard', employeeId: payload.sub, companyId: d.companyId, deviceId: d.deviceId, siteId: d.siteId };
+    return true;
+  }
+}
+
+/** Roles that may act as their own officer record from their own phone (D-42). Guards use the post phone. */
+export const SELF_SERVICE_ROLES: readonly Role[] = ['site_supervisor', 'site_manager'];
+
+/**
+ * For the pages a person has about himself (his shifts, Duty On and Duty From, score, training,
+ * uniform). Two ways in: a guard on a post phone, as before; or a supervisor or site manager
+ * signed in to the supervisor app whose sign-in is joined to his officer record. Either way the
+ * request acts only for that one officer.
+ */
+@Injectable()
+export class GuardOrSelfAuthGuard implements CanActivate {
+  constructor(
+    private readonly guard: GuardAuthGuard,
+    private readonly user: UserAuthGuard,
+    private readonly db: DbService,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+    if (req.headers['x-device-token']) return this.guard.canActivate(ctx);
+    await this.user.canActivate(ctx);
+    const u: UserPrincipal = req.principal;
+    if (!SELF_SERVICE_ROLES.includes(u.role)) throw new ForbiddenException('Your role does not allow this.');
+    const e = await this.db.withTenant(u.companyId, async (tx) =>
+      (
+        await tx.query(
+          `SELECT e.id, e.home_site_id, e.status FROM users us JOIN employees e ON e.id = us.employee_id WHERE us.id = $1`,
+          [u.userId],
+        )
+      ).rows[0],
+    );
+    if (!e) throw new ForbiddenException('Your sign-in is not joined to your officer record yet. Ask an administrator to join them on the Users page.');
+    if (e.status !== 'active') throw new ForbiddenException('Your officer record is not active.');
+    req.principal = { kind: 'guard', employeeId: e.id, companyId: u.companyId, deviceId: null, siteId: e.home_site_id, ownPhone: true } satisfies GuardPrincipal;
     return true;
   }
 }

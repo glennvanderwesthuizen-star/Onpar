@@ -25,6 +25,12 @@ export default function MobileHome() {
   return (
     <>
       <h1 className="m-h1">Hello, {me.name.split(' ')[0]}</h1>
+      {me.selfService && (
+        <Link href="/m/me" className="m-strip m-mine">
+          <b>My own shift: Duty On, Duty From</b>
+          <span aria-hidden="true">›</span>
+        </Link>
+      )}
       {stale && <div className="banner warn">No connection. Showing the last update{data ? ` from ${clock(data.now)}` : ''}.</div>}
       {!data && <ErrorBanner error={error} />}
       {!data && !error && <p className="mute">Loading…</p>}

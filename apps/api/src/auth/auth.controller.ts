@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { ROLE_LABELS, Role, PERMISSIONS, can, Permission } from '@onpar/rules';
-import { AllowTemporaryPassword, CurrentUser, UserAuthGuard, UserPrincipal } from '../common/auth';
+import { AllowTemporaryPassword, CurrentUser, UserAuthGuard, UserPrincipal, SELF_SERVICE_ROLES } from '../common/auth';
 import { hashSecret, hashToken, verifySecret } from '../common/crypto';
 import { clearSessionCookie, CSRF_HEADER, CSRF_VALUE, SESSION_HOURS, setSessionCookie } from '../common/session';
 import { CONFIG, Config } from '../config';
@@ -121,9 +121,9 @@ export class AuthController {
   @UseGuards(UserAuthGuard)
   @AllowTemporaryPassword()
   async me(@CurrentUser() user: UserPrincipal) {
-    const { company, mustChangePassword, email } = await this.db.withTenant(user.companyId, async (tx) => {
-      const u = (await tx.query('SELECT email, must_change_password FROM users WHERE id = $1', [user.userId])).rows[0];
-      return { company: (await tx.query('SELECT id, name FROM companies')).rows[0], mustChangePassword: u.must_change_password as boolean, email: u.email as string };
+    const { company, mustChangePassword, email, employeeId } = await this.db.withTenant(user.companyId, async (tx) => {
+      const u = (await tx.query('SELECT email, must_change_password, employee_id FROM users WHERE id = $1', [user.userId])).rows[0];
+      return { company: (await tx.query('SELECT id, name FROM companies')).rows[0], mustChangePassword: u.must_change_password as boolean, email: u.email as string, employeeId: u.employee_id as string | null };
     });
     const permissions = (Object.keys(PERMISSIONS) as Permission[]).filter((p) => can(user.role, p));
     return {
@@ -136,6 +136,10 @@ export class AuthController {
       company,
       siteIds: user.siteIds,
       permissions,
+      // A supervisor or site manager is also an employee (D-42): his own officer record, when joined,
+      // and whether his role may use the "Me" pages (his shifts, Duty On and Duty From, uniform).
+      employeeId,
+      selfService: SELF_SERVICE_ROLES.includes(user.role),
     };
   }
 }

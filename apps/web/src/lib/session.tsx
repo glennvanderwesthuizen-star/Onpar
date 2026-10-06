@@ -14,6 +14,10 @@ export interface Me {
   company: { id: string; name: string };
   siteIds: string[] | null;
   permissions: string[];
+  /** This person's own officer record, when an administrator has joined it to the sign-in (D-42). */
+  employeeId: string | null;
+  /** A supervisor or site manager: may use the "Me" pages (own shifts, Duty On and Duty From, uniform). */
+  selfService: boolean;
 }
 
 const Ctx = createContext<{ me: Me; can: (p: string) => boolean; signOut: () => void; refresh: () => Promise<void> } | null>(null);

@@ -422,3 +422,7 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .m-seg { display: flex; gap: 6px; margin-bottom: 12px; }
 .m-seg button { flex: 1; min-height: 44px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--ink); font: inherit; font-size: 14px; }
 .m-seg button[aria-pressed=true] { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); font-weight: 700; }
+
+/* Supervisor app, step 2c: the supervisor's own pages */
+.m-strip.m-mine { background: var(--card); border-color: var(--line); margin-bottom: 12px; }
+.m-onduty { border-color: var(--green); border-left-width: 4px; }

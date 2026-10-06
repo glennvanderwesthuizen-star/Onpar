@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
-import { CurrentGuard, GuardAuthGuard, GuardPrincipal } from '../common/auth';
+import { CurrentGuard, GuardAuthGuard, GuardPrincipal, GuardOrSelfAuthGuard } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DutyService, Upload } from '../attendance/duty.service';
 import { MAX_UPLOAD_BYTES } from '../storage/storage.service';
@@ -51,7 +51,7 @@ const DeclarationBody = z.object({
  * event ID made on the device, so the offline outbox can retry safely.
  */
 @Controller('device')
-@UseGuards(GuardAuthGuard)
+@UseGuards(GuardOrSelfAuthGuard)
 export class GuardController {
   constructor(
     private readonly duty: DutyService,
@@ -84,6 +84,7 @@ export class GuardController {
   @Post('relief/give-turn')
   @HttpCode(200)
   async giveTurn(@CurrentGuard() guard: GuardPrincipal, @Body() body: unknown) {
+    if (guard.ownPhone) throw new BadRequestException('The relief rule does not apply to you.');
     const { pin } = parseBody(z.object({ pin: z.string().regex(/^\d{4,6}$/, 'Your PIN is 4 to 6 digits.') }), body);
     await this.pins.check(guard.companyId, { employeeId: guard.employeeId }, pin, guard.deviceId, null);
     return this.duty.giveTurn(guard);

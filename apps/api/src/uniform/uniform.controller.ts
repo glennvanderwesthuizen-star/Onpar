@@ -5,6 +5,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  ForbiddenException,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -35,7 +36,7 @@ import {
   UniformStatus,
   UNIFORM_CONDITIONS,
 } from '@onpar/rules';
-import { CurrentGuard, CurrentUser, GuardAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
+import { CurrentGuard, CurrentUser, GuardAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal, GuardOrSelfAuthGuard } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
@@ -387,8 +388,11 @@ export class UniformController {
   decide(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const b = parseBody(DecideBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
-      const o = (await tx.query('SELECT id, site_id, status FROM uniform_orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      const o = (await tx.query('SELECT id, site_id, status, employee_id FROM uniform_orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
       if (!o || (user.siteIds && !user.siteIds.includes(o.site_id))) throw new NotFoundException('Order not found.');
+      // Nobody decides his own order (D-42): another manager must.
+      const own = (await tx.query('SELECT 1 FROM users WHERE id = $1 AND employee_id = $2', [user.userId, o.employee_id])).rowCount;
+      if (own) throw new ForbiddenException('This is your own order. Another manager must decide it.');
       if (o.status !== 'requested') throw new ConflictException('This order has already been decided.');
       const lines = (await tx.query('SELECT l.id, i.price_cents FROM uniform_order_lines l JOIN uniform_items i ON i.id = l.item_id WHERE l.order_id = $1', [id])).rows;
       const byId = new Map(b.lines.map((l) => [l.lineId, l]));
@@ -542,7 +546,7 @@ export class UniformController {
 
 /** Uniform on the post phone (D-33): the guard's kit table, ordering, and signing for a delivery. */
 @Controller('device/uniform')
-@UseGuards(GuardAuthGuard)
+@UseGuards(GuardOrSelfAuthGuard)
 export class GuardUniformController {
   constructor(
     private readonly db: DbService,

@@ -16,6 +16,7 @@ import {
   sastDate,
   DECLARATIONS,
   DutyKind,
+  declarationFor,
   declarationWordingFor,
   earnsEarlyBonus,
   reliefCheck,
@@ -99,7 +100,7 @@ export class DutyService implements OnModuleDestroy {
       await tx.query(
         `SELECT a.id, a.site_id, a.employee_id, a.scheduled_end, a.roster_status, e.full_name, s.name AS site_name
            FROM attendance a JOIN employees e ON e.id = a.employee_id JOIN sites s ON s.id = a.site_id
-          WHERE a.duty_from_at IS NULL AND a.scheduled_end <= $1 AND a.scheduled_end > $1::timestamptz - interval '1 day'
+          WHERE a.duty_from_at IS NULL AND NOT a.own_phone AND a.scheduled_end <= $1 AND a.scheduled_end > $1::timestamptz - interval '1 day'
             AND ($2::uuid[] IS NULL OR a.site_id = ANY($2::uuid[]))`,
         [now, siteIds],
       )
@@ -149,10 +150,17 @@ export class DutyService implements OnModuleDestroy {
 
     try {
       return await this.db.withTenant(guard.companyId, async (tx) => {
+        // A supervisor on his own phone (D-42) is logged at the site he is rostered at that day,
+        // else his home site, and does not wait for a relief.
+        let siteId = guard.siteId;
+        if (guard.ownPhone && input.kind === 'duty_on') {
+          const [today] = (await this.roster.days(tx, [guard.employeeId], sastDate(time.officialAt), sastDate(time.officialAt))).get(guard.employeeId)!;
+          if (today.status === 'working') siteId = today.siteId;
+        }
         const attendanceId =
           input.kind === 'duty_on'
-            ? await this.openShift(tx, guard.employeeId, guard.siteId, time.officialAt)
-            : await this.closeShift(tx, guard.employeeId, time.officialAt, time.lateSynced ? 'late' : 'device');
+            ? await this.openShift(tx, guard.employeeId, siteId, time.officialAt, !!guard.ownPhone)
+            : await this.closeShift(tx, guard.employeeId, time.officialAt, guard.ownPhone ? 'own_phone' : time.lateSynced ? 'late' : 'device');
         await tx.query(
           `INSERT INTO duty_events (id, company_id, attendance_id, employee_id, device_id, kind, official_at, trusted_at,
                                     device_clock, received_at, late_synced, drift_seconds, drift_flagged)
@@ -181,7 +189,7 @@ export class DutyService implements OnModuleDestroy {
           entityId: attendanceId,
           after: { ...summary, lateSynced: time.lateSynced, driftSeconds: time.driftSeconds },
         });
-        return { dutyEventId: input.eventId, attendance: summary, declaration: DECLARATIONS[input.kind] };
+        return { dutyEventId: input.eventId, attendance: summary, declaration: declarationFor(input.kind, !!guard.ownPhone) };
       });
     } catch (e) {
       // A retry that raced the first attempt: return what the first one stored.
@@ -351,7 +359,7 @@ export class DutyService implements OnModuleDestroy {
    */
   async guardState(guard: GuardPrincipal) {
     return this.db.withTenant(guard.companyId, async (tx) => {
-      const e = (await tx.query('SELECT id, full_name, employee_number FROM employees WHERE id = $1', [guard.employeeId])).rows[0];
+      const e = (await tx.query('SELECT id, full_name, employee_number, tsf_number FROM employees WHERE id = $1', [guard.employeeId])).rows[0];
       const a = (
         await tx.query(
           `SELECT id FROM attendance WHERE employee_id = $1 ORDER BY duty_on_at DESC LIMIT 1`,
@@ -363,7 +371,7 @@ export class DutyService implements OnModuleDestroy {
       if (a) {
         const summary = await this.attendanceSummary(tx, a.id);
         if (!summary.dutyFromAt) {
-          const open = (await tx.query('SELECT id, site_id, scheduled_end, roster_status FROM attendance WHERE id = $1', [a.id])).rows[0];
+          const open = (await tx.query('SELECT id, site_id, scheduled_end, roster_status, own_phone FROM attendance WHERE id = $1', [a.id])).rows[0];
           const r = await this.reliefFor(tx, open, new Date());
           attendance = {
             ...summary,
@@ -384,11 +392,11 @@ export class DutyService implements OnModuleDestroy {
             : null;
         if (owed) {
           const ev = (await tx.query('SELECT id FROM duty_events WHERE attendance_id = $1 AND kind = $2', [a.id, owed])).rows[0];
-          pendingDeclaration = { kind: owed, dutyEventId: ev.id, wording: DECLARATIONS[owed as DutyKind] };
+          pendingDeclaration = { kind: owed, dutyEventId: ev.id, wording: declarationFor(owed as DutyKind, !!guard.ownPhone) };
         }
       }
       return {
-        employee: { id: e.id, name: e.full_name, employeeNumber: e.employee_number },
+        employee: { id: e.id, name: e.full_name, employeeNumber: e.employee_number, tsfNumber: e.tsf_number },
         serverTime: new Date().toISOString(),
         attendance,
         pendingDeclaration,
@@ -406,12 +414,12 @@ export class DutyService implements OnModuleDestroy {
       return {
         dutyEventId: eventId,
         attendance: await this.attendanceSummary(tx, ev.attendance_id),
-        declaration: DECLARATIONS[ev.kind as DutyKind],
+        declaration: declarationFor(ev.kind as DutyKind, !!guard.ownPhone),
       };
     });
   }
 
-  private async openShift(tx: Tx, employeeId: string, siteId: string | null, at: Date): Promise<string> {
+  private async openShift(tx: Tx, employeeId: string, siteId: string | null, at: Date, ownPhone = false): Promise<string> {
     if (!siteId) throw new ConflictException('This device is not assigned to a site. Ask your supervisor.');
     const open = await tx.query('SELECT 1 FROM attendance WHERE employee_id = $1 AND duty_from_at IS NULL', [employeeId]);
     if (open.rowCount) {
@@ -443,8 +451,8 @@ export class DutyService implements OnModuleDestroy {
       attendanceId = (
         await tx.query(
           `INSERT INTO attendance (company_id, employee_id, site_id, shift_id, shift_name, shift_date, scheduled_start,
-                                   scheduled_end, duty_on_at, arrival_status, late_minutes, roster_status)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+                                   scheduled_end, duty_on_at, arrival_status, late_minutes, roster_status, own_phone)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
           [
             employeeId,
             siteId,
@@ -457,6 +465,7 @@ export class DutyService implements OnModuleDestroy {
             arrival.status,
             arrival.lateMinutes,
             rostered.status === 'rostered' ? 'rostered' : rostered.status,
+            ownPhone,
           ],
         )
       ).rows[0].id;
@@ -504,10 +513,10 @@ export class DutyService implements OnModuleDestroy {
    * sent late from a phone without signal is accepted and marked "not checked"; a
    * supervisor's Duty From releases him.
    */
-  private async closeShift(tx: Tx, employeeId: string, at: Date, mode: 'device' | 'late' | 'released'): Promise<string> {
+  private async closeShift(tx: Tx, employeeId: string, at: Date, mode: 'device' | 'late' | 'released' | 'own_phone'): Promise<string> {
     const a = (
       await tx.query(
-        `SELECT id, site_id, shift_date, scheduled_end, duty_on_at, roster_status FROM attendance
+        `SELECT id, site_id, shift_date, scheduled_end, duty_on_at, roster_status, own_phone FROM attendance
           WHERE employee_id = $1 AND duty_from_at IS NULL FOR UPDATE`,
         [employeeId],
       )
@@ -516,14 +525,15 @@ export class DutyService implements OnModuleDestroy {
     if (at.getTime() < new Date(a.duty_on_at).getTime()) throw new BadRequestException('Duty From cannot be before Duty On.');
     const check = await this.reliefFor(tx, a, at);
     if (mode === 'device' && !check.canLeave) throw new ConflictException(check.message);
-    const reliefStatus = mode === 'released' ? 'released' : mode === 'late' ? 'not_checked' : check.outcome;
+    // A shift logged from the person's own phone is outside the relief rule, however it is closed.
+    const reliefStatus = mode === 'released' ? 'released' : a.own_phone || mode === 'own_phone' ? 'no_rule' : mode === 'late' ? 'not_checked' : check.outcome;
     const dep = departureStatus(a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null, at);
     await tx.query(
       `UPDATE attendance SET duty_from_at = $2, departure_status = $3, early_minutes = $4, relief_status = $5, relieved_by_attendance_id = $6
         WHERE id = $1`,
-      [a.id, at, dep.status, dep.earlyMinutes, reliefStatus, check.outcome === 'relieved' && mode === 'device' ? check.reliever!.attendanceId : null],
+      [a.id, at, dep.status, dep.earlyMinutes, reliefStatus, check.outcome === 'relieved' && mode === 'device' && !a.own_phone ? check.reliever!.attendanceId : null],
     );
-    if (mode === 'device') await this.scoreCovering(tx, employeeId, a, at, check);
+    if (mode === 'device' && !a.own_phone) await this.scoreCovering(tx, employeeId, a, at, check);
     return a.id;
   }
 
@@ -560,14 +570,14 @@ export class DutyService implements OnModuleDestroy {
   }
 
   /** Whether the guard on this open shift may log Duty From at `at` (D-33). */
-  private async reliefFor(tx: Tx, a: { id: string; site_id: string; scheduled_end: Date | null; roster_status: string | null }, at: Date): Promise<ReliefCheck> {
-    const end = a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null;
+  private async reliefFor(tx: Tx, a: { id: string; site_id: string; scheduled_end: Date | null; roster_status: string | null; own_phone?: boolean }, at: Date): Promise<ReliefCheck> {
+    const end = a.scheduled_end && a.roster_status !== 'not_rostered_here' && !a.own_phone ? new Date(a.scheduled_end) : null;
     if (!end) return reliefCheck(at, a.id, null, [], []);
     const leaving: LeavingGuard[] = (
       await tx.query(
         `SELECT a.id, e.full_name, a.duty_on_at, a.duty_from_at, a.turn_given_at, a.relief_status
            FROM attendance a JOIN employees e ON e.id = a.employee_id
-          WHERE a.site_id = $1 AND a.scheduled_end = $2 AND a.roster_status IS DISTINCT FROM 'not_rostered_here'`,
+          WHERE a.site_id = $1 AND a.scheduled_end = $2 AND a.roster_status IS DISTINCT FROM 'not_rostered_here' AND NOT a.own_phone`,
         [a.site_id, end],
       )
     ).rows.map((r) => ({
@@ -583,7 +593,7 @@ export class DutyService implements OnModuleDestroy {
       await tx.query(
         `SELECT a.id, e.full_name, a.duty_on_at, a.late_minutes
            FROM attendance a JOIN employees e ON e.id = a.employee_id
-          WHERE a.site_id = $1 AND a.scheduled_start >= $2 AND a.scheduled_start < $2 + interval '6 hours' AND a.duty_on_at <= $3`,
+          WHERE a.site_id = $1 AND a.scheduled_start >= $2 AND a.scheduled_start < $2 + interval '6 hours' AND a.duty_on_at <= $3 AND NOT a.own_phone`,
         [a.site_id, end, at],
       )
     ).rows.map((r) => ({ attendanceId: r.id, name: r.full_name, dutyOnAt: new Date(r.duty_on_at), lateMinutes: r.late_minutes ?? 0 }));

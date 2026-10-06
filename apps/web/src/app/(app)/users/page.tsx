@@ -16,7 +16,18 @@ interface User {
   mustChangePassword: boolean;
   siteIds: string[];
   lastSignIn: string | null;
+  employeeId: string | null;
+  employeeLabel: string | null;
 }
+interface Officer {
+  id: string;
+  full_name: string;
+  tsf_number: string | null;
+  employee_number: string;
+  status: string;
+}
+/** Roles that are also employees with their own shifts, Duty On and Duty From (D-42). */
+const SELF_ROLES: Role[] = ['site_supervisor', 'site_manager'];
 interface Site {
   id: string;
   name: string;
@@ -50,13 +61,15 @@ function TempPassword({ who, password, onClose }: { who: string; password: strin
 
 function UserForm({
   sites,
+  officers,
   initial,
   editing,
   onSave,
   onCancel,
 }: {
   sites: Site[];
-  initial: { fullName: string; email: string; role: Role; siteIds: string[]; active: boolean };
+  officers: Officer[];
+  initial: { fullName: string; email: string; role: Role; siteIds: string[]; active: boolean; employeeId: string | null };
   editing?: boolean;
   onSave: (v: typeof initial) => Promise<void>;
   onCancel?: () => void;
@@ -73,7 +86,7 @@ function UserForm({
     setBusy(true);
     setError(null);
     try {
-      await onSave({ ...v, siteIds: scoped ? v.siteIds : [] });
+      await onSave({ ...v, siteIds: scoped ? v.siteIds : [], employeeId: SELF_ROLES.includes(v.role) ? v.employeeId : null });
     } catch (err) {
       setError(err);
     } finally {
@@ -115,6 +128,24 @@ function UserForm({
           {errors.siteIds && <div className="err">{errors.siteIds}</div>}
         </fieldset>
       )}
+      {SELF_ROLES.includes(v.role) && (
+        <Field
+          label="Their own officer record"
+          error={errors.employeeId}
+          hint="Choose this if they are also an employee with their own shifts. They can then log their own Duty On and Duty From, and see their shifts, score and uniform, in the supervisor app on their own phone. Enrol them as an officer first if they are not in the list."
+        >
+          <select value={v.employeeId ?? ''} onChange={(e) => setV({ ...v, employeeId: e.target.value || null })}>
+            <option value="">Not joined to an officer record</option>
+            {officers
+              .filter((o) => o.status === 'active' || o.id === v.employeeId)
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.full_name} ({o.tsf_number ?? o.employee_number})
+                </option>
+              ))}
+          </select>
+        </Field>
+      )}
       {editing && (
         <label className="row" style={{ gap: 6, margin: '8px 0' }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={v.active} onChange={(e) => setV({ ...v, active: e.target.checked })} />
@@ -139,6 +170,7 @@ export default function UsersPage() {
   const { me } = useSession();
   const { data, error, reload } = useLoad(() => api<User[]>('/users'));
   const sites = useLoad(() => api<Site[]>('/sites'));
+  const officers = useLoad(() => api<Officer[]>('/officers'));
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [temp, setTemp] = useState<{ who: string; password: string } | null>(null);
@@ -177,7 +209,8 @@ export default function UsersPage() {
           <h2>Add a user</h2>
           <UserForm
             sites={sites.data}
-            initial={{ fullName: '', email: '', role: 'site_supervisor', siteIds: [], active: true }}
+            officers={officers.data ?? []}
+            initial={{ fullName: '', email: '', role: 'site_supervisor', siteIds: [], active: true, employeeId: null }}
             onCancel={() => setAdding(false)}
             onSave={async (v) => {
               const r = await api<{ temporaryPassword: string }>('/users', { method: 'POST', json: v });
@@ -208,10 +241,11 @@ export default function UsersPage() {
                       <UserForm
                         sites={sites.data}
                         editing
-                        initial={{ fullName: u.fullName, email: u.email, role: u.role, siteIds: u.siteIds, active: u.active }}
+                        officers={officers.data ?? []}
+                        initial={{ fullName: u.fullName, email: u.email, role: u.role, siteIds: u.siteIds, active: u.active, employeeId: u.employeeId }}
                         onCancel={() => setEditing(null)}
                         onSave={async (v) => {
-                          await api(`/users/${u.id}`, { method: 'PUT', json: { fullName: v.fullName, role: v.role, siteIds: v.siteIds, active: v.active } });
+                          await api(`/users/${u.id}`, { method: 'PUT', json: { fullName: v.fullName, role: v.role, siteIds: v.siteIds, active: v.active, employeeId: v.employeeId } });
                           setEditing(null);
                           reload();
                         }}
@@ -224,6 +258,7 @@ export default function UsersPage() {
                       <b>{u.fullName}</b>
                       {u.id === me.id && <span className="mute"> (you)</span>}
                       <div className="mute small">{u.email}</div>
+                      {u.employeeLabel && <div className="mute small">Officer record: {u.employeeLabel}</div>}
                     </td>
                     <td>
                       {u.roleLabel}

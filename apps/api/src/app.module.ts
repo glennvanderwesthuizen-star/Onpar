@@ -13,7 +13,7 @@ import { FaceMatchService } from './face/face-match.service';
 import { DevicesController } from './devices/devices.controller';
 import { DeviceController } from './device-api/device.controller';
 import { StorageService } from './storage/storage.service';
-import { UserAuthGuard, DeviceAuthGuard, GuardAuthGuard } from './common/auth';
+import { UserAuthGuard, DeviceAuthGuard, GuardAuthGuard, GuardOrSelfAuthGuard } from './common/auth';
 import { PinService } from './device-api/pin.service';
 import { GuardController } from './device-api/guard.controller';
 import { DutyService } from './attendance/duty.service';
@@ -92,6 +92,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       UserAuthGuard,
       DeviceAuthGuard,
       GuardAuthGuard,
+      GuardOrSelfAuthGuard,
       PinService,
       DutyService,
       TasksService,

@@ -635,3 +635,20 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 
 **Raised by the owner, not built (D-42):** a supervisor is also an employee, with his own shifts, Duty On and Duty From, and his own uniform orders. Decided the same day: own phone, no location, no wait-for-relief, points apply, a manager approves his uniform. This is step 2c.
 
+
+### 7 Oct 2026: phase 2, step 2c, a supervisor is also an employee (D-42)
+
+- **Joining the two records:** on the Users page, a supervisor's or site manager's sign-in can be joined to his own officer record ("Their own officer record"). One officer record belongs to one sign-in only. He must be enrolled as an officer first, which gives him his TSF number and PIN.
+- **Me** (in the supervisor app, from Home and from More):
+  - **My shift:** today's shift from the roster, and whether he is on duty.
+  - **Duty On and Duty From on his own phone:** his PIN each time, then the declaration and a selfie, as for guards. No location is taken. It is logged at the site he is rostered at that day, else his home site.
+  - **No waiting for a relief:** he logs Duty From whenever he leaves. His shift is left out when a guard's relief is worked out, so he neither relieves a guard nor holds one up.
+  - **Points apply** as for any employee: on time, late, early departure. He sees his score and why it changed.
+  - **My training** and **Coming up** (his next shifts).
+  - **My uniform:** what he is entitled to, ordering, and signing for a delivery with his PIN. A manager decides the order; nobody can decide his own.
+- **Declaration wording:** he is shown the Duty On wording without the wait-for-relief statement (version 1), since that rule does not apply to him. Whether the other statements (the OB, equipment handed over) suit a supervisor is for the owner and the labour lawyer (L-02).
+- **Who can do this:** supervisors and site managers only. Guards keep to the post phone. Other roles are refused even if joined.
+- **How:** the guard's own pages on the server now accept either a post phone or a joined supervisor's sign-in, so there is one set of rules, not two. Post-phone-only pages (tasks, patrols, reports from the post, re-orders) stay closed to the supervisor's sign-in.
+- **Needs signal:** unlike the post phone, the supervisor app does not queue actions without signal. Duty On from his own phone needs a connection.
+- Tests: 12 new server tests. The Me screen was walked through in an iPhone-sized browser: wrong PIN, Duty On, declaration with selfie, Duty From, score and training. **Not seen on screen:** My uniform, because the demo data has no site uniform list; its server rules are the guard's existing ones.
+- **No blink check:** the post phone's blink check before the selfie is not available in a web app, so a supervisor's selfie is taken without it. Selfie checks by a person, and automatic matching when switched on, still apply.

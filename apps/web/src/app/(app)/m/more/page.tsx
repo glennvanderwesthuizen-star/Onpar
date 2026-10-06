@@ -7,6 +7,7 @@ import { useSession } from '@/lib/session';
 export default function MobileMore() {
   const { me, can, signOut } = useSession();
   const items = [
+    { href: '/m/me', label: 'Me', about: 'My shift, Duty On and Duty From, my score and uniform', show: me.selfService },
     { href: '/m/reports', label: 'Reports', about: 'Open reports at your sites', show: can('reports.view') },
     { href: '/m/selfies', label: 'Selfie checks', about: 'Is it him in the Duty On selfie?', show: can('attendance.view') },
     { href: '/m/attendance', label: 'Attendance', about: 'Today’s register for your sites', show: can('attendance.view') },

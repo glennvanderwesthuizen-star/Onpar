@@ -33,8 +33,7 @@ import {
   GuardPrincipal,
   RequirePermission,
   UserAuthGuard,
-  UserPrincipal,
-} from '../common/auth';
+  UserPrincipal, GuardOrSelfAuthGuard } from '../common/auth';
 import { parseBody, throwIfErrors } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
@@ -275,7 +274,7 @@ export class ScoresController {
 
 /** The guard's own score on the post device: why it changed, and the Query button. */
 @Controller('device/score')
-@UseGuards(GuardAuthGuard)
+@UseGuards(GuardOrSelfAuthGuard)
 export class GuardScoreController {
   constructor(
     private readonly db: DbService,

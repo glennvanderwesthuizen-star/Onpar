@@ -17,7 +17,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+/**
+ * `wrongPinIs401`: for calls that check a PIN. The server answers a wrong PIN with the same
+ * code as an expired sign-in, so for these the message is shown instead of going to the
+ * sign-in page.
+ */
+export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown; wrongPinIs401?: boolean } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   for (const [k, v] of Object.entries(HEADERS)) headers.set(k, v);
   let body = init.body;
@@ -31,7 +36,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   } catch {
     throw new ApiError(0, 'Could not reach the server. Check your connection and try again.');
   }
-  if (res.status === 401 && path !== '/auth/login') {
+  if (res.status === 401 && path !== '/auth/login' && !init.wrongPinIs401) {
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       // Come back here after signing in (for example a scanned ID badge).
       const here = window.location.pathname + window.location.search;
