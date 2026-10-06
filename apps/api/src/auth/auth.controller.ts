@@ -20,6 +20,9 @@ const LoginBody = z.object({
 let dummyHash: Promise<string> | undefined;
 
 /** Sign-in throttling: per email address, and per network address for guessing across many accounts. */
+/** A customer stays signed in on their own phone for a month, so an alert can be answered without signing in again. */
+export const CUSTOMER_SESSION_DAYS = 30;
+
 export const THROTTLE = {
   email: { max: 5, window: '15 minutes', lock: '15 minutes' },
   ip: { max: 30, window: '15 minutes', lock: '15 minutes' },
@@ -56,6 +59,11 @@ export class AuthController {
       active: boolean;
       full_name: string;
     }>('SELECT * FROM auth_user_by_email($1)', [email]);
+    // Not staff: perhaps a customer (the client or a tenant of a site). One sign-in page serves both.
+    if (!u) {
+      const done = await this.customerLogin(email, password, keys, req, res);
+      if (done) return done;
+    }
     const ok = await verifySecret(u?.password_hash ?? (await (dummyHash ??= hashSecret('not-a-password'))), password);
     if (!u || !ok || !u.active) {
       if (u) {
@@ -106,7 +114,27 @@ export class AuthController {
     );
     const token = await this.jwt.signAsync({ sub: u.id, cid: u.company_id, typ: 'user' }, { expiresIn: `${SESSION_HOURS}h` });
     setSessionCookie(res, token, this.config.cookieSecure);
-    return req.headers[CSRF_HEADER] === CSRF_VALUE ? { ok: true } : { token };
+    return req.headers[CSRF_HEADER] === CSRF_VALUE ? { ok: true, account: 'staff' } : { token, account: 'staff' };
+  }
+
+  /**
+   * Signs a customer in, with the same throttling as staff. Returns null when the email is
+   * not a customer's or the password is wrong, so the caller answers exactly as it does for an
+   * unknown email.
+   */
+  private async customerLogin(email: string, password: string, keys: { email: string; ip: string }, req: Request, res: Response) {
+    const [c] = await this.db.query<{ id: string; company_id: string; password_hash: string; active: boolean; full_name: string }>('SELECT * FROM auth_customer_by_email($1)', [email]);
+    if (!c) return null;
+    const actor = { actorType: 'customer' as const, actorId: c.id, actorLabel: c.full_name, entityType: 'customer', entityId: c.id };
+    if (!(await verifySecret(c.password_hash, password)) || !c.active) {
+      await this.db.withTenant(c.company_id, (tx) => this.audit.record(tx, { ...actor, action: 'auth.login_failed' }));
+      return null;
+    }
+    await this.db.query('SELECT auth_throttle_clear($1)', [keys.email]);
+    await this.db.withTenant(c.company_id, (tx) => this.audit.record(tx, { ...actor, action: 'auth.login' }));
+    const token = await this.jwt.signAsync({ sub: c.id, cid: c.company_id, typ: 'customer' }, { expiresIn: `${CUSTOMER_SESSION_DAYS}d` });
+    setSessionCookie(res, token, this.config.cookieSecure, CUSTOMER_SESSION_DAYS * 24);
+    return req.headers[CSRF_HEADER] === CSRF_VALUE ? { ok: true, account: 'customer' } : { token, account: 'customer' };
   }
 
   /** Signs out of the website by clearing the cookie. */

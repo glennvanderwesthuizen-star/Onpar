@@ -655,3 +655,23 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 
 **Proven 7 Oct 2026:** the owner tested steps 2b and 2c on his iPhone, signed in as a supervisor joined to his own officer record, and saw his own shift. An iPhone fault found on the way and fixed: the page zoomed in after typing in the sign-in box and cut off the right edge; typing boxes are now large enough that iPhones do not zoom. **Phase 2 is complete.** Next in the plan is phase 3, the customer foundation.
 
+
+### 7 Oct 2026: phase 3, the customer foundation (D-39)
+
+- **Units and customers.** A site now has units (a house, flat, office or shop) and customers. A customer is either the **client** who hires the security company or a **tenant** in a unit. Both use the same customer app.
+- **Set up by the administrator only**, on the site's own page, in a new section "Units, client and tenants": add units, add a person, edit, deactivate, give a new password, and **add many tenants from a spreadsheet** (paste the rows or choose a CSV file; all or nothing, with each problem listed by row). Company managers can look; nobody else sees it.
+- **Sign-in:** email and password, on the same sign-in page as staff. Each customer gets a 16-character temporary password, shown once, and must choose their own at first sign-in. One email address signs in to one account only, across staff, customers and every company. Customers stay signed in for 30 days on their own phone.
+- **Kept apart from staff.** Customers are a separate kind of account. A customer's sign-in opens only the customer app; every staff page refuses it (tested against eleven of them).
+- **The customer app** is at `/c` on the same address:
+  - **Home:** the site and unit, how the gate reaches them, whether alerts are on for this phone, and a "Visitors: coming soon" card.
+  - **Alerts:** every alert sent to them.
+  - **My account:** alerts on this phone with a test alert, their own phone number and a second contact (kept current by the customer; every change is in the audit log under their name), password, sign out.
+- **Alerts for customers:** the alert service of phase 1 now sends to customers as well as staff, on the same terms: written to their alerts list, then sent to each phone they switched alerts on for. Deactivating a customer stops their sign-in and their alerts at once.
+- **One home-screen icon for everyone:** the icon now opens a start page that sends a supervisor to the phone view, other staff to the website, a customer to the customer app, and anyone not signed in to the sign-in page.
+- Tests: 12 new server tests. The whole journey was run in a browser: the administrator adds a unit, a tenant and an import on a computer; the tenant signs in on an iPhone-sized screen, chooses a password, changes the second contact, and the administrator sees it.
+
+**Not yet proven:** a real tenant on a real phone, including switching alerts on in the customer app.
+
+**Flagged (POPIA, P-3 and P-5):** tenants' names, email addresses and phone numbers are new personal information about people who are not employees. Before real tenants are loaded: a notice telling tenants what is kept and why, and a retention period for tenants who leave. Neither is built; deactivating a tenant keeps the record.
+
+**Not in this phase:** anything about visitors. Approving and refusing a visitor, announcing who is coming and at which gate, come with visitor management (D-40), which builds on this.

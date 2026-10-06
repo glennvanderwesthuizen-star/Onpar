@@ -18,7 +18,7 @@ export default function AccountPage() {
           </p>
         </div>
       </div>
-      <AlertSettings />
+      <AlertSettings accountId={me.id} />
       <div className="card" style={{ maxWidth: 560 }}>
         <h2>Change password</h2>
         {done ? <div className="banner ok">Your password has been changed.</div> : <ChangePassword email={me.email} onDone={() => setDone(true)} />}

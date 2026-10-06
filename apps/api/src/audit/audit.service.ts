@@ -3,7 +3,7 @@ import { Tx } from '../db/db.service';
 import type { UserPrincipal } from '../common/auth';
 
 export interface AuditEntry {
-  actorType: 'user' | 'employee' | 'device' | 'system';
+  actorType: 'user' | 'employee' | 'device' | 'system' | 'customer';
   actorId?: string | null;
   actorLabel?: string;
   action: string;
@@ -49,6 +49,13 @@ export class AuditService {
         e.reason ?? null,
       ],
     );
+  }
+
+  /** By whoever is signed in: a member of staff or a customer. */
+  byAccount(tx: Tx, who: UserPrincipal | { kind: 'customer'; customerId: string; name: string }, e: Omit<AuditEntry, 'actorType' | 'actorId' | 'actorLabel'>) {
+    return who.kind === 'customer'
+      ? this.record(tx, { ...e, actorType: 'customer', actorId: who.customerId, actorLabel: who.name })
+      : this.byUser(tx, who, e);
   }
 
   byUser(tx: Tx, user: UserPrincipal, e: Omit<AuditEntry, 'actorType' | 'actorId' | 'actorLabel'>) {

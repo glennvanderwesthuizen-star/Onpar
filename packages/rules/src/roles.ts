@@ -80,6 +80,9 @@ export const PERMISSIONS = {
   // Uniform condition notes: HR records (D-33). Written by supervisors; read by managers and HR; every view audited.
   'hr.uniform_notes.write': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'hr.uniform_notes.view': ['system_admin', 'company_manager', 'site_manager', 'hr_admin'],
+  // Customers (phase 3, D-39): units, the client and tenants of a site. Only the administrator creates them.
+  'customers.view': ['system_admin', 'company_manager'],
+  'customers.manage': ['system_admin'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

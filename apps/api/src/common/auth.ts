@@ -216,3 +216,76 @@ export class GuardOrSelfAuthGuard implements CanActivate {
     return true;
   }
 }
+
+/**
+ * A signed-in customer (phase 3, D-39): the client who hires the security company, or a
+ * tenant inside a site. Never staff: a customer's sign-in opens only the customer app.
+ */
+export interface CustomerPrincipal {
+  kind: 'customer';
+  customerId: string;
+  companyId: string;
+  siteId: string;
+  unitId: string | null;
+  customerKind: 'client' | 'tenant';
+  name: string;
+}
+
+export const CurrentCustomer = createParamDecorator((_: unknown, ctx: ExecutionContext): CustomerPrincipal => {
+  return ctx.switchToHttp().getRequest().principal;
+});
+
+/** Requires a customer's session. A customer on a temporary password can only see who they are and choose a new one. */
+@Injectable()
+export class CustomerAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly db: DbService,
+    private readonly reflector: Reflector,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+    const token = userToken(req);
+    if (!token) throw new UnauthorizedException('Please sign in.');
+    let payload: { sub: string; cid: string; typ: string };
+    try {
+      payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
+    } catch {
+      throw new UnauthorizedException('Your session has expired. Please sign in again.');
+    }
+    if (payload.typ !== 'customer') throw new UnauthorizedException('Please sign in.');
+    // Re-read the customer so a deactivated account stops working at once.
+    const c = await this.db.withTenant(payload.cid, async (tx) =>
+      (await tx.query('SELECT id, site_id, unit_id, kind, full_name, active, must_change_password FROM customers WHERE id = $1', [payload.sub])).rows[0],
+    );
+    if (!c || !c.active) throw new UnauthorizedException('This account is no longer active.');
+    req.principal = { kind: 'customer', customerId: c.id, companyId: payload.cid, siteId: c.site_id, unitId: c.unit_id, customerKind: c.kind, name: c.full_name } satisfies CustomerPrincipal;
+    if (c.must_change_password && !this.reflector.getAllAndOverride<boolean>(TEMPORARY_OK_KEY, [ctx.getHandler(), ctx.getClass()])) {
+      throw new ForbiddenException('Please choose your own password first.');
+    }
+    return true;
+  }
+}
+
+/** Whoever is signed in, staff or customer, for the things both have: their own alerts and devices. */
+export type AccountPrincipal = UserPrincipal | CustomerPrincipal;
+
+export const CurrentAccount = createParamDecorator((_: unknown, ctx: ExecutionContext): AccountPrincipal => {
+  return ctx.switchToHttp().getRequest().principal;
+});
+
+@Injectable()
+export class AccountAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly users: UserAuthGuard,
+    private readonly customers: CustomerAuthGuard,
+  ) {}
+
+  canActivate(ctx: ExecutionContext): Promise<boolean> {
+    // Only to choose which check to run; that check verifies the token properly.
+    const claims = this.jwt.decode<{ typ?: string } | null>(userToken(ctx.switchToHttp().getRequest()) || '');
+    return claims?.typ === 'customer' ? this.customers.canActivate(ctx) : this.users.canActivate(ctx);
+  }
+}

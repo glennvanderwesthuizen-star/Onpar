@@ -49,6 +49,8 @@ export class WebPushSender implements PushSender {
 /** What to tell one or more people. */
 export interface AlertInput {
   userIds: string[];
+  /** Customers to tell (phase 3). They receive every alert addressed to them; there is nothing to switch off yet. */
+  customerIds?: string[];
   kind: AlertKind;
   title: string;
   /** The details, shown only inside On Par after sign-in. */
@@ -127,6 +129,17 @@ export class NotificationsService implements OnModuleDestroy {
         [p.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null, sendLater],
       );
       out.push(r.rows[0].id);
+    }
+    if (input.customerIds?.length) {
+      const customers = (await tx.query(`SELECT id FROM customers WHERE id = ANY($1::uuid[]) AND active`, [[...new Set(input.customerIds)]])).rows;
+      for (const c of customers) {
+        const r = await tx.query(
+          `INSERT INTO notifications (company_id, customer_id, kind, title, body, lock_screen, url, site_id, entity_type, entity_id, dispatched_at)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN NULL ELSE now() END) RETURNING id`,
+          [c.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/c/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null, sendLater],
+        );
+        out.push(r.rows[0].id);
+      }
     }
     if (sendLater && out.length) {
       this.pending.add((await tx.query('SELECT app_company_id() AS id')).rows[0].id);
@@ -234,12 +247,20 @@ export class NotificationsService implements OnModuleDestroy {
   private async deliver(companyId: string, notificationId: string) {
     const keys = await this.keys();
     const { n, targets } = await this.db.withTenant(companyId, async (tx) => {
-      const n = (await tx.query('SELECT id, user_id, kind, lock_screen FROM notifications WHERE id = $1', [notificationId])).rows[0];
-      const targets = (await tx.query('SELECT id, endpoint, p256dh, auth, label FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at', [n.user_id])).rows;
+      const n = (await tx.query('SELECT id, user_id, customer_id, kind, lock_screen FROM notifications WHERE id = $1', [notificationId])).rows[0];
+      const targets = (
+        await tx.query(
+          `SELECT id, endpoint, p256dh, auth, label FROM push_subscriptions
+            WHERE ($1::uuid IS NOT NULL AND user_id = $1) OR ($2::uuid IS NOT NULL AND customer_id = $2) ORDER BY created_at`,
+          [n.user_id, n.customer_id],
+        )
+      ).rows;
       return { n, targets: targets as (PushTarget & { id: string; label: string })[] };
     });
     // The alert carries only the general line. Tapping it opens the alerts list, which shows the details after sign-in.
-    const payload = JSON.stringify({ id: n.id, title: 'On Par', body: n.lock_screen, url: `/alerts?open=${n.id}`, tag: `${n.kind}:${n.id}` });
+    // Staff and customers each have their own alerts page.
+    const list = n.customer_id ? '/c/alerts' : '/alerts';
+    const payload = JSON.stringify({ id: n.id, title: 'On Par', body: n.lock_screen, url: `${list}?open=${n.id}`, tag: `${n.kind}:${n.id}` });
     const results = await Promise.all(targets.map(async (t) => ({ t, r: await this.sender.send(t, payload, keys).catch((): PushResult => ({ ok: false, gone: false, detail: 'The alert could not be sent.' })) })));
     await this.db.withTenant(companyId, async (tx) => {
       if (!targets.length) {

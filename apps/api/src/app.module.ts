@@ -13,7 +13,7 @@ import { FaceMatchService } from './face/face-match.service';
 import { DevicesController } from './devices/devices.controller';
 import { DeviceController } from './device-api/device.controller';
 import { StorageService } from './storage/storage.service';
-import { UserAuthGuard, DeviceAuthGuard, GuardAuthGuard, GuardOrSelfAuthGuard } from './common/auth';
+import { UserAuthGuard, DeviceAuthGuard, GuardAuthGuard, GuardOrSelfAuthGuard, CustomerAuthGuard, AccountAuthGuard } from './common/auth';
 import { PinService } from './device-api/pin.service';
 import { GuardController } from './device-api/guard.controller';
 import { DutyService } from './attendance/duty.service';
@@ -40,6 +40,8 @@ import { GuardUniformController, UniformController } from './uniform/uniform.con
 import { NotificationsController } from './notifications/notifications.controller';
 import { NotificationsService } from './notifications/notifications.service';
 import { SupervisorController } from './supervisor/supervisor.controller';
+import { CustomersController } from './customers/customers.controller';
+import { CustomerAppController } from './customers/customer-app.controller';
 
 @Controller('health')
 class HealthController {
@@ -87,12 +89,16 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardUniformController,
       NotificationsController,
       SupervisorController,
+      CustomersController,
+      CustomerAppController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
       DeviceAuthGuard,
       GuardAuthGuard,
       GuardOrSelfAuthGuard,
+      CustomerAuthGuard,
+      AccountAuthGuard,
       PinService,
       DutyService,
       TasksService,

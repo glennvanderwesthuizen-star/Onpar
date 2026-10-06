@@ -6,7 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { ErrorBanner, Field } from './ui';
 
 /** Change your own password. Used after a temporary password, and from My account. */
-export function ChangePassword({ email, onDone }: { email: string; onDone: () => void }) {
+export function ChangePassword({ email, onDone, path = '/auth/password' }: { email: string; onDone: () => void; path?: string }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
@@ -22,7 +22,7 @@ export function ChangePassword({ email, onDone }: { email: string; onDone: () =>
     setBusy(true);
     setError(null);
     try {
-      await api('/auth/password', { method: 'POST', json: { currentPassword: current, newPassword: next } });
+      await api(path, { method: 'POST', json: { currentPassword: current, newPassword: next } });
       onDone();
     } catch (err) {
       setError(err);

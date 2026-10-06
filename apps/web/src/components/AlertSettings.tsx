@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Device, disablePush, enablePush, isIos, markOn, PushState, pushState, currentSubscription } from '@/lib/push';
-import { useSession } from '@/lib/session';
 import { ErrorBanner, formatDateTime } from './ui';
 
 interface Pref {
@@ -25,8 +24,7 @@ interface TestResult {
  * My account: alerts on this device, a test alert, the person's other devices, and which
  * alerts they receive (plan of 6 Oct 2026, phase 1).
  */
-export function AlertSettings() {
-  const { me } = useSession();
+export function AlertSettings({ accountId }: { accountId: string }) {
   const [publicKey, setPublicKey] = useState('');
   const [devices, setDevices] = useState<Device[]>([]);
   const [state, setState] = useState<PushState | null>(null);
@@ -67,7 +65,7 @@ export function AlertSettings() {
   const switchOn = () =>
     run(async () => {
       await enablePush(publicKey);
-      markOn(me.id);
+      markOn(accountId);
     });
   const switchOff = () =>
     run(async () => {

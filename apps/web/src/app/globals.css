@@ -433,3 +433,15 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 @media (max-width: 640px) {
   input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
 }
+
+/* Customer app (phase 3) and the units-and-tenants section of a site */
+.m-tabs.c-tabs { grid-template-columns: repeat(3, 1fr); }
+.secret-sm { font: 700 15px ui-monospace, Menlo, Consolas, monospace; padding: 2px 6px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); user-select: all; }
+.cust-table { width: 100%; border-collapse: collapse; }
+.cust-table th, .cust-table td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.cust-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--mute); border-top: 0; }
+.cust-wrap { overflow-x: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chips .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; font-size: 14px; background: var(--bg); }
+.chips .chip.off { opacity: .55; }
+.chips .chip button { border: 0; background: none; color: var(--mute); cursor: pointer; font: inherit; padding: 0 2px; text-decoration: underline; }

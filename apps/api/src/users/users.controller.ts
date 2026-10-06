@@ -41,6 +41,10 @@ export class UsersController {
     const u = parseBody(UserBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
       const siteIds = await this.checkSites(tx, u.role, u.siteIds);
+      // An email signs in to one account only: it must not already be a customer's.
+      if ((await tx.query('SELECT auth_email_taken($1) AS taken', [u.email])).rows[0].taken) {
+        throw new ConflictException({ message: 'That email address already has an On Par account.', errors: { email: 'Already in use.' } });
+      }
       const password = temporaryPassword();
       let id: string;
       try {

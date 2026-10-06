@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ErrorBanner, Field } from '@/components/ui';
@@ -13,15 +13,27 @@ export default function LoginPage() {
   const [error, setError] = useState<unknown>(null);
   const [forgot, setForgot] = useState(false);
 
+  // Already signed in (for example a customer who followed a link to a staff page): go to their own place.
+  useEffect(() => {
+    const signedIn = (path: string) => fetch(`/api${path}`, { headers: { 'X-Requested-With': 'OnPar' } }).then((r) => r.ok).catch(() => false);
+    (async () => {
+      if (await signedIn('/customer/me')) router.replace('/c');
+      else if ((await signedIn('/auth/me')) && !new URLSearchParams(window.location.search).get('next')) router.replace('/start');
+    })();
+  }, [router]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api('/auth/login', { method: 'POST', json: { email, password } });
+      const r = await api<{ account?: 'staff' | 'customer' }>('/auth/login', { method: 'POST', json: { email, password } });
       // Only a path on this site, never another address.
       const next = new URLSearchParams(window.location.search).get('next') ?? '';
-      router.replace(next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/');
+      const safe = next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '';
+      // A customer (the client or a tenant of a site) goes to the customer app; staff go where they were heading.
+      if (r.account === 'customer') router.replace(safe === '/c' || safe.startsWith('/c/') ? safe : '/c');
+      else router.replace(safe && safe !== '/start' && !safe.startsWith('/c') ? safe : '/start');
     } catch (err) {
       setError(err);
       setBusy(false);
@@ -35,7 +47,7 @@ export default function LoginPage() {
         <div className="logo" style={{ marginTop: 10 }}>
           On<i>Par</i>
         </div>
-        <p className="mute small">Management sign-in</p>
+        <p className="mute small">Sign in</p>
         <form onSubmit={submit}>
           <ErrorBanner error={error} />
           <Field label="Email">

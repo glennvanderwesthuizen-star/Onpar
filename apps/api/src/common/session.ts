@@ -20,8 +20,8 @@ export function readCookie(req: Request, name: string): string {
   return '';
 }
 
-export function setSessionCookie(res: Response, token: string, secure: boolean) {
-  res.cookie(SESSION_COOKIE, token, { httpOnly: true, secure, sameSite: 'strict', path: '/api', maxAge: SESSION_HOURS * 3600 * 1000 });
+export function setSessionCookie(res: Response, token: string, secure: boolean, hours = SESSION_HOURS) {
+  res.cookie(SESSION_COOKIE, token, { httpOnly: true, secure, sameSite: 'strict', path: '/api', maxAge: hours * 3600 * 1000 });
 }
 
 export function clearSessionCookie(res: Response, secure: boolean) {

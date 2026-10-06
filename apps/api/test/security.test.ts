@@ -69,7 +69,8 @@ describe('security hardening', () => {
 
     it('gives the website an httpOnly cookie and no token it could leak', async () => {
       const r = await login('manager@a.test', 'OnPar-demo-2026', true);
-      expect(r.body).toEqual({ ok: true });
+      // Which kind of account signed in is said (so the page knows where to go); no token is.
+      expect(r.body).toEqual({ ok: true, account: 'staff' });
       const cookie = r.headers['set-cookie'][0] as string;
       expect(cookie).toMatch(/^onpar_session=/);
       expect(cookie).toMatch(/HttpOnly/);
