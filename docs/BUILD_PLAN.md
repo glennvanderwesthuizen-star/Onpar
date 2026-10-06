@@ -652,3 +652,6 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 - **Needs signal:** unlike the post phone, the supervisor app does not queue actions without signal. Duty On from his own phone needs a connection.
 - Tests: 12 new server tests. The Me screen was walked through in an iPhone-sized browser: wrong PIN, Duty On, declaration with selfie, Duty From, score and training. **Not seen on screen:** My uniform, because the demo data has no site uniform list; its server rules are the guard's existing ones.
 - **No blink check:** the post phone's blink check before the selfie is not available in a web app, so a supervisor's selfie is taken without it. Selfie checks by a person, and automatic matching when switched on, still apply.
+
+**Proven 7 Oct 2026:** the owner tested steps 2b and 2c on his iPhone, signed in as a supervisor joined to his own officer record, and saw his own shift. An iPhone fault found on the way and fixed: the page zoomed in after typing in the sign-in box and cut off the right edge; typing boxes are now large enough that iPhones do not zoom. **Phase 2 is complete.** Next in the plan is phase 3, the customer foundation.
+
