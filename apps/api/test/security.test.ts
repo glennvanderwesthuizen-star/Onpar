@@ -21,10 +21,12 @@ describe('security hardening', () => {
            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY 1`,
       );
       // Not tenant data: the migration list, and sign-in throttling (hashed keys, reached only through functions).
-      const exempt = ['schema_migrations', 'auth_throttle'];
+      // Server-wide tables with no company: locked to the app role completely, reached only through functions.
+      const exempt = ['schema_migrations', 'auth_throttle', 'push_keys'];
       const missing = tables.filter((t) => !exempt.includes(t.name) && (!t.rls || t.policies === 0)).map((t) => t.name);
       expect(missing).toEqual([]);
       expect(tables.find((t) => t.name === 'auth_throttle')).toMatchObject({ rls: true, policies: 0 });
+      expect(tables.find((t) => t.name === 'push_keys')).toMatchObject({ rls: true, policies: 0 });
     });
 
     it('gives the app role no way around row-level security', async () => {

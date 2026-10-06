@@ -17,6 +17,7 @@ A workforce performance and operational-accountability platform, starting with p
 ## Status
 
 **Milestone 1 (foundation): built.** The management website supports sign-in, sites with shift cards, officer enrolment, post devices and the audit log. The server includes guard PIN login for devices, and company data is separated by the database itself.
+**Alerts to a phone (phase 1 of the 6 Oct 2026 plan): built.** See the progress log in [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md).
 Milestone 0 (the phone and kiosk test) is waiting on hardware. See [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md).
 
 ## Project layout

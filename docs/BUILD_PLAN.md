@@ -563,3 +563,28 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - A result is always a flag for a person, never a decision: no score change, no lock, no warning.
 - **Still to do:** a trial on TSF's own guards to see how accurate it is on them (lighting at night, darker skin tones), before relying on it.
 
+### 6 Oct 2026: new build order (D-38, D-39, D-40) and phase 1, alerts to a phone
+
+**The order from here:** phase 1 push alerts; phase 2 the supervisor app (a phone layout of this website, with alerts); phase 3 the customer foundation (units, tenants, tenant sign-in); then visitor management. Each phase stops for the owner's approval.
+
+**Phase 1, built 6 Oct 2026:**
+- **One alert service** on the server, shared by every app. An alert is first written to the person's alerts list, then sent to each device they set up, so nothing is lost when a phone is off.
+- **How alerts travel:** the alert system built into phone and computer browsers. No Firebase and no outside contract. The server makes its own key pair the first time it is needed and keeps the private half encrypted in the database, so an existing server needs no new settings: `deploy/onpar.sh update` is enough.
+- **My account** has a new "Alerts on this device" card: Allow alerts on this device, Send me a test alert, Turn off on this device, a list of the person's devices (a lost phone can be removed), and which alerts they receive.
+- **Alerts page** (new, in the menu with an unread count): every alert raised for the person, newest first.
+- **Lock screen:** an alert carries only a general line ("Panic at Estate ABC"). Details show inside On Par after sign-in.
+- **Home screen:** On Par can now be added to a phone's home screen and opens like an app. On an iPhone this is required before alerts work (iOS 16.4 or newer); the card explains the steps.
+- **Safety:** the server only sends to the real delivery services (Google, Apple, Mozilla, Microsoft). On a shared phone the alerts move to whoever allowed them last. A device that stops accepting alerts is forgotten automatically.
+- **Record:** every alert, each delivery attempt (sent, failed, no device) and whether the alert was seen or opened is kept. Switching a device on or off, a test alert and a change of settings go to the audit log.
+- **Alerts a person can switch off:** all except Panic (D-41, open).
+- Tests: 12 new server tests (keys, switching on and off, the general line, seen and opened, each person and each company kept apart, settings, shared phone, a device that is gone) and 4 for the shared rules.
+
+**Not yet proven:** a real alert arriving on a real phone. This build environment cannot reach Google's or Apple's delivery services, so the last step (the alert appearing on the lock screen) needs the owner's test on an Android phone and an iPhone.
+
+**Not in phase 1:** no real event raises an alert yet. Panic, BOLO, patrol overdue, post uncovered and Red report are connected in phase 2.
+
+**Flagged:**
+- The web address (D-32): alerts and the home-screen icon are tied to it. Changing it later means every person allows alerts again.
+- `pnpm audit --prod` shows two findings that were there before this work (inside Next.js and TensorFlow.js), none from the new alert library.
+- The alert library `web-push` is open source under the MPL 2.0 licence, which allows this use.
+

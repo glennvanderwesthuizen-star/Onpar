@@ -16,3 +16,4 @@ export * from './relief';
 export * from './uniform';
 export * from './tsf-number';
 export * from './face';
+export * from './alerts';

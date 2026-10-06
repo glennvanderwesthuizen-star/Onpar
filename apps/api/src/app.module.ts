@@ -37,6 +37,8 @@ import { RosterController } from './roster/roster.controller';
 import { RegisterController } from './roster/register.controller';
 import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-bolo.controller';
 import { GuardUniformController, UniformController } from './uniform/uniform.controller';
+import { NotificationsController } from './notifications/notifications.controller';
+import { NotificationsService } from './notifications/notifications.service';
 
 @Controller('health')
 class HealthController {
@@ -82,6 +84,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       PanicBoloController,
       UniformController,
       GuardUniformController,
+      NotificationsController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
@@ -95,6 +98,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       PatrolsService,
       RosterService,
       FaceMatchService,
+      NotificationsService,
     ],
   })
   class AppModule {}

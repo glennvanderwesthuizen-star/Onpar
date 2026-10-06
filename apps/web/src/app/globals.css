@@ -336,3 +336,22 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 
 /* A button that looks like a link (e.g. "Forgot your password?"). */
 .linkish { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Alerts (plan of 6 Oct 2026, phase 1) */
+.nav a .count { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 99px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: 1px; }
+@media (prefers-color-scheme: dark) { .nav a .count { color: #1a0d0c; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.alerts-list { padding: 4px 0; }
+.alert-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 12px 16px; border: 0; border-top: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; min-height: 44px; }
+.alert-row:first-child { border-top: 0; }
+.alert-row:hover { background: var(--bg); }
+.alert-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.alert-row .dot { flex: 0 0 9px; height: 9px; margin-top: 7px; border-radius: 50%; background: transparent; }
+.alert-row.unread .dot { background: var(--red); }
+.alert-row .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow-wrap: anywhere; }
+.alert-row:not(.unread) b { font-weight: 500; }
+.alert-row.opened { background: var(--green-bg); }
+.check-line { cursor: pointer; align-items: center; }
+.check-line input { width: 20px; height: 20px; flex: 0 0 20px; }
+.steps { margin: 0 0 10px; padding-left: 22px; }
+.steps li { margin-bottom: 6px; }

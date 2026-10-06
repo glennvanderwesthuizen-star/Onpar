@@ -13,6 +13,8 @@ const csp = [
   "img-src 'self' blob: data:",
   "connect-src 'self'",
   "font-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -31,6 +33,8 @@ export default {
   },
   async headers() {
     return [
+      // The alert receiver must always be the current version, never an old copy kept by the browser.
+      { source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache' }] },
       {
         source: '/:path*',
         headers: [

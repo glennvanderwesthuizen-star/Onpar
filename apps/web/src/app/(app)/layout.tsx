@@ -6,6 +6,7 @@ import { SessionProvider, useSession } from '@/lib/session';
 import { ChangePassword } from '@/components/ChangePassword';
 import { PanicBanner } from '@/components/PanicBanner';
 import { BoloBanner } from '@/components/BoloBanner';
+import { AlertsLink } from '@/components/AlertsLink';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
@@ -48,6 +49,7 @@ function Header() {
             </Link>
           );
         })}
+        <AlertsLink />
       </nav>
       <div className="who">
         <div>
