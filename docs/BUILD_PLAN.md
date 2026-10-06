@@ -579,7 +579,7 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Alerts a person can switch off:** all except Panic (D-41, open).
 - Tests: 12 new server tests (keys, switching on and off, the general line, seen and opened, each person and each company kept apart, settings, shared phone, a device that is gone) and 4 for the shared rules.
 
-**Proven on Android, 6 Oct 2026:** the owner allowed alerts in Chrome on an Android phone, locked it, and sent a test alert from a computer signed in as the same person; the alert arrived on the locked phone. **Still to try:** an iPhone (it must first be added to the home screen).
+**Proven on Android, 6 Oct 2026:** the owner allowed alerts in Chrome on an Android phone, locked it, and sent a test alert from a computer signed in as the same person; the alert arrived on the locked phone. **Proven on an iPhone 14, 6 Oct 2026:** after adding On Par to the home screen, the owner received test alerts there too.
 
 **Not in phase 1:** no real event raises an alert yet. Panic, BOLO, patrol overdue, post uncovered and Red report are connected in phase 2.
 
@@ -588,3 +588,32 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - `pnpm audit --prod` shows two findings that were there before this work (inside Next.js and TensorFlow.js), none from the new alert library.
 - The alert library `web-push` is open source under the MPL 2.0 licence, which allows this use.
 
+
+### 6 Oct 2026: phase 2, step 2a, the supervisor app: real alerts and the phone screens
+
+**Real alerts now reach phones.** Each goes to the people responsible for that site: supervisors and site managers linked to it, and the managers and administrators who see the whole company. Clients, HR, payroll and stores are never alerted.
+
+| Alert | When it is raised | Opens |
+|---|---|---|
+| Panic | A guard holds PANIC on the post phone | The panic on the phone screen |
+| BOLO | A guard sends a BOLO | The BOLO page |
+| Patrol overdue | A started patrol runs past its time (checked every minute) | Open alerts |
+| Post uncovered | A guard's relief has not arrived 30 minutes after his shift (checked every minute, alerted once) | Guards on duty |
+| Red report | A report with Red priority is made, by a guard, a manager, a patrol check or a declaration | The report |
+
+- The locked screen shows only the kind and the site ("Panic at Estate ABC"). The post and the guard's name show inside On Par.
+- An alert is written in the same database step as the event, so there is never an alert without its event or the reverse, and it is sent to phones a moment later. An alert left unsent by a restart goes out within half a minute. Overlapping checks never send it twice.
+- Panic cannot be switched off by a person; the other four can (D-41).
+
+**The phone screens** are at `/m` on the same address, with the same sign-in, and open from the home-screen icon. On a small screen the full website shows an "Open the phone view" bar at the top.
+- **Home:** any open panic in red at the top, how many other things need attention, then each of the supervisor's sites with who is on duty (late, waiting for relief, no relief) and a button to call the control room.
+- **Alerts:** everything open across the supervisor's sites, most urgent first, with the action for each: open the panic, acknowledge a BOLO, acknowledge a patrol alert or confirm the guard is safe (with how), call the guard.
+- **Panic:** site, post, guard, time, whether the phone's call to the control room started, the location taken at that moment (opens in Maps; a fake-location warning when the phone reported one), Call guard, Call control room, Acknowledge, and Resolve with what happened.
+- **On duty:** every guard on duty per site, with Call and **Release from duty** (a reason is required; it logs Duty From under the supervisor's name).
+- The screens refresh every 15 seconds and when the phone returns to On Par. With no connection they keep showing the last update and say so.
+- Every action uses the same server rules as the website, so permissions, site limits and the audit trail are identical.
+- Tests: 13 new server tests (who is alerted and who is not, the locked-screen wording, once only, another site, another company, switched-off alerts, uncovered posts, patrol overdue, release with a reason, the panic screen's data, roles that are refused). The screens were checked in an iPhone-sized browser in light and dark, including acknowledging and resolving a panic and releasing a guard.
+
+**Not yet proven:** a real panic from a real post phone arriving on the supervisor's phone. That is the owner's test for this step.
+
+**Next (step 2b):** My tasks, reports, selfie checks and attendance on the phone.

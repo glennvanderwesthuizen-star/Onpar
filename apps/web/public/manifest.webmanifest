@@ -2,7 +2,7 @@
   "name": "On Par",
   "short_name": "On Par",
   "description": "Measure the work. Manage the performance. Close the loop.",
-  "start_url": "/",
+  "start_url": "/m",
   "scope": "/",
   "display": "standalone",
   "background_color": "#eef2f4",

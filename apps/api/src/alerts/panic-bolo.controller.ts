@@ -29,6 +29,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIO_TYPES, IMAGE_TYPES, MAX_VIDEO_BYTES, StorageService, VIDEO_TYPES } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const isoTime = z.string().datetime({ offset: true, message: 'Send times in ISO 8601 format.' }).transform((s) => new Date(s));
 
@@ -98,7 +99,21 @@ export class DevicePanicBoloController {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly jwt: JwtService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /** Where an alert came from, for its wording: the site, the post, and the guard if one was signed in. */
+  private async place(tx: Tx, device: DevicePrincipal, employeeId: string | null) {
+    const r = (
+      await tx.query(
+        `SELECT (SELECT name FROM sites WHERE id = $1) AS site, (SELECT post_name FROM devices WHERE id = $2) AS post,
+                (SELECT full_name FROM employees WHERE id = $3) AS guard`,
+        [device.siteId, device.deviceId, employeeId],
+      )
+    ).rows[0];
+    const site: string = r.site ?? 'a phone not yet assigned to a site';
+    return { site, detail: [r.post || device.label, r.guard].filter(Boolean).join(' · ') };
+  }
 
   /** Raises a panic. Safe to retry: the same eventId is recorded once. */
   @Post('panic')
@@ -124,6 +139,17 @@ export class DevicePanicBoloController {
         entityType: 'panic_alert',
         entityId: b.eventId,
         after: { siteId: device.siteId, located: b.lat != null, callStarted: b.callStarted, lateSynced: time.lateSynced },
+      });
+      // Tell the people responsible for the site on their own phones. The locked screen shows the site only.
+      const where = await this.place(tx, device, employeeId);
+      await this.notifications.recordForSite(tx, device.siteId, {
+        kind: 'panic',
+        title: `Panic at ${where.site}`,
+        body: where.detail,
+        lockScreen: `Panic at ${where.site}`,
+        url: `/m/panic/${b.eventId}`,
+        entityType: 'panic_alert',
+        entityId: b.eventId,
       });
       return { id: b.eventId };
     });
@@ -172,6 +198,16 @@ export class DevicePanicBoloController {
         entityType: 'bolo',
         entityId: b.eventId,
         after: { siteId: device.siteId, note: b.note, photo: !!photoKey, voice: !!voiceKey, video: !!videoKey },
+      });
+      const where = await this.place(tx, device, employeeId);
+      await this.notifications.recordForSite(tx, device.siteId, {
+        kind: 'bolo',
+        title: `BOLO at ${where.site}`,
+        body: [where.detail, b.note.length > 140 ? `${b.note.slice(0, 140)}…` : b.note].filter(Boolean).join(' · '),
+        lockScreen: `BOLO at ${where.site}`,
+        url: '/reports/bolo',
+        entityType: 'bolo',
+        entityId: b.eventId,
       });
       return { id: b.eventId };
     });

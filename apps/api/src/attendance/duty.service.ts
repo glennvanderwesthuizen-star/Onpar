@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -30,6 +31,7 @@ import { ScoringService } from '../scoring/scoring.service';
 import { ReportsService } from '../reports/reports.service';
 import { FaceMatchService } from '../face/face-match.service';
 import { RosterService } from '../roster/roster.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface DutyInput {
   eventId: string;
@@ -62,7 +64,7 @@ const UNIQUE_VIOLATION = '23505';
 
 /** Duty On, Duty From and their declarations (brief sections 6.2, 6.3 and 8). */
 @Injectable()
-export class DutyService {
+export class DutyService implements OnModuleDestroy {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
@@ -71,7 +73,68 @@ export class DutyService {
     private readonly reports: ReportsService,
     private readonly roster: RosterService,
     private readonly faces: FaceMatchService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private reliefTimer?: NodeJS.Timeout;
+
+  /** Checks every minute for posts left uncovered at shift change (D-33). */
+  startReliefTimer(everyMs = 60_000) {
+    const tick = () => this.reliefTick(new Date()).catch((e) => console.error(`Relief check failed: ${e.message}`));
+    tick();
+    this.reliefTimer = setInterval(tick, everyMs);
+  }
+
+  onModuleDestroy() {
+    if (this.reliefTimer) clearInterval(this.reliefTimer);
+  }
+
+  /**
+   * Guards still on duty past their shift, with where each stands: waiting for a relief, or
+   * past the waiting time with nobody arrived (the post is uncovered). Shifts that ended more
+   * than a day ago are left out: that is a forgotten Duty From, not a shift change.
+   */
+  async overdueShifts(tx: Tx, now: Date, siteIds: string[] | null = null) {
+    const open = (
+      await tx.query(
+        `SELECT a.id, a.site_id, a.employee_id, a.scheduled_end, a.roster_status, e.full_name, s.name AS site_name
+           FROM attendance a JOIN employees e ON e.id = a.employee_id JOIN sites s ON s.id = a.site_id
+          WHERE a.duty_from_at IS NULL AND a.scheduled_end <= $1 AND a.scheduled_end > $1::timestamptz - interval '1 day'
+            AND ($2::uuid[] IS NULL OR a.site_id = ANY($2::uuid[]))`,
+        [now, siteIds],
+      )
+    ).rows;
+    const out: { attendanceId: string; siteId: string; siteName: string; employeeId: string; name: string; scheduledEnd: Date; outcome: ReliefCheck['outcome']; unlocksAt: Date | null }[] = [];
+    for (const a of open) {
+      const check = await this.reliefFor(tx, a, now);
+      out.push({ attendanceId: a.id, siteId: a.site_id, siteName: a.site_name, employeeId: a.employee_id, name: a.full_name, scheduledEnd: new Date(a.scheduled_end), outcome: check.outcome, unlocksAt: check.unlocksAt });
+    }
+    return out;
+  }
+
+  /** Alerts the people responsible for a site, once, when a guard's relief has not arrived within the waiting time. */
+  async reliefTick(now: Date): Promise<number> {
+    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
+    let raised = 0;
+    for (const { scheduler_company_ids: companyId } of companies) {
+      await this.db.withTenant(companyId, async (tx) => {
+        for (const a of await this.overdueShifts(tx, now)) {
+          if (a.outcome !== 'no_relief' || (await this.notifications.alreadyRaised(tx, 'post_uncovered', 'attendance', a.attendanceId))) continue;
+          const told = await this.notifications.recordForSite(tx, a.siteId, {
+            kind: 'post_uncovered',
+            title: `Post uncovered at ${a.siteName}`,
+            body: `${a.name}'s relief has not arrived. His shift ended at ${sastTime(a.scheduledEnd)} and he may now leave.`,
+            lockScreen: `Post uncovered at ${a.siteName}`,
+            url: '/m/duty',
+            entityType: 'attendance',
+            entityId: a.attendanceId,
+          });
+          if (told.length) raised++;
+        }
+      });
+    }
+    return raised;
+  }
 
   /**
    * Records a Duty On or Duty From pressed on the device. The PIN has already

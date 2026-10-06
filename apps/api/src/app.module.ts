@@ -39,6 +39,7 @@ import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-b
 import { GuardUniformController, UniformController } from './uniform/uniform.controller';
 import { NotificationsController } from './notifications/notifications.controller';
 import { NotificationsService } from './notifications/notifications.service';
+import { SupervisorController } from './supervisor/supervisor.controller';
 
 @Controller('health')
 class HealthController {
@@ -85,6 +86,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       UniformController,
       GuardUniformController,
       NotificationsController,
+      SupervisorController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,

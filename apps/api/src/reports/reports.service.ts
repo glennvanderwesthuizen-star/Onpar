@@ -23,6 +23,7 @@ import { Tx } from '../db/db.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
 import { TasksService } from '../tasks/tasks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface Upload {
   mimetype: string;
@@ -59,6 +60,7 @@ export class ReportsService {
     private readonly storage: StorageService,
     private readonly scoring: ScoringService,
     private readonly tasks: TasksService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(tx: Tx, companyId: string, r: NewReport, actor: Actor): Promise<string> {
@@ -131,6 +133,19 @@ export class ReportsService {
       eventId: r.eventId ?? null,
       lateSynced: !!r.lateSynced,
     });
+    // A Red report also goes to the phones of the people responsible for the site.
+    if (r.priority === 'red') {
+      const siteName = (await tx.query('SELECT name FROM sites WHERE id = $1', [r.siteId])).rows[0]?.name ?? 'a site';
+      await this.notifications.recordForSite(tx, r.siteId, {
+        kind: 'red_report',
+        title: `Red report at ${siteName}`,
+        body: `#${number} ${REPORT_CATEGORIES[r.category]}: ${r.description.length > 140 ? `${r.description.slice(0, 140)}…` : r.description}`,
+        lockScreen: `Red report at ${siteName}`,
+        url: `/reports/${id}`,
+        entityType: 'report',
+        entityId: id,
+      });
+    }
     return id;
   }
 

@@ -7,6 +7,7 @@ import { ChangePassword } from '@/components/ChangePassword';
 import { PanicBanner } from '@/components/PanicBanner';
 import { BoloBanner } from '@/components/BoloBanner';
 import { AlertsLink } from '@/components/AlertsLink';
+import { MobileShell } from '@/components/MobileShell';
 
 const NAV = [
   { href: '/', label: 'Overview', permission: null },
@@ -69,10 +70,18 @@ function Header() {
 /** After a temporary password (new account or reset), nothing else is shown until the user chooses their own. */
 function Gate({ children }: { children: React.ReactNode }) {
   const { me, can, refresh, signOut } = useSession();
+  const path = usePathname();
+  // The supervisor app (phone layout) has its own slim frame.
+  if (!me.mustChangePassword && (path === '/m' || path.startsWith('/m/'))) return <MobileShell>{children}</MobileShell>;
   if (!me.mustChangePassword) {
     return (
       <>
         <Header />
+        {can('attendance.view') && (
+          <Link href="/m" className="m-switch">
+            Open the phone view <span aria-hidden="true">›</span>
+          </Link>
+        )}
         {can('panic.view') && <PanicBanner />}
         {can('panic.view') && <BoloBanner />}
         <main className="page">{children}</main>

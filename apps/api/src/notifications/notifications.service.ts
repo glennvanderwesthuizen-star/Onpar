@@ -1,9 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as webpush from 'web-push';
-import { AlertKind, Role, wantsAlert } from '@onpar/rules';
+import { AlertKind, Role, SITE_SCOPED_ROLES, wantsAlert } from '@onpar/rules';
 import { CONFIG, Config } from '../config';
 import { decrypt, encrypt } from '../common/crypto';
-import { DbService } from '../db/db.service';
+import { DbService, Tx } from '../db/db.service';
 
 /** One browser a person has allowed alerts on. */
 export interface PushTarget {
@@ -76,11 +76,20 @@ export interface DeliverySummary {
  * The alert service (plan of 6 Oct 2026). Every alert is first written to the person's alerts
  * list, so nothing is lost when a phone is off or alerts are not allowed; it is then sent to
  * each device they set up. A second channel (WhatsApp, SMS) is added in `deliver`.
+ *
+ * Code that raises an alert calls `recordForSite` (or `record`) inside its own database step
+ * and does nothing else.
  */
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleDestroy {
   sender: PushSender = new WebPushSender();
+  private readonly log = new Logger('Alerts');
   private cachedKeys: PushKeys | null = null;
+  /** Companies with alerts recorded and not yet sent. */
+  private readonly pending = new Set<string>();
+  private readonly timers = new Set<NodeJS.Timeout>();
+  private sweep?: NodeJS.Timeout;
+  private closed = false;
 
   constructor(
     private readonly db: DbService,
@@ -100,27 +109,118 @@ export class NotificationsService {
   }
 
   /**
-   * Records the alert for each person who receives this kind (their role allows it and they
-   * have not switched it off), then sends it. Never throws for a delivery problem: the alert
-   * is in the list either way.
+   * Writes the alert to the alerts list of each person who receives this kind (their role
+   * allows it and they have not switched it off), inside the caller's own database step, so it
+   * is saved or undone together with the event that caused it. Sending to phones follows by
+   * itself a moment later.
+   */
+  async record(tx: Tx, input: AlertInput, opts: { sendLater?: boolean } = {}): Promise<string[]> {
+    const sendLater = opts.sendLater ?? true;
+    const people = (await tx.query(`SELECT id, role FROM users WHERE id = ANY($1::uuid[]) AND active`, [[...new Set(input.userIds)]])).rows as { id: string; role: Role }[];
+    const out: string[] = [];
+    for (const p of people) {
+      const off = new Set<string>((await tx.query('SELECT kind FROM notification_prefs WHERE user_id = $1 AND NOT enabled', [p.id])).rows.map((r) => r.kind));
+      if (!wantsAlert(p.role, input.kind, off)) continue;
+      const r = await tx.query(
+        `INSERT INTO notifications (company_id, user_id, kind, title, body, lock_screen, url, site_id, entity_type, entity_id, dispatched_at)
+         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN NULL ELSE now() END) RETURNING id`,
+        [p.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null, sendLater],
+      );
+      out.push(r.rows[0].id);
+    }
+    if (sendLater && out.length) {
+      this.pending.add((await tx.query('SELECT app_company_id() AS id')).rows[0].id);
+      this.kick();
+    }
+    return out;
+  }
+
+  /**
+   * The same, for everyone responsible for a site: people limited to certain sites get it only
+   * for their own sites; managers who see the whole company get it for every site. With no
+   * site (a phone not yet assigned to one) only the company-wide people are told.
+   */
+  async recordForSite(tx: Tx, siteId: string | null, input: Omit<AlertInput, 'userIds' | 'siteId'>): Promise<string[]> {
+    const userIds = (
+      await tx.query(
+        `SELECT u.id FROM users u
+          WHERE u.active AND (u.role <> ALL($2::text[]) OR EXISTS (SELECT 1 FROM user_sites us WHERE us.user_id = u.id AND us.site_id = $1::uuid))`,
+        [siteId, SITE_SCOPED_ROLES],
+      )
+    ).rows.map((r) => r.id as string);
+    return this.record(tx, { ...input, userIds, siteId });
+  }
+
+  /** Whether this event has already been alerted (so a repeating check tells people once). */
+  async alreadyRaised(tx: Tx, kind: AlertKind, entityType: string, entityId: string): Promise<boolean> {
+    return !!(await tx.query('SELECT 1 FROM notifications WHERE entity_type = $1 AND entity_id = $2 AND kind = $3 LIMIT 1', [entityType, entityId, kind])).rowCount;
+  }
+
+  /**
+   * Sends what was just recorded. The first try comes a moment after the caller's database
+   * step has finished; a second a few seconds later catches a slow one.
+   */
+  private kick() {
+    if (this.closed) return;
+    for (const ms of [300, 3000]) {
+      const t = setTimeout(() => {
+        this.timers.delete(t);
+        this.drain().catch((e) => this.log.error(`Sending alerts failed: ${e.message}`));
+      }, ms);
+      t.unref();
+      this.timers.add(t);
+    }
+  }
+
+  private async drain() {
+    for (const companyId of [...this.pending]) {
+      this.pending.delete(companyId);
+      await this.dispatch(companyId);
+    }
+  }
+
+  /** Sends every recorded alert of one company that has not been sent yet. Each is sent once, even if two checks overlap. */
+  async dispatch(companyId: string): Promise<DeliverySummary> {
+    const summary: DeliverySummary = { alerts: 0, sent: 0, failed: 0, noDevice: 0 };
+    if (this.closed) return summary;
+    const ids = await this.db.withTenant(companyId, async (tx) =>
+      (
+        await tx.query(
+          `UPDATE notifications SET dispatched_at = now()
+            WHERE id IN (SELECT id FROM notifications WHERE dispatched_at IS NULL ORDER BY created_at FOR UPDATE SKIP LOCKED)
+            RETURNING id`,
+        )
+      ).rows.map((r) => r.id as string),
+    );
+    return this.deliverAll(companyId, ids, summary);
+  }
+
+  /** A safety net: every half minute, send anything a restart or a hiccup left unsent. */
+  startTimer(everyMs = 30_000) {
+    const tick = async () => {
+      const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
+      for (const { scheduler_company_ids: companyId } of companies) await this.dispatch(companyId);
+    };
+    this.sweep = setInterval(() => tick().catch((e) => this.log.error(`Alert sweep failed: ${e.message}`)), everyMs);
+  }
+
+  onModuleDestroy() {
+    this.closed = true;
+    if (this.sweep) clearInterval(this.sweep);
+    for (const t of this.timers) clearTimeout(t);
+  }
+
+  /**
+   * Records an alert and sends it straight away, saying how it went (used by the test alert).
+   * Never throws for a delivery problem: the alert is in the list either way.
    */
   async notify(companyId: string, input: AlertInput): Promise<DeliverySummary> {
-    const ids = await this.db.withTenant(companyId, async (tx) => {
-      const people = (await tx.query(`SELECT id, role FROM users WHERE id = ANY($1::uuid[]) AND active`, [[...new Set(input.userIds)]])).rows as { id: string; role: Role }[];
-      const out: string[] = [];
-      for (const p of people) {
-        const off = new Set<string>((await tx.query('SELECT kind FROM notification_prefs WHERE user_id = $1 AND NOT enabled', [p.id])).rows.map((r) => r.kind));
-        if (!wantsAlert(p.role, input.kind, off)) continue;
-        const r = await tx.query(
-          `INSERT INTO notifications (company_id, user_id, kind, title, body, lock_screen, url, site_id, entity_type, entity_id)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [p.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null],
-        );
-        out.push(r.rows[0].id);
-      }
-      return out;
-    });
-    const summary: DeliverySummary = { alerts: ids.length, sent: 0, failed: 0, noDevice: 0 };
+    const ids = await this.db.withTenant(companyId, (tx) => this.record(tx, input, { sendLater: false }));
+    return this.deliverAll(companyId, ids, { alerts: 0, sent: 0, failed: 0, noDevice: 0 });
+  }
+
+  private async deliverAll(companyId: string, ids: string[], summary: DeliverySummary): Promise<DeliverySummary> {
+    summary.alerts += ids.length;
     for (const id of ids) {
       const r = await this.deliver(companyId, id).catch(() => ({ sent: 0, failed: 1, noDevice: 0 }));
       summary.sent += r.sent;

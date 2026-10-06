@@ -18,6 +18,7 @@ import {
 } from '@onpar/rules';
 import type { GuardPrincipal } from '../common/auth';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DbService, Tx } from '../db/db.service';
 import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { ScoringService } from '../scoring/scoring.service';
@@ -55,6 +56,7 @@ export class PatrolsService implements OnModuleDestroy {
     private readonly scoring: ScoringService,
     private readonly reports: ReportsService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Checks for overdue patrols, escalations and missed windows every minute. */
@@ -79,10 +81,30 @@ export class PatrolsService implements OnModuleDestroy {
            SELECT company_id, id, site_id, employee_id, started_at + make_interval(mins => max_duration_minutes)
              FROM patrol_instances
             WHERE state = 'active' AND started_at + make_interval(mins => max_duration_minutes) <= $1
-           ON CONFLICT (patrol_id) DO NOTHING`,
+           ON CONFLICT (patrol_id) DO NOTHING
+           RETURNING id, patrol_id, site_id`,
           [now],
         );
         out.raised += raised.rowCount ?? 0;
+        for (const al of raised.rows) {
+          const d = (
+            await tx.query(
+              `SELECT s.name AS site, t.name AS type, e.full_name AS guard
+                 FROM patrol_instances p JOIN sites s ON s.id = p.site_id JOIN patrol_types t ON t.id = p.patrol_type_id
+                 JOIN employees e ON e.id = p.employee_id WHERE p.id = $1`,
+              [al.patrol_id],
+            )
+          ).rows[0];
+          await this.notifications.recordForSite(tx, al.site_id, {
+            kind: 'patrol_overdue',
+            title: `Patrol overdue at ${d.site}`,
+            body: `${d.type} · ${d.guard}`,
+            lockScreen: `Patrol overdue at ${d.site}`,
+            url: '/m/alerts',
+            entityType: 'patrol_alert',
+            entityId: al.id,
+          });
+        }
         const escalated = await tx.query(
           `UPDATE patrol_alerts SET escalated_at = raised_at + make_interval(mins => $2)
             WHERE cleared_at IS NULL AND acknowledged_at IS NULL AND escalated_at IS NULL

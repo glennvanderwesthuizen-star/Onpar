@@ -20,7 +20,7 @@ export interface AlertInfo {
 export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   test: { label: 'Test alert', about: 'Sent when you press "Send me a test alert".', permission: null, optional: false },
   panic: { label: 'Panic', about: 'A guard pressed PANIC at one of your sites.', permission: 'panic.view', optional: false },
-  bolo: { label: 'BOLO', about: 'A guard sent a BOLO from one of your sites.', permission: 'panic.view', optional: true },
+  bolo: { label: 'BOLO', about: 'A guard sent a BOLO from one of your sites.', permission: 'reports.view', optional: true },
   patrol_overdue: { label: 'Patrol overdue', about: 'A patrol was started and not finished in time.', permission: 'patrols.alerts', optional: true },
   post_uncovered: { label: 'Post uncovered', about: 'A relief guard has not arrived and the post is uncovered.', permission: 'attendance.view', optional: true },
   red_report: { label: 'Red report', about: 'A report with Red priority was raised.', permission: 'reports.view', optional: true },
