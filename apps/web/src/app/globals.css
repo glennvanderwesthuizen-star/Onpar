@@ -426,3 +426,10 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 /* Supervisor app, step 2c: the supervisor's own pages */
 .m-strip.m-mine { background: var(--card); border-color: var(--line); margin-bottom: 12px; }
 .m-onduty { border-color: var(--green); border-left-width: 4px; }
+
+/* iPhones zoom the whole page in when a typing box has text smaller than 16px, and the zoom
+   then stays after signing in, cutting off the right-hand edge. Typing boxes are 16px on
+   small screens so that never happens. */
+@media (max-width: 640px) {
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
+}
