@@ -241,7 +241,7 @@ export class SupervisorController {
           // A report counts as picked up once it has moved past "reported".
           acknowledgedAt: r.stage === 'reported' ? null : iso(r.reported_at),
           acknowledgedBy: null,
-          url: `/reports/${r.id}`,
+          url: `/m/reports/${r.id}`,
           guardCell: null,
         });
       }

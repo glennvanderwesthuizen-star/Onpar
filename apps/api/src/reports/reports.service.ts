@@ -141,7 +141,7 @@ export class ReportsService {
         title: `Red report at ${siteName}`,
         body: `#${number} ${REPORT_CATEGORIES[r.category]}: ${r.description.length > 140 ? `${r.description.slice(0, 140)}…` : r.description}`,
         lockScreen: `Red report at ${siteName}`,
-        url: `/reports/${id}`,
+        url: `/m/reports/${id}`,
         entityType: 'report',
         entityId: id,
       });

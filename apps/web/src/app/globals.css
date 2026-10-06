@@ -368,7 +368,7 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .m-page { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); }
 .m-h1 { font-size: 24px; margin: 4px 0 14px; }
 .m-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 22px 0 8px; }
-.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+.m-tabs { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
 .m-tabs a { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 60px; font-size: 12px; text-decoration: none; color: var(--mute); }
 .m-tabs a.on { color: var(--green); font-weight: 700; }
 .m-tabs a.on::before { content: ''; position: absolute; top: 0; left: 22%; right: 22%; height: 3px; border-radius: 0 0 3px 3px; background: var(--green); }
@@ -403,3 +403,22 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .m-foot a { display: inline-block; padding: 12px; }
 .card > .line:first-child { border-top: 0; padding-top: 0; }
 @media (prefers-color-scheme: dark) { .btn.danger { color: #1a0d0c; } }
+
+/* Supervisor app, step 2b: daily work */
+.m-page .grid.g2:has(> .photo) { grid-template-columns: 1fr 1fr; }
+.m-page .photo img, .m-page .photo .empty { height: 190px; }
+.m-page .head { margin-bottom: 10px; }
+.m-page .head h1 { font-size: 20px; }
+.m-page .row .btn { min-height: 44px; }
+.m-page input:not([type=checkbox]):not([type=radio]), .m-page select, .m-page textarea { font-size: 16px; min-height: 44px; }
+.m-menu { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.m-menu a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; text-decoration: none; border-top: 1px solid var(--line); }
+.m-menu a:first-child { border-top: 0; }
+.m-menu a > span:first-child { display: flex; flex-direction: column; }
+.m-menu .go { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 20px; }
+.m-row { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-top: 1px solid var(--line); text-decoration: none; min-height: 56px; }
+.m-row:first-child { border-top: 0; }
+.m-row .what { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.m-seg { display: flex; gap: 6px; margin-bottom: 12px; }
+.m-seg button { flex: 1; min-height: 44px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--ink); font: inherit; font-size: 14px; }
+.m-seg button[aria-pressed=true] { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); font-weight: 700; }

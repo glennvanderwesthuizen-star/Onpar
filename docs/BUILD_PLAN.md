@@ -614,6 +614,24 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - Every action uses the same server rules as the website, so permissions, site limits and the audit trail are identical.
 - Tests: 13 new server tests (who is alerted and who is not, the locked-screen wording, once only, another site, another company, switched-off alerts, uncovered posts, patrol overdue, release with a reason, the panic screen's data, roles that are refused). The screens were checked in an iPhone-sized browser in light and dark, including acknowledging and resolving a panic and releasing a guard.
 
-**Not yet proven:** a real panic from a real post phone arriving on the supervisor's phone. That is the owner's test for this step.
+**Proven 6 Oct 2026:** the owner pressed PANIC and the alert arrived on both of his phones (iPhone and Samsung), with the flashing panic banner on screen; the phone screens opened as designed.
 
 **Next (step 2b):** My tasks, reports, selfie checks and attendance on the phone.
+
+### 6 Oct 2026: phase 2, step 2b, the supervisor's daily work on the phone
+
+The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
+- **My tasks:** what is waiting on the supervisor himself.
+  - Reports waiting on him (not yet assigned, or an officer has followed up) and selfies to check, each with a count.
+  - Tasks a guard marked "could not complete", from today and yesterday: accept the reason or not, with a required note. Not accepting costs the guard the points, exactly as on the website, and the screen says so.
+  - Uniform: orders to collect at stores ("I have collected these") and orders he holds, with when each guard is next on duty. The guard still signs for them with his PIN on the post phone.
+- **Reports:** open reports at his sites, all or only those waiting on him. A report opens in the phone frame with the same steps as the website: assign, record the work, confirm attendance, close, add a note.
+- **A photo with a report step** (new, on the phone and the website): for example the finished repair. On a phone it opens the camera.
+- **Selfie checks:** the unchecked selfies of the last seven days, one card each: open the photos side by side, then Looks right, Unclear or Not him.
+- **Attendance:** today's register for his sites, to read at a glance. Corrections stay on the full website.
+- **More:** these pages, all alerts sent to him, My account, the full website and Sign out.
+- A Red report alert now opens the report in the phone frame.
+- No new server rules: every action uses the website's existing ones. Checked in an iPhone-sized browser.
+
+**Raised by the owner, not built (D-42):** a supervisor is also an employee, with his own shifts, Duty On and Duty From, and his own uniform orders.
+

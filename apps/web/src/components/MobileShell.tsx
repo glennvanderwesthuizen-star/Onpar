@@ -11,7 +11,11 @@ const TABS = [
   { href: '/m', label: 'Home', icon: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10' },
   { href: '/m/alerts', label: 'Alerts', icon: 'M12 3.5a6 6 0 0 0-6 6V14l-1.8 3h15.6L18 14V9.5a6 6 0 0 0-6-6ZM9.5 19.5a2.5 2.5 0 0 0 5 0' },
   { href: '/m/duty', label: 'On duty', icon: 'M12 12a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM4.5 20a7.5 7.5 0 0 1 15 0' },
+  { href: '/m/tasks', label: 'My tasks', icon: 'M8.5 6.5h11M8.5 12h11M8.5 17.5h11M4 6.5l.9.9 1.6-1.8M4 12l.9.9 1.6-1.8M4 17.5l.9.9 1.6-1.8' },
+  { href: '/m/more', label: 'More', icon: 'M5 12h.01M12 12h.01M19 12h.01' },
 ];
+/** Pages reached from More, so its tab stays lit on them. */
+const UNDER_MORE = ['/m/reports', '/m/selfies', '/m/attendance'];
 
 /**
  * The frame of the supervisor app on a phone: a slim header and three large tabs at the
@@ -60,10 +64,13 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
       <main className="m-page">{children}</main>
       <nav className="m-tabs" aria-label="Supervisor app">
         {TABS.map((t) => {
-          const on = t.href === '/m' ? path === '/m' : path.startsWith(t.href) || (t.href === '/m/alerts' && path.startsWith('/m/panic'));
+          const on =
+            t.href === '/m'
+              ? path === '/m'
+              : path.startsWith(t.href) || (t.href === '/m/alerts' && path.startsWith('/m/panic')) || (t.href === '/m/more' && UNDER_MORE.some((u) => path.startsWith(u)));
           return (
             <Link key={t.href} href={t.href} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth={t.href === '/m/more' ? 3 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d={t.icon} />
               </svg>
               <span>{t.label}</span>
@@ -75,12 +82,6 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
-        <Link href="/">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <path d="M4 6.5h16M4 12h16M4 17.5h16" />
-          </svg>
-          <span>Full site</span>
-        </Link>
       </nav>
     </div>
   );

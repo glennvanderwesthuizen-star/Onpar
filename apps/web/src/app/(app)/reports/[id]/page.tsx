@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { use, useEffect, useRef, useState } from 'react';
 import { FOLLOW_UP_OUTCOMES, FollowUpOutcome, MANAGEMENT_ACTIONS, Priority, PRIORITY_LABELS, ReportCategory, REPORT_CATEGORIES, Stage, STAGE_LABELS } from '@onpar/rules';
 import { api, imageUrl } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -65,6 +66,8 @@ const ACTION_TEXT: Record<string, string> = {
 export default function ReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: r, error, reload } = useLoad(() => api<Report>(`/reports/${id}`), [id]);
+  // The same page serves the full website and the supervisor app's phone frame (/m/reports/…).
+  const back = usePathname().startsWith('/m/') ? '/m/reports' : '/reports';
 
   if (error) return <ErrorBanner error={error} />;
   if (!r) return <p className="mute">Loading…</p>;
@@ -73,7 +76,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     <>
       <div className="head">
         <div>
-          <Link href="/reports" className="mute small">
+          <Link href={back} className="mute small">
             ← Reports
           </Link>
           <h1 className="row">
@@ -198,6 +201,8 @@ function Actions({ report: r, onDone }: { report: Report; onDone: () => void }) 
   const [person, setPerson] = useState(r.assigneePersonId ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   if (!can('reports.manage') || r.stage === 'closed') return null;
 
   const available = (Object.keys(MANAGEMENT_ACTIONS) as (keyof typeof MANAGEMENT_ACTIONS)[]).filter(
@@ -207,8 +212,18 @@ function Actions({ report: r, onDone }: { report: Report; onDone: () => void }) 
     setBusy(true);
     setError(null);
     try {
-      await api(`/reports/${r.id}/${path}`, { method: 'POST', json: body });
+      // A photo of the work goes with a step (not with a note on its own).
+      if (photo && path !== 'note') {
+        const form = new FormData();
+        form.append('data', JSON.stringify(body));
+        form.append('photo', photo);
+        await api(`/reports/${r.id}/${path}`, { method: 'POST', body: form });
+      } else {
+        await api(`/reports/${r.id}/${path}`, { method: 'POST', json: body });
+      }
       setNote('');
+      setPhoto(null);
+      if (photoInput.current) photoInput.current.value = '';
       onDone();
     } catch (e) {
       setError(e);
@@ -247,6 +262,11 @@ function Actions({ report: r, onDone }: { report: Report; onDone: () => void }) 
       <Field label="Note">
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
+      {available.length > 0 && (
+        <Field label="Photo (optional)" hint="For example the finished repair. On a phone this opens the camera. It is saved with the next step you record.">
+          <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
+        </Field>
+      )}
       <div className="row">
         {available.map((a) => (
           <button

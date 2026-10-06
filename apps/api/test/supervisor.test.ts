@@ -146,7 +146,7 @@ describe('the supervisor app', () => {
       expect(a.kind).toBe('red_report');
       expect(a.title).toBe('Red report at Estate ABC');
       expect(a.body).toMatch(/^#\d+ Security: Perimeter fence cut near the north gate$/);
-      expect(a.url).toBe(`/reports/${red.body.id}`);
+      expect(a.url).toBe(`/m/reports/${red.body.id}`);
     });
 
     it('an alert is undone together with the event when the event fails to save', async () => {
