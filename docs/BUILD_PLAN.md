@@ -633,5 +633,5 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 - A Red report alert now opens the report in the phone frame.
 - No new server rules: every action uses the website's existing ones. Checked in an iPhone-sized browser.
 
-**Raised by the owner, not built (D-42):** a supervisor is also an employee, with his own shifts, Duty On and Duty From, and his own uniform orders.
+**Raised by the owner, not built (D-42):** a supervisor is also an employee, with his own shifts, Duty On and Duty From, and his own uniform orders. Decided the same day: own phone, no location, no wait-for-relief, points apply, a manager approves his uniform. This is step 2c.
 
