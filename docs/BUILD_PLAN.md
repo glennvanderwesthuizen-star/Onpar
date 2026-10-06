@@ -579,7 +579,7 @@ Built before the pilot at the owner's request (D-25), following the owner's proc
 - **Alerts a person can switch off:** all except Panic (D-41, open).
 - Tests: 12 new server tests (keys, switching on and off, the general line, seen and opened, each person and each company kept apart, settings, shared phone, a device that is gone) and 4 for the shared rules.
 
-**Not yet proven:** a real alert arriving on a real phone. This build environment cannot reach Google's or Apple's delivery services, so the last step (the alert appearing on the lock screen) needs the owner's test on an Android phone and an iPhone.
+**Proven on Android, 6 Oct 2026:** the owner allowed alerts in Chrome on an Android phone, locked it, and sent a test alert from a computer signed in as the same person; the alert arrived on the locked phone. **Still to try:** an iPhone (it must first be added to the home screen).
 
 **Not in phase 1:** no real event raises an alert yet. Panic, BOLO, patrol overdue, post uncovered and Red report are connected in phase 2.
 

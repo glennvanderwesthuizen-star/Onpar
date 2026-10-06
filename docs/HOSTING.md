@@ -86,6 +86,8 @@ On Par already makes an encrypted backup every night at 02:15, kept on the serve
 
 ## Everyday commands (in the server's terminal, from `/opt/onpar`)
 
+First move into the On Par folder: `cd /opt/onpar`. On the TSF test server the folder is `/home/ubuntu/opt/onpar` instead, so there it is `cd /home/ubuntu/opt/onpar`. If unsure, `find / -name onpar.sh 2>/dev/null` shows where it is.
+
 | To | Type |
 |---|---|
 | Get the newest version (keeps going on the server even if the window closes; 10 to 20 minutes) | `deploy/onpar.sh update` |
