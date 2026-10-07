@@ -105,6 +105,8 @@ data class UiState(
     /** The gate this phone stands at and what it needs to scan visitors in; its `gate` is null on an ordinary post phone. */
     val gate: za.onpar.core.GateSetup? = null,
     val visits: List<za.onpar.core.VisitRow> = emptyList(),
+    /** Announced visitors and regulars due today. */
+    val expected: List<za.onpar.core.ExpectedRow> = emptyList(),
     /** What the site already knows about the visitor being scanned in. */
     val scanCheck: za.onpar.core.ScanCheck? = null,
     /** The visitor on the waiting screen, as the server last reported it. */
@@ -300,13 +302,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadVisitors() = run {
         val setup = device.visitors.setup()
         val list = if (setup.gate != null) device.visitors.recent() else emptyList()
-        _state.update { it.copy(gate = setup, visits = list) }
+        val due = if (setup.gate != null) runCatching { device.visitors.expected() }.getOrDefault(emptyList()) else emptyList()
+        _state.update { it.copy(gate = setup, visits = list, expected = due) }
     }
 
     /** After a scan: a returning visitor's details and whether they are barred. Quiet: it must not hide what the guard is doing. */
-    fun checkVisitor(idNumber: String, registration: String?, unitId: String?) {
+    fun checkVisitor(idNumber: String, registration: String?, unitId: String?, cell: String? = null) {
         viewModelScope.launch {
-            val found = withContext(Dispatchers.IO) { runCatching { device.visitors.check(idNumber, registration, unitId) }.getOrNull() }
+            val found = withContext(Dispatchers.IO) { runCatching { device.visitors.check(idNumber, registration, unitId, cell) }.getOrNull() }
             _state.update { it.copy(scanCheck = found) }
         }
     }

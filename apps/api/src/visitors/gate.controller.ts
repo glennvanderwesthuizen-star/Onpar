@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
 import {
@@ -8,6 +8,7 @@ import {
   CALL_OUTCOMES,
   CAPTURE_METHODS,
   IDENTITY_DOCUMENTS,
+  normaliseCell,
   normaliseIdNumber,
   normalisePlate,
   reconcileTime,
@@ -25,6 +26,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 import { VisitApprovalService } from './visit-approval.service';
+import { VisitPassService } from './visit-pass.service';
 import { VisitorSetupService } from './visitor-setup.service';
 
 interface Upload {
@@ -40,9 +42,12 @@ const idNumber = z.string().transform(normaliseIdNumber).pipe(z.string().min(5, 
 const registration = z.string().transform(normalisePlate).pipe(z.string().min(2, 'Enter the number plate.').max(12, 'That number plate is too long.'));
 const short = (max: number) => z.string().trim().max(max).default('');
 
+const cell = z.string().transform(normaliseCell).pipe(z.string().min(9, 'Enter the full cell number.').max(15));
 const CheckBody = z.object({
   idNumber: idNumber.optional(),
   registration: registration.optional(),
+  // Typed by the guard when the visitor says they are expected and gives their cell number.
+  cell: cell.optional(),
   unitId: z.string().uuid().nullable().default(null),
 });
 const VisitBody = z.object({
@@ -61,9 +66,13 @@ const VisitBody = z.object({
     .default(null),
   licenceExpiry: day,
   pax: z.number().int().min(0, 'Enter the number of passengers.').max(99).nullable().default(null),
-  categoryId: z.string().uuid('Choose the kind of visitor.'),
+  // With a pass, the kind of visitor and the unit come from the pass.
+  categoryId: z.string().uuid('Choose the kind of visitor.').nullable().default(null),
   // Null: visiting the client (the estate office).
-  unitId: z.string().uuid().nullable(),
+  unitId: z.string().uuid().nullable().default(null),
+  // The pass the gate phone found for this visitor ("Expected by ..."), and the cell number that found it, if that was how.
+  passId: z.string().uuid().nullable().default(null),
+  cell: cell.optional(),
   // The warnings the guard saw and chose to continue past.
   acknowledged: z.array(z.enum(VISIT_WARNINGS)).default([]),
   capturedOffline: z.boolean().default(false),
@@ -101,6 +110,7 @@ export class GateController {
     private readonly setup: VisitorSetupService,
     private readonly notifications: NotificationsService,
     private readonly approval: VisitApprovalService,
+    private readonly passes: VisitPassService,
   ) {}
 
   /** Everything the gate phone needs before a visitor arrives: its gate, the site's checks, categories and units. */
@@ -140,7 +150,9 @@ export class GateController {
       const vehicle = b.registration
         ? (await tx.query('SELECT id, make, model, colour, last_seen AS "lastSeen" FROM visitor_vehicles WHERE site_id = $1 AND registration = $2', [gate.siteId, b.registration])).rows[0]
         : null;
-      const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, b.unitId, b.idNumber, b.registration) : [];
+      // An announced visitor or a regular: let in without asking the customer again.
+      const pass = await this.passes.match(tx, gate.siteId, gate.id, b);
+      const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, pass ? pass.unitId : b.unitId, b.idNumber, b.registration) : [];
       // The audit trail says a scan was checked and what came of it, without copying the numbers into it.
       await this.audit.record(tx, {
         actorType: 'employee',
@@ -149,12 +161,24 @@ export class GateController {
         action: 'visitor.scan_check',
         entityType: 'site_gate',
         entityId: gate.id,
-        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), knownPerson: !!person, knownVehicle: !!vehicle, barred: barred.map((x) => x.entryId) },
+        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), knownPerson: !!person, knownVehicle: !!vehicle, barred: barred.map((x) => x.entryId), passId: pass?.passId ?? null },
       });
       return {
         person: person ? { surname: person.surname, names: person.names, lastSeen: person.lastSeen } : null,
         vehicle: vehicle ? { make: vehicle.make, model: vehicle.model, colour: vehicle.colour, lastSeen: vehicle.lastSeen } : null,
         barred: barred.map((x) => ({ kind: x.kind, kindLabel: BARRED_KIND_LABELS[x.kind], from: x.unitId ? 'unit' : 'site' })),
+        expected: pass
+          ? {
+              passId: pass.passId,
+              visitorName: pass.visitorName,
+              visiting: pass.unitName ? `Unit ${pass.unitName}` : 'The office',
+              category: pass.category,
+              by: pass.by,
+              regular: pass.kind === 'ongoing',
+              namedGate: pass.namedGate,
+              mismatch: pass.mismatch,
+            }
+          : null,
       };
     });
   }
@@ -189,9 +213,18 @@ export class GateController {
       if (b.person.method === 'manual' && !identityPhoto) errors.identity = 'Photograph the document you typed the details from.';
       if (b.vehicle?.method === 'manual' && !discPhoto) errors.disc = 'Photograph the licence disc you typed the details from.';
       if (!settings.checks.expiredLicenceOk && b.person.document === 'drivers_licence' && !b.licenceExpiry) errors.licenceExpiry = 'Enter the date the licence expires.';
-      const category = (await this.setup.categories(tx, gate.siteId)).find((c) => c.id === b.categoryId && c.active);
+      // A pass the gate phone found is checked again here: it must still fit this visitor at this moment.
+      const pass = b.passId ? await this.passes.match(tx, gate.siteId, gate.id, { idNumber: b.person.idNumber, registration: b.vehicle?.registration, cell: b.cell }) : null;
+      if (b.passId && pass?.passId !== b.passId) throw new ConflictException('This visitor is no longer expected. Go back one step and ask for approval.');
+      if (pass) {
+        b.categoryId = pass.categoryId;
+        b.unitId = pass.unitId;
+      }
+      const category = (await this.setup.categories(tx, gate.siteId)).find((c) => c.id === b.categoryId && (c.active || pass));
       if (!category) errors.categoryId = 'Choose the kind of visitor.';
-      if (b.unitId) {
+      if (pass) {
+        // The unit comes from the pass.
+      } else if (b.unitId) {
         if (!(await tx.query('SELECT 1 FROM site_units WHERE id = $1 AND site_id = $2 AND active', [b.unitId, gate.siteId])).rowCount) errors.unitId = 'Choose who the visitor is here to see.';
       } else if (!(await this.hasClient(tx, gate.siteId))) {
         errors.unitId = 'Choose who the visitor is here to see.';
@@ -227,17 +260,19 @@ export class GateController {
         : null;
 
       const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, b.unitId, b.person.idNumber, v?.registration) : [];
-      const status: VisitStatus = barred.length ? 'denied' : 'awaiting_approval';
+      // Barred comes first; then a pass lets the visitor straight in; anyone else waits for the customer.
+      const status: VisitStatus = barred.length ? 'denied' : pass ? 'on_site' : 'awaiting_approval';
       const deniedReason = barred.length ? 'barred' : null;
-      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings };
+      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}) };
       const faceKey = b.type === 'pedestrian' && face ? await this.storage.put(guard.companyId, 'visitors', face.buffer, IMAGE_TYPES[face.mimetype]) : null;
       const manual = b.person.method === 'manual' || v?.method === 'manual';
       const id = (
         await tx.query(
           `INSERT INTO visits (company_id, site_id, gate_id, device_id, event_id, type, person_id, vehicle_id, category_id, unit_id, pax_in, status, denied_reason,
                                capture_method, identity_document, identity_method, disc_method, licence_expiry, disc_expiry, checks, captured_offline, captured_at,
-                               late_synced, entry_guard, face_photo_key, face_photo_type)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::date, $18::date, $19, $20, $21, $22, $23, $24, $25)
+                               late_synced, entry_guard, face_photo_key, face_photo_type, announced, pass_id, entry_at, decided_at)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::date, $18::date, $19, $20, $21, $22, $23, $24, $25, $26, $27,
+                   CASE WHEN $11 = 'on_site' THEN now() END, CASE WHEN $11 <> 'awaiting_approval' THEN now() END)
            RETURNING id`,
           [
             gate.siteId,
@@ -265,6 +300,8 @@ export class GateController {
             guard.employeeId,
             faceKey,
             faceKey ? face!.mimetype : null,
+            !!pass && !barred.length,
+            pass && !barred.length ? pass.passId : null,
           ],
         )
       ).rows[0].id as string;
@@ -287,7 +324,7 @@ export class GateController {
         action: 'visit.create',
         entityType: 'visit',
         entityId: id,
-        after: { gateId: gate.id, deviceId: guard.deviceId, type: b.type, status, deniedReason, captureMethod: manual ? 'manual' : 'scan', document: b.person.document, categoryId: b.categoryId, unitId: b.unitId, pax: b.pax, checks, capturedOffline: b.capturedOffline, lateSynced: time.lateSynced },
+        after: { gateId: gate.id, deviceId: guard.deviceId, type: b.type, status, deniedReason, captureMethod: manual ? 'manual' : 'scan', document: b.person.document, categoryId: b.categoryId, unitId: b.unitId, pax: b.pax, checks, passId: pass?.passId ?? null, capturedOffline: b.capturedOffline, lateSynced: time.lateSynced },
       });
       if (barred.length) {
         await this.notifications.recordForSite(tx, gate.siteId, {
@@ -302,7 +339,21 @@ export class GateController {
       }
       // Not barred: the customers of the unit are asked, and the gate waits for the answer.
       if (status === 'awaiting_approval') await this.approval.request(tx, id);
+      // Expected: let in at once, the pass marked as used, and the customer told who arrived.
+      if (status === 'on_site' && pass) {
+        await this.passes.used(tx, pass.passId, id, settings.checks.entryLimit);
+        await this.approval.arrivedOnPass(tx, id, pass.passId, pass.mismatch);
+      }
       return this.reply(id, status, deniedReason);
+    });
+  }
+
+  /** The gate's "Expected today" list: announced visitors and regulars due today. */
+  @Get('expected')
+  expected(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const gate = await this.gate(tx, guard);
+      return gate ? this.passes.expectedToday(tx, gate.siteId) : [];
     });
   }
 

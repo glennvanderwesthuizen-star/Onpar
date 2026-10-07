@@ -124,6 +124,30 @@ export class VisitApprovalService {
     });
   }
 
+  /** A visitor let in on a pass: the approval is recorded as such, and the unit's people are told who arrived. */
+  async arrivedOnPass(tx: Tx, visitId: string, _passId: string, mismatch: string[]): Promise<void> {
+    const v = (await this.load(tx, visitId))!;
+    await tx.query(`INSERT INTO visit_approvals (company_id, visit_id, method, outcome) VALUES (app_company_id(), $1, 'pass', 'approved')`, [visitId]);
+    const people = await this.customers(tx, v.siteId, v.unitId);
+    if (!people.length) return;
+    const who = visitorName(v.surname, v.names);
+    const how = v.type === 'pedestrian' ? 'on foot' : `in ${vehicleLine({ registration: v.registration ?? '', colour: v.colour, make: v.make, model: v.model })}`;
+    // One identifier matched and another did not: the visitor is let in and the customer told (spec: partial match).
+    const odd = mismatch.length ? ` The ${mismatch.join(' and ')} did not match what you gave the gate.` : '';
+    await this.notifications.record(tx, {
+      userIds: [],
+      customerIds: people.map((p) => p.id),
+      kind: 'visitor_arrived',
+      title: `Your visitor arrived at ${v.gateName}`,
+      body: `${who} was let in, ${how}.${odd}`,
+      lockScreen: 'A visitor you were expecting has arrived.',
+      url: `/c/visits/${v.id}`,
+      siteId: v.siteId,
+      entityType: 'visit',
+      entityId: v.id,
+    });
+  }
+
   /** Whether this customer is one of the people the visit is for. */
   isFor(v: Pick<VisitRow, 'siteId' | 'unitId'>, me: { siteId: string; unitId: string | null; customerKind: 'client' | 'tenant' }): boolean {
     if (v.siteId !== me.siteId) return false;
@@ -190,7 +214,7 @@ export class VisitApprovalService {
         `SELECT a.method, a.outcome, a.contact, c.full_name AS customer FROM visit_approvals a LEFT JOIN customers c ON c.id = a.customer_id WHERE a.visit_id = $1 ORDER BY a.at, a.id`,
         [visitId],
       )
-    ).rows as { method: 'push' | 'phone'; outcome: string; contact: CallContact | null; customer: string | null }[];
+    ).rows as { method: 'push' | 'phone' | 'pass'; outcome: string; contact: CallContact | null; customer: string | null }[];
     const final = [...answers].reverse().find((a) => a.outcome !== 'no_answer');
     const waiting = v.status === 'awaiting_approval';
     const secondsLeft = waiting && v.respondBy ? Math.max(0, Math.ceil((v.respondBy.getTime() - now.getTime()) / 1000)) : 0;
@@ -213,7 +237,7 @@ export class VisitApprovalService {
         second: contacts.second ? { label: contacts.second.label, tried: tried('second') } : null,
       },
       /** How it ended, in the guard's words. */
-      decided: !waiting && final ? (final.method === 'push' ? `${final.outcome === 'approved' ? 'Accepted' : 'Refused'} by ${final.customer ?? 'the customer'} in the app` : final.outcome === 'no_response' ? 'Nobody answered' : `${final.outcome === 'approved' ? 'Approved' : 'Denied'} by phone`) : null,
+      decided: !waiting && final ? (final.method === 'pass' ? `Expected by ${v.unitName ? `unit ${v.unitName}` : 'the office'}` : final.method === 'push' ? `${final.outcome === 'approved' ? 'Accepted' : 'Refused'} by ${final.customer ?? 'the customer'} in the app` : final.outcome === 'no_response' ? 'Nobody answered' : `${final.outcome === 'approved' ? 'Approved' : 'Denied'} by phone`) : null,
       blocked: v.deniedReason === 'barred' ? 'This visitor is on the barred list. Do not let them in. Your supervisor has been told.' : null,
     };
   }

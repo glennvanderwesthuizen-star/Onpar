@@ -48,7 +48,40 @@ data class BarredHit(val kind: String, val kindLabel: String = "", val from: Str
 
 /** What the site already knows about a scanned ID number or number plate. */
 @Serializable
-data class ScanCheck(val person: KnownPerson? = null, val vehicle: KnownVehicle? = null, val barred: List<BarredHit> = emptyList())
+data class ScanCheck(
+    val person: KnownPerson? = null,
+    val vehicle: KnownVehicle? = null,
+    val barred: List<BarredHit> = emptyList(),
+    /** The customer told the gate this visitor is coming (or they are a regular): let in without asking. */
+    val expected: ExpectedMatch? = null,
+)
+
+/** An announced visitor or a regular, found from what was scanned. */
+@Serializable
+data class ExpectedMatch(
+    val passId: String,
+    val visitorName: String = "",
+    val visiting: String = "",
+    val category: String = "",
+    val by: String = "",
+    val regular: Boolean = false,
+    /** The gate the customer named, when it is not this one. The visitor is still let in. */
+    val namedGate: String? = null,
+    /** What did not match what the customer gave, for example "number plate". The visitor is still let in and the customer told. */
+    val mismatch: List<String> = emptyList(),
+)
+
+/** One line of the gate's "Expected today" list. */
+@Serializable
+data class ExpectedRow(
+    val id: String,
+    val visitorName: String = "",
+    val visiting: String = "",
+    val category: String = "",
+    @kotlinx.serialization.SerialName("when") val time: String = "",
+    val gateName: String? = null,
+    val knownBy: String = "",
+)
 
 @Serializable
 data class VisitReply(val id: String, val status: String, val statusLabel: String = "", val blocked: String? = null)
@@ -130,6 +163,10 @@ data class VisitDraft(
     val face: File?,
     val identityPhoto: File?,
     val discPhoto: File?,
+    /** The pass that lets this visitor in without asking ("Expected by ..."). The kind of visitor and the unit then come from the pass. */
+    val passId: String? = null,
+    /** The cell number the visitor gave, when that is how the pass was found. */
+    val cell: String? = null,
 )
 
 /** The gate's own rules, the same as the server's, so the guard is told before anything is sent. */
@@ -172,8 +209,8 @@ object VisitorRules {
         d.person.method == "manual" && !d.identityPhoto.present() -> "Photograph the document you typed the details from."
         d.vehicle?.method == "manual" && !d.discPhoto.present() -> "Photograph the licence disc you typed the details from."
         !setup.on("expiredLicenceOk") && d.person.document == "drivers_licence" && d.licenceExpiry == null -> "Enter the date the licence expires."
-        setup.categories.none { it.id == d.categoryId } -> "Choose the kind of visitor."
-        d.unitId == null && !(d.office && setup.hasClient) -> "Choose who the visitor is here to see."
+        d.passId == null && setup.categories.none { it.id == d.categoryId } -> "Choose the kind of visitor."
+        d.passId == null && d.unitId == null && !(d.office && setup.hasClient) -> "Choose who the visitor is here to see."
         !d.acknowledged.containsAll(warnings(setup, d.licenceExpiry, d.vehicle?.discExpiry)) -> "Confirm that you have seen the warning."
         else -> null
     }
@@ -197,12 +234,16 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
 
     fun cached(): GateSetup? = if (cache.exists()) runCatching { OnParJson.decodeFromString(GateSetup.serializer(), cache.readText()) }.getOrNull() else null
 
+    /** Announced visitors and regulars due today. */
+    fun expected(): List<ExpectedRow> = OnParJson.decodeFromJsonElement(ListSerializer(ExpectedRow.serializer()), device.client().get("/device/visitors/expected", device.requireGuard()))
+
     /** Today's visitors at this site. */
     fun recent(): List<VisitRow> = OnParJson.decodeFromJsonElement(rows, device.client().get("/device/visitors/recent", device.requireGuard()))
 
     /** After a scan: a returning visitor's details, and whether the ID number or number plate is barred. */
-    fun check(idNumber: String?, registration: String?, unitId: String?): ScanCheck {
+    fun check(idNumber: String?, registration: String?, unitId: String?, cell: String? = null): ScanCheck {
         val body = buildJsonObject {
+            cell?.takeIf { it.isNotBlank() }?.let { put("cell", it) }
             idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", it) }
             registration?.takeIf { it.isNotBlank() }?.let { put("registration", it) }
             put("unitId", unitId?.let { JsonPrimitive(it) } ?: JsonNull)
@@ -238,8 +279,10 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
             }
             put("licenceExpiry", d.licenceExpiry?.let { JsonPrimitive(it) } ?: JsonNull)
             put("pax", if (d.type == "vehicle" && d.pax != null) JsonPrimitive(d.pax) else JsonNull)
-            put("categoryId", d.categoryId)
-            put("unitId", d.unitId?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("categoryId", if (d.passId == null) JsonPrimitive(d.categoryId) else JsonNull)
+            put("unitId", d.unitId?.takeIf { d.passId == null }?.let { JsonPrimitive(it) } ?: JsonNull)
+            if (d.passId != null) put("passId", d.passId)
+            if (d.passId != null && !d.cell.isNullOrBlank()) put("cell", d.cell)
             put("acknowledged", JsonArray(d.acknowledged.map { JsonPrimitive(it) }))
             put("trustedAt", device.clock.now().toString())
             put("deviceClock", device.clock.deviceClock().toString())

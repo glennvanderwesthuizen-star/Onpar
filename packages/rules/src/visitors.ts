@@ -261,3 +261,80 @@ export function visitorName(surname: string, names: string): string {
 export function vehicleLine(v: { registration: string; colour?: string | null; make?: string | null; model?: string | null }): string {
   return [v.registration, v.colour, v.make, v.model].filter(Boolean).join(' ');
 }
+
+// --- Step 4: announced visitors ---------------------------------------------------------------
+
+/** A pass: one visit on a date, or a regular on set days and hours. */
+export const PASS_KINDS = ['once', 'ongoing'] as const;
+export type PassKind = (typeof PASS_KINDS)[number];
+
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+export interface PassInput {
+  kind: PassKind;
+  visitorName: string;
+  /** How the category's approval lasts (from the site's category list). */
+  categoryKind: CategoryKind;
+  idNumber: string;
+  cell: string;
+  registration: string;
+  /** YYYY-MM-DD, for one visit. */
+  visitDate: string | null;
+  /** HH:MM, optional, for one visit. */
+  time: string | null;
+  /** 1 Monday to 7 Sunday; empty means every day. */
+  days: number[];
+  hoursFrom: string | null;
+  hoursTo: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Field-by-field problems with a pass a customer is making; empty when it is fine. `today` is YYYY-MM-DD in South Africa. */
+export function passErrors(p: PassInput, today: string): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (p.visitorName.trim().length < 2) e.visitorName = 'Enter the visitor’s name.';
+  // The gate must be able to recognise the visitor: at least one of the three.
+  const id = normaliseIdNumber(p.idNumber);
+  const cell = normaliseCell(p.cell);
+  const reg = normalisePlate(p.registration);
+  if (!id && !cell && !reg) e.identifier = 'Give at least one: their ID number, cell number or number plate.';
+  if (id && (id.length < 5 || id.length > 20)) e.idNumber = 'Enter the full ID or passport number.';
+  if (cell && (cell.length < 9 || cell.length > 15)) e.cell = 'Enter the full cell number.';
+  if (reg && (reg.length < 2 || reg.length > 12)) e.registration = 'Enter the number plate.';
+  if (p.kind === 'once') {
+    if (p.categoryKind !== 'once_off') e.categoryId = 'Choose a kind of visitor that is for one visit.';
+    if (!p.visitDate || !DAY.test(p.visitDate)) e.visitDate = 'Choose the day they are coming.';
+    else if (p.visitDate < today) e.visitDate = 'That day has passed.';
+    if (p.time !== null && !CLOCK.test(p.time)) e.time = 'Enter the time, for example 14:30.';
+  } else {
+    if (p.categoryKind === 'once_off') e.categoryId = 'Choose a kind of visitor that comes regularly.';
+    if (p.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) e.days = 'Choose the days of the week.';
+    if ((p.hoursFrom === null) !== (p.hoursTo === null)) e.hoursTo = 'Give both the start and the end time, or neither.';
+    else if (p.hoursFrom !== null && p.hoursTo !== null) {
+      if (!CLOCK.test(p.hoursFrom) || !CLOCK.test(p.hoursTo)) e.hoursTo = 'Enter the times, for example 08:00 and 17:00.';
+      else if (p.hoursTo <= p.hoursFrom) e.hoursTo = 'The end time must be after the start time.';
+    }
+    for (const k of ['startDate', 'endDate'] as const) if (p[k] !== null && !DAY.test(p[k] as string)) e[k] = 'Choose a date.';
+    // A fixed-period contractor has a first and a last day.
+    if (p.categoryKind === 'fixed_period') {
+      if (!p.startDate) e.startDate ??= 'Choose the first day.';
+      if (!p.endDate) e.endDate ??= 'Choose the last day.';
+    }
+    if (p.startDate && p.endDate && !e.startDate && !e.endDate && p.endDate < p.startDate) e.endDate = 'The last day must be on or after the first day.';
+    if (p.endDate && !e.endDate && p.endDate < today) e.endDate = 'That day has passed.';
+  }
+  return e;
+}
+
+/** When a pass applies, in words: "Wed 7 Oct, about 14:30" or "Mon, Wed, Fri, 08:00 to 17:00, until 2026-11-20". */
+export function passWhen(p: { kind: PassKind; visitDate: string | null; time: string | null; days: number[] | null; hoursFrom: string | null; hoursTo: string | null; startDate: string | null; endDate: string | null }): string {
+  if (p.kind === 'once') return [p.visitDate ?? '', p.time ? `about ${p.time}` : 'any time'].filter(Boolean).join(', ');
+  const days = p.days && p.days.length && p.days.length < 7 ? [...p.days].sort((a, b) => a - b).map((d) => WEEKDAYS[d - 1]).join(', ') : 'Every day';
+  const hours = p.hoursFrom && p.hoursTo ? `${p.hoursFrom} to ${p.hoursTo}` : 'any time';
+  const dates = p.startDate && p.endDate ? `${p.startDate} to ${p.endDate}` : p.endDate ? `until ${p.endDate}` : p.startDate ? `from ${p.startDate}` : '';
+  return [days, hours, dates].filter(Boolean).join(', ');
+}

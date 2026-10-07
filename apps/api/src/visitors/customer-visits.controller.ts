@@ -12,7 +12,7 @@ import { VisitApprovalService } from './visit-approval.service';
 const DecideBody = z.object({ decision: z.enum(['accept', 'refuse'], { message: 'Choose Accept or Refuse.' }) });
 
 const COLUMNS = `v.id, v.type, v.status, v.captured_at AS "at", v.respond_by AS "respondBy", v.decided_at AS "decidedAt", p.surname, p.names, ve.registration, ve.make, ve.model, ve.colour,
-  v.pax_in AS "pax", c.name AS "category", g.name AS "gateName", u.name AS "unitName", v.face_photo_key IS NOT NULL AS "hasFace",
+  v.pax_in AS "pax", c.name AS "category", g.name AS "gateName", u.name AS "unitName", v.face_photo_key IS NOT NULL AS "hasFace", v.pass_id AS "passId",
   (SELECT cu.full_name FROM visit_approvals a JOIN customers cu ON cu.id = a.customer_id WHERE a.visit_id = v.id AND a.method = 'push' ORDER BY a.at DESC LIMIT 1) AS "answeredBy",
   (SELECT a.method FROM visit_approvals a WHERE a.visit_id = v.id AND a.outcome <> 'no_answer' ORDER BY a.at DESC LIMIT 1) AS "answeredHow"`;
 const FROM = `visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id JOIN visitor_categories c ON c.id = v.category_id
@@ -91,7 +91,7 @@ export class CustomerVisitsController {
 function shape(r: Record<string, any>) {
   const status = r.status as VisitStatus;
   const how =
-    status === 'on_site' ? (r.answeredHow === 'phone' ? 'Approved by phone at the gate' : `Accepted by ${r.answeredBy ?? 'your unit'}`)
+    status === 'on_site' ? (r.answeredHow === 'pass' ? 'Expected: let in without asking' : r.answeredHow === 'phone' ? 'Approved by phone at the gate' : `Accepted by ${r.answeredBy ?? 'your unit'}`)
     : status === 'denied' ? (r.answeredHow === 'phone' ? 'Refused by phone at the gate' : `Refused by ${r.answeredBy ?? 'your unit'}`)
     : status === 'denied_no_response' ? 'Nobody answered, so the visitor was turned away'
     : null;
@@ -109,5 +109,7 @@ function shape(r: Record<string, any>) {
     visiting: r.unitName ? `Unit ${r.unitName}` : 'The office',
     hasFace: r.hasFace as boolean,
     outcome: how,
+    // A visitor the unit let in can be put on its list, so the gate does not ask next time.
+    canPass: (status === 'on_site' || status === 'exited') && !r.passId,
   };
 }

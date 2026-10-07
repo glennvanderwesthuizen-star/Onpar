@@ -160,6 +160,17 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
     }
     Text(listOfNotNull(gate.name, setup.siteName).joinToString(" · "), color = Color.DarkGray)
     BigButton("NEW VISITOR", enabled = !state.busy) { vm.go(Page.NewVisitor) }
+    Text("Expected today", style = MaterialTheme.typography.titleMedium)
+    if (state.expected.isEmpty()) Text("Nobody has been announced for today.", color = Color.Gray)
+    state.expected.forEach { e ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(e.visitorName, fontWeight = FontWeight.Bold)
+                Text("To see " + (if (e.visiting == "The office") "the office" else e.visiting) + " · ${e.category}")
+                Text(listOfNotNull(e.time, e.gateName, e.knownBy.takeIf { it.isNotBlank() }?.let { "known by $it" }).joinToString(" · "), color = Color.DarkGray, fontSize = 13.sp)
+            }
+        }
+    }
     Text("Today", style = MaterialTheme.typography.titleMedium)
     if (state.visits.isEmpty()) Text(if (state.busy) "Loading…" else "No visitors yet today.", color = Color.Gray)
     state.visits.forEach { v -> VisitCard(v) { vm.go(Page.Visit(v.id)) } }
@@ -242,6 +253,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     var office by remember { mutableStateOf(false) }
     var unitSearch by remember { mutableStateOf("") }
     var seenWarnings by remember { mutableStateOf(false) }
+    var expectedCell by remember { mutableStateOf("") }
 
     val strictExpiry = !setup.on("expiredLicenceOk")
     val discDay = VisitorRules.day(discExpiry)
@@ -409,7 +421,10 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
         Step.Details -> {
             val plate = if (type == "vehicle") VisitorScan.plate(registration) else null
             // What this site already knows about the visitor, and whether they are barred.
-            LaunchedEffect(idNumber, plate, unitId) { vm.checkVisitor(VisitorScan.idNumber(idNumber), plate, unitId) }
+            // A visitor who says they are expected may be on the list by cell number only: the guard types it in.
+            val cellKey = expectedCell.filter { it.isDigit() }.takeIf { it.length >= 9 }
+            LaunchedEffect(idNumber, plate, unitId, cellKey) { vm.checkVisitor(VisitorScan.idNumber(idNumber), plate, unitId, cellKey) }
+            val pass = state.scanCheck?.expected
 
             Text("3. The visit", style = MaterialTheme.typography.titleMedium)
             Card(Modifier.fillMaxWidth()) {
@@ -437,14 +452,28 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             }
 
-            Text("What kind of visitor?", fontWeight = FontWeight.Bold)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (pass != null && barred.isEmpty()) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.background(Color(0xFFDFF3E7)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("EXPECTED by " + (if (pass.visiting == "The office") "the office" else pass.visiting), color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("${pass.by} told the gate: ${pass.visitorName}, ${pass.category}" + if (pass.regular) " (a regular)." else ".")
+                        pass.namedGate?.let { Text("Announced for $it. They may still come in here.", color = Color.DarkGray) }
+                        if (pass.mismatch.isNotEmpty()) Text("The ${pass.mismatch.joinToString(" and ")} is not the one the customer gave. Let them in; the customer is told.", color = Amber, fontWeight = FontWeight.Bold)
+                        Text("No approval is needed.", color = Color.DarkGray)
+                    }
+                }
+            }
+
+            if (pass == null) Text("What kind of visitor?", fontWeight = FontWeight.Bold)
+            if (pass == null) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 setup.categories.forEach { c -> FilterChip(selected = categoryId == c.id, onClick = { categoryId = c.id }, label = { Text(c.name) }) }
             }
 
-            Text("Who are they here to see?", fontWeight = FontWeight.Bold)
+            if (pass == null) Text("Who are they here to see?", fontWeight = FontWeight.Bold)
             val chosen = setup.units.firstOrNull { it.id == unitId }
-            if (chosen != null || office) {
+            if (pass != null) {
+                // The unit comes from the customer's announcement.
+            } else if (chosen != null || office) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (chosen != null) "Unit ${chosen.name}" else "The office", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     OutlinedButton(onClick = { unitId = null; office = false }) { Text("Change") }
@@ -479,6 +508,11 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 PhotoTaker(faceFile, front = false) { face = it }
             }
 
+            if (pass == null) {
+                OutlinedTextField(expectedCell, { expectedCell = it.take(16) }, label = { Text("Says they are expected? Their cell number") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
+            }
+
             val warnings = VisitorRules.warnings(setup, licenceDay, discDay)
             if (warnings.isNotEmpty()) {
                 Card(Modifier.fillMaxWidth()) {
@@ -504,6 +538,8 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 face = if (type == "pedestrian") savedFace else null,
                 identityPhoto = if (scannedIdentity) null else identityPhoto,
                 discPhoto = if (type == "vehicle" && discMethod == "manual") discPhoto else null,
+                passId = pass?.passId,
+                cell = cellKey,
             )
             val problem = VisitorRules.problem(setup, draft)
             if (problem != null) Text("Still needed: $problem", color = Amber, fontWeight = FontWeight.Bold)
@@ -511,6 +547,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 when {
                     state.busy -> "Sending…"
                     barred.isNotEmpty() -> "Record and turn away"
+                    pass != null -> "Let them in"
                     else -> "Request approval"
                 },
                 enabled = !state.busy && problem == null,

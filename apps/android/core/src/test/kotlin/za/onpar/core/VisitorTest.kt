@@ -225,4 +225,25 @@ class VisitorTest {
         assertEquals("Nobody answered", device.visitors.noResponse("v2").decided)
         assertEquals("/api/device/visitors/v2/no-response", server.takeRequest().path)
     }
+
+    @Test
+    fun `an expected visitor needs no kind of visitor or unit from the guard, and is sent with the pass`() {
+        val expected = draft(unitId = null).copy(categoryId = "", passId = "p1", cell = "0835550177")
+        assertNull(VisitorRules.problem(setup, expected))
+        server.enqueue(MockResponse().setBody("""{"id":"v9","status":"on_site","statusLabel":"On site","blocked":null}"""))
+        assertEquals("on_site", device.visitors.create(setup, expected).status)
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"passId\":\"p1\"") && body.contains("\"cell\":\"0835550177\"") && body.contains("\"categoryId\":null") && body.contains("\"unitId\":null"))
+    }
+
+    @Test
+    fun `a scan check says when the visitor is expected, and the gate reads who is due today`() {
+        server.enqueue(MockResponse().setBody("""{"person":null,"vehicle":null,"barred":[],"expected":{"passId":"p1","visitorName":"Sipho Nkosi","visiting":"Unit 14","category":"Once-off visitor","by":"Thabo Tenant","regular":false,"namedGate":"Back gate","mismatch":["number plate"]}}"""))
+        val c = device.visitors.check("P1", "GP100200", null, "0835550177")
+        assertEquals("Unit 14", c.expected?.visiting)
+        assertEquals(listOf("number plate"), c.expected?.mismatch)
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"cell\":\"0835550177\""))
+        server.enqueue(MockResponse().setBody("""[{"id":"p1","visitorName":"Sipho Nkosi","visiting":"Unit 14","category":"Once-off visitor","when":"About 14:30","gateName":null,"knownBy":"plate GP100200"}]"""))
+        assertEquals(listOf(ExpectedRow("p1", "Sipho Nkosi", "Unit 14", "Once-off visitor", "About 14:30", null, "plate GP100200")), device.visitors.expected())
+    }
 }

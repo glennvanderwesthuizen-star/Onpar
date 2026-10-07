@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { AuthPhoto } from './AuthPhoto';
+import { PassForm } from './CustomerPasses';
+
+type PassOptions = React.ComponentProps<typeof PassForm>['options'];
 import { ErrorBanner, formatDateTime } from './ui';
 
 export interface CustomerVisit {
@@ -20,6 +23,7 @@ export interface CustomerVisit {
   visiting: string;
   hasFace: boolean;
   outcome: string | null;
+  canPass: boolean;
 }
 
 /**
@@ -30,6 +34,16 @@ export function VisitRequest({ visit, onChange }: { visit: CustomerVisit; onChan
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const waiting = visit.status === 'awaiting_approval';
+  const [passing, setPassing] = useState(false);
+  const [passed, setPassed] = useState(false);
+  const [options, setOptions] = useState<PassOptions | null>(null);
+  const openPass = () =>
+    api<PassOptions>('/customer/passes')
+      .then((o) => {
+        setOptions(o);
+        setPassing(true);
+      })
+      .catch(setError);
 
   async function decide(decision: 'accept' | 'refuse') {
     setBusy(true);
@@ -76,6 +90,21 @@ export function VisitRequest({ visit, onChange }: { visit: CustomerVisit; onChan
       ) : (
         <div className={`banner ${visit.status === 'on_site' ? 'ok' : 'err'}`} style={{ marginTop: 12, marginBottom: 0 }} role="status">
           <b>{visit.outcome ?? visit.statusLabel}</b>
+        </div>
+      )}
+      {visit.canPass && !passing && !passed && (
+        <button className="btn ghost m-wide" style={{ marginTop: 10 }} onClick={openPass}>
+          Let them in next time without asking
+        </button>
+      )}
+      {passed && (
+        <div className="banner ok" style={{ marginTop: 10, marginBottom: 0 }} role="status">
+          The gate has been told. They are on your Visitors list.
+        </div>
+      )}
+      {passing && options && (
+        <div style={{ marginTop: 12 }}>
+          <PassForm options={options} fromVisit={visit.id} startName={visit.visitor} onCancel={() => setPassing(false)} onDone={() => (setPassing(false), setPassed(true))} />
         </div>
       )}
     </article>
@@ -131,9 +160,9 @@ export function CustomerVisits() {
             ))}
           </>
         )}
-        <p className="mute small" style={{ marginTop: 10 }}>
-          Coming next: tell the gate in advance who is coming, and at which gate.
-        </p>
+        <Link className="btn ghost m-wide" style={{ marginTop: 12, textDecoration: 'none' }} href="/c/visitors">
+          Tell the gate who is coming
+        </Link>
       </div>
     </section>
   );

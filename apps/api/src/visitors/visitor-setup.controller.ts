@@ -163,7 +163,7 @@ export class VisitorSetupController {
       ).rows.map(({ id_number, document, checks, answeredBy, answeredHow, ...r }) => ({
         ...r,
         // Who answered, for a visit that was approved or refused.
-        answered: answeredHow === 'push' ? `${answeredBy ?? 'The customer'}, in the app` : answeredHow === 'phone' ? (r.status === 'denied_no_response' ? 'Nobody answered' : 'By phone at the gate') : null,
+        answered: answeredHow === 'pass' ? 'Expected: announced by the customer' : answeredHow === 'push' ? `${answeredBy ?? 'The customer'}, in the app` : answeredHow === 'phone' ? (r.status === 'denied_no_response' ? 'Nobody answered' : 'By phone at the gate') : null,
         idNumber: maskIdNumber(id_number),
         documentLabel: IDENTITY_DOCUMENT_LABELS[document as keyof typeof IDENTITY_DOCUMENT_LABELS],
         statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],

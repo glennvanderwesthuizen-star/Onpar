@@ -9,6 +9,7 @@ import { TasksService } from './tasks/tasks.service';
 import { PatrolsService } from './patrols/patrols.service';
 import { RetentionService } from './privacy/retention.service';
 import { DutyService } from './attendance/duty.service';
+import { VisitPassService } from './visitors/visit-pass.service';
 import { NotificationsService } from './notifications/notifications.service';
 
 export async function createApp(config: Config = loadConfig()): Promise<INestApplication> {
@@ -31,6 +32,7 @@ if (require.main === module) {
     app.get(RetentionService).startTimer();
     app.get(DutyService).startReliefTimer();
     app.get(NotificationsService).startTimer();
+    app.get(VisitPassService).startTimer();
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }

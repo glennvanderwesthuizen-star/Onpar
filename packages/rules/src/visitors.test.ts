@@ -5,6 +5,8 @@ import {
   DEFAULT_VISITOR_SETTINGS,
   normaliseCell,
   normalisePlate,
+  passErrors,
+  passWhen,
   VISITOR_CHECK_INFO,
   VISITOR_CHECKS,
   visitorCategoryErrors,
@@ -85,5 +87,36 @@ describe('visitor management: the groundwork', () => {
     expect(visitWarnings({ expiredLicenceOk: true }, '2026-10-07', '2020-01-01', '2020-01-01')).toEqual([]);
     expect(visitWarnings({ expiredLicenceOk: false }, '2026-10-07', '2026-10-06', '2026-10-07')).toEqual(['licence_expired']);
     expect(visitWarnings({ expiredLicenceOk: false }, '2026-10-07', null, '2026-09-30')).toEqual(['disc_expired']);
+  });
+
+  describe('a pass a customer makes for a visitor', () => {
+    const once = { kind: 'once' as const, visitorName: 'Sipho Nkosi', categoryKind: 'once_off' as const, idNumber: '', cell: '082 555 0140', registration: '', visitDate: '2026-10-08', time: null, days: [], hoursFrom: null, hoursTo: null, startDate: null, endDate: null };
+    const regular = { ...once, kind: 'ongoing' as const, categoryKind: 'regular' as const, visitDate: null, days: [1, 3, 5], hoursFrom: '08:00', hoursTo: '17:00' };
+
+    it('needs a name and at least one way for the gate to recognise the visitor', () => {
+      expect(passErrors(once, '2026-10-07')).toEqual({});
+      expect(passErrors({ ...once, cell: '', visitorName: 'S' }, '2026-10-07')).toEqual({ visitorName: 'Enter the visitor’s name.', identifier: 'Give at least one: their ID number, cell number or number plate.' });
+      expect(passErrors({ ...once, cell: '082', registration: 'ca 123 456' }, '2026-10-07')).toEqual({ cell: 'Enter the full cell number.' });
+    });
+
+    it('takes one visit on a day that has not passed, with an optional time', () => {
+      expect(passErrors({ ...once, visitDate: '2026-10-06' }, '2026-10-07')).toEqual({ visitDate: 'That day has passed.' });
+      expect(passErrors({ ...once, visitDate: null }, '2026-10-07')).toEqual({ visitDate: 'Choose the day they are coming.' });
+      expect(passErrors({ ...once, time: '25:00' }, '2026-10-07')).toEqual({ time: 'Enter the time, for example 14:30.' });
+      expect(passErrors({ ...once, categoryKind: 'regular' }, '2026-10-07')).toEqual({ categoryId: 'Choose a kind of visitor that is for one visit.' });
+      expect(passWhen({ ...once, time: '14:30' })).toBe('2026-10-08, about 14:30');
+    });
+
+    it('takes a regular on set days and hours, and a fixed-period contractor between two dates', () => {
+      expect(passErrors(regular, '2026-10-07')).toEqual({});
+      expect(passErrors({ ...regular, categoryKind: 'once_off' }, '2026-10-07')).toEqual({ categoryId: 'Choose a kind of visitor that comes regularly.' });
+      expect(passErrors({ ...regular, hoursTo: null }, '2026-10-07')).toEqual({ hoursTo: 'Give both the start and the end time, or neither.' });
+      expect(passErrors({ ...regular, hoursTo: '07:00' }, '2026-10-07')).toEqual({ hoursTo: 'The end time must be after the start time.' });
+      expect(passErrors({ ...regular, days: [0, 8] }, '2026-10-07')).toEqual({ days: 'Choose the days of the week.' });
+      expect(passErrors({ ...regular, categoryKind: 'fixed_period' }, '2026-10-07')).toEqual({ startDate: 'Choose the first day.', endDate: 'Choose the last day.' });
+      expect(passErrors({ ...regular, categoryKind: 'fixed_period', startDate: '2026-10-10', endDate: '2026-10-09' }, '2026-10-07')).toEqual({ endDate: 'The last day must be on or after the first day.' });
+      expect(passWhen(regular)).toBe('Mon, Wed, Fri, 08:00 to 17:00');
+      expect(passWhen({ ...regular, days: [], hoursFrom: null, hoursTo: null, startDate: '2026-10-10', endDate: '2026-11-20' })).toBe('Every day, any time, 2026-10-10 to 2026-11-20');
+    });
   });
 });

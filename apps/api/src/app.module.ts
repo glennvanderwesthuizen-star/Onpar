@@ -45,6 +45,8 @@ import { CustomerAppController } from './customers/customer-app.controller';
 import { VisitorSetupController } from './visitors/visitor-setup.controller';
 import { GateController } from './visitors/gate.controller';
 import { CustomerVisitsController } from './visitors/customer-visits.controller';
+import { CustomerPassesController } from './visitors/customer-passes.controller';
+import { VisitPassService } from './visitors/visit-pass.service';
 import { VisitApprovalService } from './visitors/visit-approval.service';
 import { VisitorSetupService } from './visitors/visitor-setup.service';
 
@@ -99,6 +101,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       VisitorSetupController,
       GateController,
       CustomerVisitsController,
+      CustomerPassesController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
@@ -118,6 +121,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       NotificationsService,
       VisitorSetupService,
       VisitApprovalService,
+      VisitPassService,
     ],
   })
   class AppModule {}
