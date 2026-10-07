@@ -200,9 +200,11 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     }
 
     val eventId = remember { UUID.randomUUID().toString() }
-    val faceFile = remember { File(context.cacheDir, "visitor-face.jpg").also { it.delete() } }
-    val identityFile = remember { File(context.cacheDir, "visitor-identity.jpg").also { it.delete() } }
-    val discFile = remember { File(context.cacheDir, "visitor-disc.jpg").also { it.delete() } }
+    // Kept in the app's own storage, not its cache: Android may empty the cache at any moment, and a photo must last until the visit is sent.
+    val photoDir = remember { File(context.filesDir, "visitor-photos").also { it.mkdirs() } }
+    val faceFile = remember { File(photoDir, "face.jpg").also { it.delete() } }
+    val identityFile = remember { File(photoDir, "identity.jpg").also { it.delete() } }
+    val discFile = remember { File(photoDir, "disc.jpg").also { it.delete() } }
 
     var type by remember { mutableStateOf("vehicle") }
     var step by remember { mutableStateOf(Step.Vehicle) }
@@ -375,6 +377,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 }
             }
             if (type == "vehicle") OutlinedButton(onClick = { step = Step.Vehicle; note = null }, modifier = Modifier.fillMaxWidth()) { Text("Back to the vehicle") }
+            if (type == "pedestrian" && setup.on("facePhoto")) OutlinedButton(onClick = { step = Step.Face; note = null }, modifier = Modifier.fillMaxWidth()) { Text("Back to the face photo") }
         }
 
         Step.Details -> {
@@ -421,9 +424,18 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                     OutlinedButton(onClick = { unitId = null; office = false }) { Text("Change") }
                 }
             } else {
-                OutlinedTextField(unitSearch, { unitSearch = it.take(20) }, label = { Text("Unit number or name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(unitSearch, { typed ->
+                    unitSearch = typed.take(20)
+                    // Typing a unit's whole name chooses it, when no other unit also fits what was typed.
+                    val fits = setup.units.filter { it.name.contains(typed.trim(), ignoreCase = true) }
+                    val exact = fits.singleOrNull()?.takeIf { it.name.equals(typed.trim(), ignoreCase = true) }
+                    if (exact != null) {
+                        unitId = exact.id
+                        office = false
+                    }
+                }, label = { Text("Unit number or name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 val matches = setup.units.filter { unitSearch.isBlank() || it.name.contains(unitSearch.trim(), ignoreCase = true) }.take(8)
-                if (matches.isEmpty()) Text("No unit matches that.", color = Color.Gray)
+                if (matches.isEmpty()) Text("No unit matches that.", color = Color.Gray) else Text("Tap the unit:", color = Color.DarkGray)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     matches.chunked(4).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -432,6 +444,13 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                     }
                     if (setup.hasClient) FilterChip(selected = false, onClick = { unitId = null; office = true }, label = { Text("The office") })
                 }
+            }
+
+            // The face photo is taken first; if it is not there now, it can be taken here, so the guard is never stuck.
+            val savedFace = (face ?: faceFile).takeIf { it.isFile && it.length() > 0 }
+            if (type == "pedestrian" && setup.on("facePhoto") && savedFace == null) {
+                Text(if (face == null) "The visitor's face has not been photographed yet. Take it now." else "The photo of the visitor's face was lost. Take it again.", color = Red, fontWeight = FontWeight.Bold)
+                PhotoTaker(faceFile, front = false) { face = it }
             }
 
             val warnings = VisitorRules.warnings(setup, licenceDay, discDay)
@@ -456,12 +475,12 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 unitId = unitId,
                 office = office,
                 acknowledged = if (seenWarnings) warnings else emptyList(),
-                face = if (type == "pedestrian") face else null,
+                face = if (type == "pedestrian") savedFace else null,
                 identityPhoto = if (scannedIdentity) null else identityPhoto,
                 discPhoto = if (type == "vehicle" && discMethod == "manual") discPhoto else null,
             )
             val problem = VisitorRules.problem(setup, draft)
-            if (problem != null) Text(problem, color = Color.DarkGray)
+            if (problem != null) Text("Still needed: $problem", color = Amber, fontWeight = FontWeight.Bold)
             BigButton(
                 when {
                     state.busy -> "Sending…"
