@@ -71,6 +71,18 @@ data class ExpectedMatch(
     val mismatch: List<String> = emptyList(),
 )
 
+/**
+ * The announcement the guard pulled up before scanning ("Are you expected?"). It is only a
+ * head start: the visitor is still scanned in full, and is let in on the announcement only if
+ * what is scanned (or the cell number given) matches it.
+ */
+data class ExpectedHint(val passId: String, val visitorName: String, val visiting: String, val knownBy: String = "", val cell: String? = null)
+
+/** What the guard typed to look an expected visitor up, tried as each kind it could be. */
+data class LookupKeys(val idNumber: String?, val registration: String?, val cell: String?) {
+    val any: Boolean get() = idNumber != null || registration != null || cell != null
+}
+
 /** One line of the gate's "Expected today" list. */
 @Serializable
 data class ExpectedRow(
@@ -196,6 +208,21 @@ object VisitorRules {
         if (licenceExpiry != null && licenceExpiry < today) out += "licence_expired"
         if (discExpiry != null && discExpiry < today) out += "disc_expired"
         return out
+    }
+
+    /**
+     * A cell number, ID number or number plate as the visitor gave it, as every kind it could
+     * be: the gate does not ask the guard which it is.
+     */
+    fun lookupKeys(text: String): LookupKeys {
+        val tidy = VisitorScan.plate(text)
+        val digits = text.filter { it.isDigit() }
+        val looksLikeNumber = text.all { it.isDigit() || it in "+ -()" }
+        return LookupKeys(
+            idNumber = tidy.takeIf { it.length in 5..20 },
+            registration = tidy.takeIf { it.length in 2..12 },
+            cell = digits.takeIf { looksLikeNumber && it.length in 9..15 },
+        )
     }
 
     /** What is still missing from a visit, in the guard's words; null when it can be sent. */

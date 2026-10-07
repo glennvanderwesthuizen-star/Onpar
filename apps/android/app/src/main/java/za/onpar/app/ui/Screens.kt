@@ -104,6 +104,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     Page.Visitors -> if (state.owed != null) HomeScreen(vm, state) else VisitorsScreen(vm, state)
                     Page.NewVisitor -> if (state.owed != null) HomeScreen(vm, state) else NewVisitorScreen(vm, state)
+                    Page.ExpectedVisitor -> if (state.owed != null) HomeScreen(vm, state) else ExpectedVisitorScreen(vm, state)
                     is Page.Visit -> if (state.owed != null) HomeScreen(vm, state) else VisitScreen(vm, state, page.id)
                     // Calling is always allowed, even with a declaration owed.
                     Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }

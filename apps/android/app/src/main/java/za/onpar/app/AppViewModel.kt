@@ -57,6 +57,8 @@ sealed interface Page {
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
     data object Visitors : Page
     data object NewVisitor : Page
+    /** "Are you expected?": look an announced visitor up before scanning them in. */
+    data object ExpectedVisitor : Page
     /** One visitor: waiting for the customer's answer, the phone call, and how it ended. */
     data class Visit(val id: String) : Page
     data object Uniform : Page
@@ -105,6 +107,10 @@ data class UiState(
     /** The gate this phone stands at and what it needs to scan visitors in; its `gate` is null on an ordinary post phone. */
     val gate: za.onpar.core.GateSetup? = null,
     val visits: List<za.onpar.core.VisitRow> = emptyList(),
+    /** The announcement the guard pulled up before scanning this visitor in, if he did. */
+    val expectedHint: za.onpar.core.ExpectedHint? = null,
+    /** The guard looked someone up and nobody due today matched. */
+    val expectedNotFound: Boolean = false,
     /** Announced visitors and regulars due today. */
     val expected: List<za.onpar.core.ExpectedRow> = emptyList(),
     /** What the site already knows about the visitor being scanned in. */
@@ -289,7 +295,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
         if (page == Page.Call) loadContacts()
-        if (page == Page.Visitors) loadVisitors()
+        if (page == Page.Visitors) {
+            _state.update { it.copy(expectedHint = null, expectedNotFound = false) }
+            loadVisitors()
+        }
+        if (page == Page.ExpectedVisitor) {
+            _state.update { it.copy(expectedHint = null, expectedNotFound = false) }
+            loadVisitors()
+        }
         if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null) }
         if (page is Page.Visit) {
             _state.update { it.copy(visit = it.visit?.takeIf { v -> v.id == page.id }, calledContact = null) }
@@ -304,6 +317,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val list = if (setup.gate != null) device.visitors.recent() else emptyList()
         val due = if (setup.gate != null) runCatching { device.visitors.expected() }.getOrDefault(emptyList()) else emptyList()
         _state.update { it.copy(gate = setup, visits = list, expected = due) }
+    }
+
+    /** Starts scanning a visitor in: from "New visitor" (no announcement), or from one the guard pulled up first. */
+    fun startVisitor(hint: za.onpar.core.ExpectedHint?) {
+        _state.update { it.copy(expectedHint = hint, expectedNotFound = false) }
+        go(Page.NewVisitor)
+    }
+
+    /** "Are you expected?" Looks up what the visitor gave: a cell number, an ID number or a number plate. */
+    fun findExpected(text: String) = run {
+        val keys = za.onpar.core.VisitorRules.lookupKeys(text)
+        if (!keys.any) {
+            _state.update { it.copy(error = "Type the visitor's cell number, ID number or number plate.") }
+            return@run
+        }
+        val found = device.visitors.check(keys.idNumber, keys.registration, null, keys.cell).expected
+        _state.update {
+            if (found == null) it.copy(expectedHint = null, expectedNotFound = true)
+            else it.copy(expectedNotFound = false, expectedHint = za.onpar.core.ExpectedHint(found.passId, found.visitorName, found.visiting, "what the visitor gave: $text", keys.cell))
+        }
     }
 
     /** After a scan: a returning visitor's details and whether they are barred. Quiet: it must not hide what the guard is doing. */

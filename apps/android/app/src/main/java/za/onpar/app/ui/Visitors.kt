@@ -53,6 +53,8 @@ import za.onpar.app.AppViewModel
 import za.onpar.app.Page
 import za.onpar.app.UiState
 import za.onpar.core.BarcodeReader
+import za.onpar.core.ExpectedHint
+import za.onpar.core.ExpectedRow
 import za.onpar.core.GateSetup
 import za.onpar.core.Scanned
 import za.onpar.core.VisitDraft
@@ -159,17 +161,10 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
         return
     }
     Text(listOfNotNull(gate.name, setup.siteName).joinToString(" · "), color = Color.DarkGray)
-    BigButton("NEW VISITOR", enabled = !state.busy) { vm.go(Page.NewVisitor) }
-    Text("Expected today", style = MaterialTheme.typography.titleMedium)
-    if (state.expected.isEmpty()) Text("Nobody has been announced for today.", color = Color.Gray)
-    state.expected.forEach { e ->
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(e.visitorName, fontWeight = FontWeight.Bold)
-                Text("To see " + (if (e.visiting == "The office") "the office" else e.visiting) + " · ${e.category}")
-                Text(listOfNotNull(e.time, e.gateName, e.knownBy.takeIf { it.isNotBlank() }?.let { "known by $it" }).joinToString(" · "), color = Color.DarkGray, fontSize = 13.sp)
-            }
-        }
+    BigButton("NEW VISITOR", enabled = !state.busy) { vm.startVisitor(null) }
+    Button(onClick = { vm.go(Page.ExpectedVisitor) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B7A4E))) {
+        Text("EXPECTED VISITOR" + if (state.expected.isEmpty()) "" else " (${state.expected.size} today)", fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
     Text("Today", style = MaterialTheme.typography.titleMedium)
     if (state.visits.isEmpty()) Text(if (state.busy) "Loading…" else "No visitors yet today.", color = Color.Gray)
@@ -191,6 +186,58 @@ private fun VisitCard(v: VisitRow, onClick: () -> Unit) {
             Text("To see " + (v.unitName?.let { "unit $it" } ?: "the office") + " · ${v.category}", color = Color.DarkGray, fontSize = 13.sp)
         }
     }
+}
+
+@Composable
+private fun ExpectedCard(e: ExpectedRow, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(e.visitorName, fontWeight = FontWeight.Bold)
+            Text("To see " + (if (e.visiting == "The office") "the office" else e.visiting) + " · ${e.category}")
+            Text(listOfNotNull(e.time, e.gateName, e.knownBy.takeIf { it.isNotBlank() }?.let { "known by $it" }).joinToString(" · "), color = Color.DarkGray, fontSize = 13.sp)
+        }
+    }
+}
+
+/**
+ * "Are you expected?" The guard types what the visitor gives (a cell number, an ID number or a
+ * number plate) or taps their name in today's list, and sees the announcement at once. The
+ * visitor is then scanned in as usual: the scan is what confirms it.
+ */
+@Composable
+fun ExpectedVisitorScreen(vm: AppViewModel, state: UiState) {
+    VisitorHeader("Expected visitor") { vm.go(Page.Visitors) }
+    var typed by remember { mutableStateOf("") }
+    val hint = state.expectedHint
+    if (hint != null) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFDFF3E7)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("EXPECTED", color = Green, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(hint.visitorName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("To see " + (if (hint.visiting == "The office") "the office" else hint.visiting))
+                if (hint.knownBy.isNotBlank()) Text("Found by ${hint.knownBy}", color = Color.DarkGray, fontSize = 13.sp)
+                Text("Now scan them in. They are let in without asking the customer if the scan matches.", color = Color.DarkGray)
+            }
+        }
+        BigButton("SCAN THEM IN") { vm.startVisitor(hint) }
+        OutlinedButton(onClick = { vm.go(Page.ExpectedVisitor) }, modifier = Modifier.fillMaxWidth()) { Text("Look up someone else") }
+        return
+    }
+    Text("Ask the visitor for their cell number, ID number or number plate.")
+    OutlinedTextField(typed, { typed = it.take(24) }, label = { Text("Cell number, ID number or number plate") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    BigButton(if (state.busy) "Looking…" else "FIND", enabled = !state.busy && typed.isNotBlank()) { vm.findExpected(typed) }
+    if (state.expectedNotFound) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Nobody expected today matches that.", color = Amber, fontWeight = FontWeight.Bold)
+                Text("Check the number with the visitor, find their name below, or scan them in as a new visitor and the customer will be asked.")
+            }
+        }
+        OutlinedButton(onClick = { vm.startVisitor(null) }, modifier = Modifier.fillMaxWidth()) { Text("Scan in as a new visitor") }
+    }
+    Text("Expected today", style = MaterialTheme.typography.titleMedium)
+    if (state.expected.isEmpty()) Text(if (state.busy) "Loading…" else "Nobody has been announced for today.", color = Color.Gray)
+    state.expected.forEach { e -> ExpectedCard(e) { vm.startVisitor(ExpectedHint(e.id, e.visitorName, e.visiting, e.knownBy)) } }
 }
 
 private enum class Step { Vehicle, Face, Identity, Details }
@@ -253,7 +300,9 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     var office by remember { mutableStateOf(false) }
     var unitSearch by remember { mutableStateOf("") }
     var seenWarnings by remember { mutableStateOf(false) }
-    var expectedCell by remember { mutableStateOf("") }
+    // Pulled up before scanning ("Are you expected?"): shown all the way through, and confirmed by the scan.
+    val hint = state.expectedHint
+    var expectedCell by remember { mutableStateOf(hint?.cell.orEmpty()) }
 
     val strictExpiry = !setup.on("expiredLicenceOk")
     val discDay = VisitorRules.day(discExpiry)
@@ -272,6 +321,13 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = type == "vehicle", onClick = { if (type != "vehicle") startAgain("vehicle") }, label = { Text("Vehicle") })
             FilterChip(selected = type == "pedestrian", onClick = { if (type != "pedestrian") startAgain("pedestrian") }, label = { Text("On foot") })
+        }
+    }
+    if (hint != null) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFDFF3E7)).padding(12.dp)) {
+                Text("Expected: ${hint.visitorName}, to see " + (if (hint.visiting == "The office") "the office" else hint.visiting), color = Green, fontWeight = FontWeight.Bold)
+            }
         }
     }
     note?.let { Text(it, color = Red, fontWeight = FontWeight.Bold) }
@@ -460,6 +516,16 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                         pass.namedGate?.let { Text("Announced for $it. They may still come in here.", color = Color.DarkGray) }
                         if (pass.mismatch.isNotEmpty()) Text("The ${pass.mismatch.joinToString(" and ")} is not the one the customer gave. Let them in; the customer is told.", color = Amber, fontWeight = FontWeight.Bold)
                         Text("No approval is needed.", color = Color.DarkGray)
+                    }
+                }
+            }
+
+            // The announcement was pulled up first, but what was scanned does not match it.
+            if (hint != null && state.scanCheck != null && pass?.passId != hint.passId && barred.isEmpty()) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("This does not match the announcement for ${hint.visitorName}.", color = Amber, fontWeight = FontWeight.Bold)
+                        Text("The customer gave something else to know them by" + (if (hint.knownBy.isNotBlank()) " (${hint.knownBy})" else "") + ". If they gave a cell number, type it below. Otherwise carry on: the customer will be asked.")
                     }
                 }
             }
@@ -661,6 +727,6 @@ fun VisitScreen(vm: AppViewModel, state: UiState, id: String) {
         Text("The customer can still answer on their phone while you are dialling.", color = Color.Gray, fontSize = 13.sp)
     }
 
-    if (!v.waiting) BigButton("NEXT VISITOR") { vm.go(Page.NewVisitor) }
+    if (!v.waiting) BigButton("NEXT VISITOR") { vm.go(Page.Visitors) }
     OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Back to visitors") }
 }

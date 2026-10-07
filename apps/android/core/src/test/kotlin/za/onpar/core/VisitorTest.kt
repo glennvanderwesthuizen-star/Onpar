@@ -246,4 +246,14 @@ class VisitorTest {
         server.enqueue(MockResponse().setBody("""[{"id":"p1","visitorName":"Sipho Nkosi","visiting":"Unit 14","category":"Once-off visitor","when":"About 14:30","gateName":null,"knownBy":"plate GP100200"}]"""))
         assertEquals(listOf(ExpectedRow("p1", "Sipho Nkosi", "Unit 14", "Once-off visitor", "About 14:30", null, "plate GP100200")), device.visitors.expected())
     }
+
+    @Test
+    fun `what a visitor gives to be looked up is tried as a cell number, an ID number and a number plate`() {
+        assertEquals(LookupKeys("0835550177", "0835550177", "0835550177"), VisitorRules.lookupKeys("083 555 0177"))
+        assertEquals(LookupKeys("27835550177", "27835550177", "27835550177"), VisitorRules.lookupKeys("+27 83 555 0177"))
+        assertEquals(LookupKeys("GP100200", "GP100200", null), VisitorRules.lookupKeys("gp 100-200"))
+        assertEquals(LookupKeys("8001015009087", null, "8001015009087"), VisitorRules.lookupKeys("8001015009087"))
+        assertEquals(LookupKeys(null, "CA1", null), VisitorRules.lookupKeys("CA 1"))
+        assertFalse(VisitorRules.lookupKeys(" ").any)
+    }
 }
