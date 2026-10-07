@@ -763,3 +763,196 @@ export function SiteVisitExceptions({ siteId }: { siteId: string }) {
     </div>
   );
 }
+
+interface OnSite {
+  id: string;
+  visitor: string;
+  vehicle: string | null;
+  pax: number | null;
+  visiting: string;
+  category: string;
+  gateName: string;
+  enteredAt: string;
+  stay: string;
+  overdue: boolean;
+  overBy: string | null;
+  needsAction: boolean;
+  action: { label: string; note: string; at: string; by: string } | null;
+}
+
+/** Everyone on site now (visitor management, step 6): overstays first, in red, with what the gate guard did about each. */
+export function SiteVisitorsOnSite({ siteId }: { siteId: string }) {
+  const { can } = useSession();
+  const allowed = can('visitors.view');
+  const empty = { onSite: 0, overstays: 0, visitors: [] as OnSite[] };
+  const { data, error, reload } = useLoad(() => (allowed ? api<typeof empty>(`/sites/${siteId}/visitors-on-site`) : Promise.resolve(empty)), [siteId, allowed]);
+  if (!allowed) return null;
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>
+          Visitors on site now{data ? ` (${data.onSite})` : ''}
+          {data && data.overstays > 0 && (
+            <span style={{ marginLeft: 8 }}>
+              <Pill tone="red">
+                {data.overstays} overstay{data.overstays === 1 ? '' : 's'}
+              </Pill>
+            </span>
+          )}
+        </h2>
+        <button className="btn ghost sm" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <p className="mute small">Everyone scanned in and not yet scanned out. A visitor past their time is at the top.</p>
+      <ErrorBanner error={error} />
+      {!data && !error && <p className="mute">Loading…</p>}
+      {data && data.visitors.length === 0 && <p className="mute">No visitors are on site.</p>}
+      {data && data.visitors.length > 0 && (
+        <div className="cust-wrap">
+          <table className="cust-table">
+            <thead>
+              <tr>
+                <th>Visitor</th>
+                <th>Vehicle</th>
+                <th>Visiting</th>
+                <th>Came in</th>
+                <th>On site</th>
+                <th>Overstay</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.visitors.map((v) => (
+                <tr key={v.id}>
+                  <td>
+                    <b>{v.visitor}</b>
+                    <div className="mute small">{v.category}</div>
+                  </td>
+                  <td>
+                    {v.vehicle ?? <span className="mute">On foot</span>}
+                    {v.pax !== null && (
+                      <div className="mute small">
+                        {v.pax} passenger{v.pax === 1 ? '' : 's'}
+                      </div>
+                    )}
+                  </td>
+                  <td>{v.visiting}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {formatDateTime(v.enteredAt)}
+                    <div className="mute small">{v.gateName}</div>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{v.stay}</td>
+                  <td>
+                    {v.overdue ? (
+                      <>
+                        <Pill tone={v.needsAction ? 'red' : 'amber'}>{v.overBy} over</Pill>
+                        {v.action ? (
+                          <div className="mute small">
+                            {v.action.label}
+                            {v.action.note ? `: “${v.action.note}”` : ''} ({v.action.by}, {formatDateTime(v.action.at)})
+                          </div>
+                        ) : (
+                          <div className="mute small">Not yet dealt with at the gate</div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="mute">No</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface Handover {
+  id: string;
+  signedOffAt: string;
+  gateName: string;
+  outgoing: string;
+  incoming: string | null;
+  acknowledgedAt: string | null;
+  onSite: number;
+  overstays: number;
+  unresolved: number;
+  notes: { visitor: string; vehicle: string | null; visiting: string; overBy: string | null; action: string | null; note: string }[];
+}
+
+/** The gate guards' shift handovers (visitor management, step 6): who handed over to whom, how many were on site, and every overstay note. */
+export function SiteVisitHandovers({ siteId }: { siteId: string }) {
+  const { can } = useSession();
+  const allowed = can('visitors.view');
+  const { data, error, reload } = useLoad(() => (allowed ? api<Handover[]>(`/sites/${siteId}/visit-handovers`) : Promise.resolve([] as Handover[])), [siteId, allowed]);
+  if (!allowed) return null;
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>Visitor handovers</h2>
+        <button className="btn ghost sm" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <p className="mute small">The last 30 times a gate guard handed the visitors on site over to the next shift.</p>
+      <ErrorBanner error={error} />
+      {!data && !error && <p className="mute">Loading…</p>}
+      {data && data.length === 0 && <p className="mute">No handovers yet.</p>}
+      {data && data.length > 0 && (
+        <div className="cust-wrap">
+          <table className="cust-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Handed over by</th>
+                <th>Acknowledged by</th>
+                <th>On site</th>
+                <th>Overstays and notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((h) => (
+                <tr key={h.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {formatDateTime(h.signedOffAt)}
+                    <div className="mute small">{h.gateName}</div>
+                  </td>
+                  <td>{h.outgoing}</td>
+                  <td>
+                    {h.incoming ? (
+                      <>
+                        {h.incoming}
+                        <div className="mute small">{h.acknowledgedAt ? formatDateTime(h.acknowledgedAt) : ''}</div>
+                      </>
+                    ) : (
+                      <Pill tone="amber">Not yet</Pill>
+                    )}
+                  </td>
+                  <td>{h.onSite}</td>
+                  <td>
+                    {h.overstays === 0 ? (
+                      <span className="mute">None</span>
+                    ) : (
+                      <>
+                        {h.unresolved > 0 && <Pill tone="red">{h.unresolved} unresolved</Pill>}
+                        {h.notes.map((n, i) => (
+                          <div key={i} className="small" style={{ marginTop: 2 }}>
+                            <b>{n.visitor}</b> ({n.visiting}
+                            {n.overBy ? `, ${n.overBy} over` : ''}): {n.action ?? 'No action'}
+                            {n.note ? `. “${n.note}”` : ''}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

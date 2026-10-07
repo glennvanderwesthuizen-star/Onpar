@@ -25,6 +25,7 @@ import { assertSiteAccess, CurrentUser, RequirePermission, UserAuthGuard, UserPr
 import { parseBody, throwIfErrors } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { VisitOnSiteService } from './visit-onsite.service';
 import { VisitorSetupService } from './visitor-setup.service';
 
 const GateBody = z.object({ name: z.string().trim().min(1, 'Enter the name of the gate.').max(60) });
@@ -66,6 +67,7 @@ export class VisitorSetupController {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly setup: VisitorSetupService,
+    private readonly onSite: VisitOnSiteService,
   ) {}
 
   @Get('visitor-setup')
@@ -176,6 +178,27 @@ export class VisitorSetupController {
         statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],
         warnings: (checks?.warnings ?? []) as string[],
       }));
+    });
+  }
+
+  /** Everyone on site now, overstays first, for the supervisor at any time. */
+  @Get('visitors-on-site')
+  @RequirePermission('visitors.view')
+  visitorsOnSite(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      const visitors = (await this.onSite.list(tx, siteId, new Date())).map(({ unitId: _u, unitName: _n, ...v }) => v);
+      return { onSite: visitors.length, overstays: visitors.filter((v) => v.overdue).length, visitors };
+    });
+  }
+
+  /** The gate guards' shift handovers, newest first, with every overstay note. */
+  @Get('visit-handovers')
+  @RequirePermission('visitors.view')
+  visitHandovers(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      return this.onSite.handovers(tx, siteId);
     });
   }
 

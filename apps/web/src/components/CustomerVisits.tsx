@@ -111,12 +111,24 @@ export function VisitRequest({ visit, onChange }: { visit: CustomerVisit; onChan
   );
 }
 
+interface OnSiteVisitor {
+  id: string;
+  visitor: string;
+  vehicle: string | null;
+  pax: number | null;
+  category: string;
+  enteredAt: string;
+  stay: string;
+  overdue: boolean;
+  overBy: string | null;
+}
+
 /** The Visitors part of the customer's Home: who is waiting at the gate, and the last few answered. */
 export function CustomerVisits() {
-  const [data, setData] = useState<{ waiting: CustomerVisit[]; recent: CustomerVisit[] } | null>(null);
+  const [data, setData] = useState<{ waiting: CustomerVisit[]; recent: CustomerVisit[]; onSite: OnSiteVisitor[] } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
-    api<{ waiting: CustomerVisit[]; recent: CustomerVisit[] }>('/customer/visits')
+    api<{ waiting: CustomerVisit[]; recent: CustomerVisit[]; onSite: OnSiteVisitor[] }>('/customer/visits')
       .then((d) => {
         setData(d);
         setError(null);
@@ -142,6 +154,29 @@ export function CustomerVisits() {
         {!data && !error && <p className="mute">Loading…</p>}
         {!data && <ErrorBanner error={error} />}
         {data && data.waiting.length === 0 && <p className="mute">Nobody is waiting at the gate for you. When a visitor arrives, you get an alert and they show here.</p>}
+        {data && data.onSite.length > 0 && (
+          <>
+            <h3 style={{ marginTop: 10 }}>On site now ({data.onSite.length})</h3>
+            {data.onSite.map((v) => (
+              <Link key={v.id} href={`/c/visits/${v.id}`} className="line" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span>
+                  <b>{v.visitor}</b>
+                  <span className="mute small" style={{ display: 'block' }}>
+                    {v.vehicle ?? 'On foot'} · {v.category}
+                  </span>
+                </span>
+                <span className="small" style={{ textAlign: 'right' }}>
+                  {v.stay}
+                  {v.overdue && (
+                    <b style={{ display: 'block', color: 'var(--red, #b3261e)' }}>
+                      {v.overBy} past their time
+                    </b>
+                  )}
+                </span>
+              </Link>
+            ))}
+          </>
+        )}
         {data && data.recent.length > 0 && (
           <>
             <h3 style={{ marginTop: 10 }}>The last few days</h3>
@@ -162,6 +197,9 @@ export function CustomerVisits() {
         )}
         <Link className="btn ghost m-wide" style={{ marginTop: 12, textDecoration: 'none' }} href="/c/visitors">
           Tell the gate who is coming
+        </Link>
+        <Link className="btn ghost m-wide" style={{ marginTop: 8, textDecoration: 'none' }} href="/c/history">
+          History: all past visitors
         </Link>
       </div>
     </section>

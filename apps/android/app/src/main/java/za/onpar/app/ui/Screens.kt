@@ -63,6 +63,9 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
     // keyboard, so nothing (such as Log out at the bottom) is hidden behind them.
     // A call, ringing or in progress, comes before everything else (brief section 6.10).
     val call by Calls.current.collectAsState()
+    // A visitor has newly gone past their time: the gate phone sounds once (spec: the guard is alerted first).
+    val alarmContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(state.overstayAlarm) { if (state.overstayAlarm > 0) alarm(alarmContext) }
     val current = call
     if (current != null) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -107,6 +110,8 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.ExpectedVisitor -> if (state.owed != null) HomeScreen(vm, state) else ExpectedVisitorScreen(vm, state)
                     is Page.Visit -> if (state.owed != null) HomeScreen(vm, state) else VisitScreen(vm, state, page.id)
                     Page.VisitorExit -> if (state.owed != null) HomeScreen(vm, state) else VisitorExitScreen(vm, state)
+                    Page.OnSite -> if (state.owed != null) HomeScreen(vm, state) else OnSiteScreen(vm, state)
+                    Page.Handover -> if (state.owed != null) HomeScreen(vm, state) else HandoverScreen(vm, state)
                     // Calling is always allowed, even with a declaration owed.
                     Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
                     // Panic and BOLO are always allowed too.
@@ -298,7 +303,15 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
                     )
                 }
             }
-            BigButton(if (blocked) "DUTY FROM (wait for relief)" else "DUTY FROM", enabled = !state.busy && !blocked) { askPin = DutyKind.FROM }
+            // On a gate phone the visitors on site are handed over first (owner, 7 Oct 2026). Without signal the phone lets him try.
+            val handoverFirst = shift.visitorHandoverOwed && state.gate?.gate != null && state.online
+            if (handoverFirst && !blocked) {
+                Card(Modifier.fillMaxWidth()) {
+                    Text("Before Duty From, hand over the visitors on site.", Modifier.background(Color(0xFFFFF4D6)).padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
+                }
+                BigButton("HAND OVER SHIFT", enabled = !state.busy) { vm.go(Page.Handover) }
+            }
+            BigButton(if (blocked) "DUTY FROM (wait for relief)" else if (handoverFirst) "DUTY FROM (hand over first)" else "DUTY FROM", enabled = !state.busy && !blocked && !handoverFirst) { askPin = DutyKind.FROM }
             if (relief?.canGiveTurn == true) {
                 OutlinedButton(onClick = { askTurnPin = true }, modifier = Modifier.fillMaxWidth()) { Text("Let my partner go first") }
             }
@@ -306,7 +319,10 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
     }
     // Only on a phone the administrator has put at a gate.
     if (state.gate?.gate != null) {
-        Button(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Visitors", fontSize = 18.sp) }
+        val overstays = state.gate?.counts?.needAction ?: 0
+        Button(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = if (overstays > 0) Color(0xFFB3261E) else Green)) {
+            Text(if (overstays > 0) "Visitors: $overstays OVERSTAY" + (if (overstays == 1) "" else "S") else "Visitors", fontSize = 18.sp)
+        }
     }
     OutlinedButton(onClick = { vm.go(Page.Patrols) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Patrols", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }

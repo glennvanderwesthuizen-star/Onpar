@@ -64,6 +64,8 @@ export interface Upload {
 const UNIQUE_VIOLATION = '23505';
 
 /** Duty On, Duty From and their declarations (brief sections 6.2, 6.3 and 8). */
+const VISITOR_HANDOVER_FIRST = 'Hand over the visitors first: tap Visitors, then Hand over shift. Then log Duty From.';
+
 @Injectable()
 export class DutyService implements OnModuleDestroy {
   constructor(
@@ -160,7 +162,7 @@ export class DutyService implements OnModuleDestroy {
         const attendanceId =
           input.kind === 'duty_on'
             ? await this.openShift(tx, guard.employeeId, siteId, time.officialAt, !!guard.ownPhone)
-            : await this.closeShift(tx, guard.employeeId, time.officialAt, guard.ownPhone ? 'own_phone' : time.lateSynced ? 'late' : 'device');
+            : await this.closeShift(tx, guard.employeeId, time.officialAt, guard.ownPhone ? 'own_phone' : time.lateSynced ? 'late' : 'device', guard.deviceId);
         await tx.query(
           `INSERT INTO duty_events (id, company_id, attendance_id, employee_id, device_id, kind, official_at, trusted_at,
                                     device_clock, received_at, late_synced, drift_seconds, drift_flagged)
@@ -383,6 +385,8 @@ export class DutyService implements OnModuleDestroy {
               canGiveTurn: r.canGiveTurn,
               reliever: r.reliever?.name ?? null,
             },
+            // On a gate phone: the visitors on site must be handed over before Duty From.
+            visitorHandoverOwed: await this.visitorHandoverOwed(tx, guard.employeeId, guard.deviceId, new Date(summary.dutyOnAt)),
           };
         }
         const owed = !summary.declarations.duty_on
@@ -508,12 +512,23 @@ export class DutyService implements OnModuleDestroy {
   }
 
   /**
+   * Whether this guard must still hand the visitors over before Duty From: he is on a gate
+   * phone and has not signed off a handover since he came on duty.
+   */
+  private async visitorHandoverOwed(tx: Tx, employeeId: string, deviceId: string | null, dutyOnAt: Date): Promise<boolean> {
+    if (!deviceId) return false;
+    const atGate = await tx.query('SELECT 1 FROM devices d JOIN site_gates g ON g.id = d.gate_id AND g.site_id = d.site_id AND g.active WHERE d.id = $1', [deviceId]);
+    if (!atGate.rowCount) return false;
+    return !(await tx.query('SELECT 1 FROM visit_handovers WHERE outgoing_guard = $1 AND signed_off_at >= $2 LIMIT 1', [employeeId, dutyOnAt])).rowCount;
+  }
+
+  /**
    * Closes the guard's open shift. From the phone, Duty From is refused until his relief
    * has arrived (or 30 minutes after the shift), first in first out (D-33). A Duty From
    * sent late from a phone without signal is accepted and marked "not checked"; a
    * supervisor's Duty From releases him.
    */
-  private async closeShift(tx: Tx, employeeId: string, at: Date, mode: 'device' | 'late' | 'released' | 'own_phone'): Promise<string> {
+  private async closeShift(tx: Tx, employeeId: string, at: Date, mode: 'device' | 'late' | 'released' | 'own_phone', deviceId: string | null = null): Promise<string> {
     const a = (
       await tx.query(
         `SELECT id, site_id, shift_date, scheduled_end, duty_on_at, roster_status, own_phone FROM attendance
@@ -525,6 +540,8 @@ export class DutyService implements OnModuleDestroy {
     if (at.getTime() < new Date(a.duty_on_at).getTime()) throw new BadRequestException('Duty From cannot be before Duty On.');
     const check = await this.reliefFor(tx, a, at);
     if (mode === 'device' && !check.canLeave) throw new ConflictException(check.message);
+    // On a gate phone the visitors on site are handed over first (owner, 7 Oct 2026).
+    if (mode === 'device' && (await this.visitorHandoverOwed(tx, employeeId, deviceId, new Date(a.duty_on_at)))) throw new ConflictException(VISITOR_HANDOVER_FIRST);
     // A shift logged from the person's own phone is outside the relief rule, however it is closed.
     const reliefStatus = mode === 'released' ? 'released' : a.own_phone || mode === 'own_phone' ? 'no_rule' : mode === 'late' ? 'not_checked' : check.outcome;
     const dep = departureStatus(a.scheduled_end && a.roster_status !== 'not_rostered_here' ? new Date(a.scheduled_end) : null, at);

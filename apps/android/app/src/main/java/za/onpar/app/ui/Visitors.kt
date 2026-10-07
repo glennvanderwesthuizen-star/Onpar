@@ -58,6 +58,7 @@ import za.onpar.core.ExitDraft
 import za.onpar.core.ExpectedHint
 import za.onpar.core.ExpectedRow
 import za.onpar.core.GateSetup
+import za.onpar.core.OnSiteVisitor
 import za.onpar.core.ReasonOption
 import za.onpar.core.Scanned
 import za.onpar.core.VisitDraft
@@ -164,6 +165,20 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
         return
     }
     Text(listOfNotNull(gate.name, setup.siteName).joinToString(" · "), color = Color.DarkGray)
+    // The handover from the last guard at this gate: the incoming guard reads it and says so.
+    setup.handover?.let { h ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("HANDOVER FROM ${h.from.uppercase()}", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Handed over at ${time(h.signedOffAt)}. ${h.onSite} on site, ${h.overstays} past their time" + (if (h.unresolved > 0) ", ${h.unresolved} unresolved." else "."))
+                h.notes.forEach { n ->
+                    Text(listOfNotNull(n.visitor, n.vehicle).joinToString(", ") + ", ${n.visiting}" + (n.overBy?.let { ", $it over" } ?: ""), fontWeight = FontWeight.Bold)
+                    Text((n.action ?: "No action") + (if (n.note.isNotBlank()) ": ${n.note}" else ""))
+                }
+                Button(onClick = { vm.acknowledgeHandover(h.id) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("I HAVE READ THIS", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
     BigButton("NEW VISITOR", enabled = !state.busy) { vm.startVisitor(null) }
     Button(onClick = { vm.go(Page.ExpectedVisitor) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B7A4E))) {
@@ -173,8 +188,12 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F))) {
         Text("VISITOR LEAVING", fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
-    val onSite = state.visits.count { it.status == "on_site" }
-    Text(if (onSite == 1) "1 visitor on site now" else "$onSite visitors on site now", fontWeight = FontWeight.Bold)
+    val counts = setup.counts
+    Button(onClick = { vm.go(Page.OnSite) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = if (counts.needAction > 0) Red else Color(0xFF455A64))) {
+        Text("ON SITE NOW: ${counts.onSite}" + (if (counts.overstays > 0) " (${counts.overstays} past their time)" else ""), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    }
+    OutlinedButton(onClick = { vm.go(Page.Handover) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("HAND OVER SHIFT", fontSize = 18.sp) }
     Text("Today", style = MaterialTheme.typography.titleMedium)
     if (state.visits.isEmpty()) Text(if (state.busy) "Loading…" else "No visitors yet today.", color = Color.Gray)
     state.visits.forEach { v -> VisitCard(v) { vm.go(Page.Visit(v.id)) } }
@@ -949,4 +968,108 @@ fun VisitorExitScreen(vm: AppViewModel, state: UiState) {
             colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("DO NOT LET THEM GO", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
     }
     OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel: back to visitors") }
+}
+
+/**
+ * One visitor on the on-site list. A visitor past their time is in red, with the three things
+ * the guard can do: phone the customer, confirm they are still on site, or mark them as having
+ * left without being scanned out. The last two need a note.
+ */
+@Composable
+private fun OnSiteCard(v: OnSiteVisitor, busy: Boolean, inHandover: Boolean, onDial: () -> Unit, onAct: (String, String) -> Unit) {
+    var note by remember(v.id) { mutableStateOf("") }
+    var open by remember(v.id) { mutableStateOf(false) }
+    val done = if (inHandover) v.handoverAction else v.action
+    val red = v.overdue && (if (inHandover) v.todo else v.needsAction)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.background(if (red) Color(0xFFFBE3E0) else if (v.overdue) Color(0xFFFDF0DC) else Color.Transparent).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (v.overdue) Text("PAST THEIR TIME BY ${(v.overBy ?: "").uppercase()}", color = if (red) Red else Amber, fontWeight = FontWeight.Bold)
+            Text(v.visitor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text((v.vehicle ?: "On foot") + (v.pax?.let { " · $it passenger" + if (it == 1) "" else "s" } ?: ""))
+            Text("To see " + (if (v.visiting == "The office") "the office" else v.visiting) + " · ${v.category}", color = Color.DarkGray, fontSize = 13.sp)
+            Text("Came in ${time(v.enteredAt)} at ${v.gateName} · on site ${v.stay}", color = Color.DarkGray, fontSize = 13.sp)
+            if (done != null) Text("${done.label}" + (if (done.note.isNotBlank()) ": ${done.note}" else "") + " (${done.by}, ${time(done.at)})", fontWeight = FontWeight.Bold)
+            if (v.overdue) {
+                OutlinedButton(onClick = onDial, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Dial the customer") }
+                OutlinedTextField(note, { note = it.take(300) }, label = { Text("Note: what did you find?") }, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onAct("confirmed", note); note = "" }, enabled = !busy && note.trim().length >= 3, modifier = Modifier.weight(1f)) { Text("Still on site") }
+                    Button(onClick = { onAct("left", note); note = "" }, enabled = !busy && note.trim().length >= 3, modifier = Modifier.weight(1f),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("Left, not scanned out") }
+                }
+            } else if (!open) {
+                OutlinedButton(onClick = { open = true }, enabled = !busy) { Text("Left without being scanned out…") }
+            } else {
+                OutlinedTextField(note, { note = it.take(300) }, label = { Text("Note: how do you know they left?") }, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onAct("left", note); note = ""; open = false }, enabled = !busy && note.trim().length >= 3,
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("Mark as left") }
+                    OutlinedButton(onClick = { open = false; note = "" }) { Text("Cancel") }
+                }
+            }
+        }
+    }
+}
+
+/** Phones the customer about an overstay, asking for the phone permission first if the app does not have it yet. */
+@Composable
+private fun rememberOverstayDialer(vm: AppViewModel, inHandover: Boolean): (String) -> Unit {
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<String?>(null) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val id = pending
+        pending = null
+        if (ok && id != null) vm.overstayAction(id, "dialled", "", inHandover)
+    }
+    return { id ->
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) vm.overstayAction(id, "dialled", "", inHandover)
+        else {
+            pending = id
+            ask.launch(Manifest.permission.CALL_PHONE)
+        }
+    }
+}
+
+/** Everyone on site now (visitor management, step 6): visitors past their time first, in red. */
+@Composable
+fun OnSiteScreen(vm: AppViewModel, state: UiState) {
+    VisitorHeader("On site now") { vm.go(Page.Visitors) }
+    val list = state.onSite
+    if (list == null) {
+        Text(if (state.busy) "Loading…" else "The list could not be loaded. Tap Refresh.", color = Color.Gray)
+        OutlinedButton(onClick = { vm.loadOnSite() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
+        return
+    }
+    val dial = rememberOverstayDialer(vm, inHandover = false)
+    Text("${list.onSite} on site" + (if (list.overstays > 0) ", ${list.overstays} past their time" else ""), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    if (list.visitors.isEmpty()) Text("No visitors are on site.", color = Color.Gray)
+    list.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = false, onDial = { dial(v.id) }) { action, note -> vm.overstayAction(v.id, action, note, false) } }
+    OutlinedButton(onClick = { vm.loadOnSite() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
+}
+
+/**
+ * "Hand over shift" (visitor management, step 6). The outgoing gate guard goes through everyone
+ * on site. Each visitor past their time needs an action in this handover before he can sign
+ * off; after signing off he can log Duty From, and the incoming guard is shown the list.
+ */
+@Composable
+fun HandoverScreen(vm: AppViewModel, state: UiState) {
+    VisitorHeader("Hand over shift") { vm.go(Page.Visitors) }
+    if (state.handoverDone) {
+        Verdict("HANDED OVER", "The next guard will see this list when they open Visitors. You can now log Duty From.", good = true)
+        BigButton("BACK TO HOME") { vm.go(Page.Home) }
+        return
+    }
+    val h = state.handover
+    if (h == null) {
+        Text(if (state.busy) "Loading…" else "The handover could not be loaded. Tap Try again.", color = Color.Gray)
+        OutlinedButton(onClick = { vm.startHandover() }, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+        return
+    }
+    val dial = rememberOverstayDialer(vm, inHandover = true)
+    Text("${h.onSite} on site, ${h.overstays} past their time", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    if (h.todo > 0) Text("Deal with each visitor in red (${h.todo} to go): dial the customer, or type a note and say whether they are still on site.", color = Red, fontWeight = FontWeight.Bold)
+    else Text("Check the list below against who is really still on site, then sign off.")
+    h.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = true, onDial = { dial(v.id) }) { action, note -> vm.overstayAction(v.id, action, note, true) } }
+    BigButton(if (state.busy) "Sending…" else "SIGN OFF: HAND OVER", enabled = !state.busy && h.canSignOff) { vm.signOffHandover() }
 }

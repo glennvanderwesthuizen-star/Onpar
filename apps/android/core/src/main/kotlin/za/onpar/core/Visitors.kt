@@ -33,9 +33,67 @@ data class GateSetup(
     val hasClient: Boolean = false,
     /** Today's date in South Africa, YYYY-MM-DD. */
     val today: String? = null,
+    /** How many visitors are on site, and how many are past their time. */
+    val counts: GateCounts = GateCounts(),
+    /** The handover from the last guard at this gate, waiting for this guard to acknowledge it. */
+    val handover: PendingHandover? = null,
 ) {
     fun on(check: String): Boolean = checks[check] ?: false
 }
+
+/** `needAction`: past their time and not yet dealt with by the guard. */
+@Serializable
+data class GateCounts(val onSite: Int = 0, val overstays: Int = 0, val needAction: Int = 0)
+
+/** What the outgoing guard did and wrote about one overstay. */
+@Serializable
+data class HandoverNote(val visitor: String = "", val vehicle: String? = null, val visiting: String = "", val overBy: String? = null, val action: String? = null, val note: String = "")
+
+/** A handover the outgoing guard has signed off, for the incoming guard to read. */
+@Serializable
+data class PendingHandover(
+    val id: String,
+    val signedOffAt: String? = null,
+    val onSite: Int = 0,
+    val overstays: Int = 0,
+    val unresolved: Int = 0,
+    val from: String = "",
+    val notes: List<HandoverNote> = emptyList(),
+)
+
+/** The guard's latest action on an overstay: "dialled", "confirmed" or "left". */
+@Serializable
+data class OverstayActionInfo(val action: String = "", val label: String = "", val note: String = "", val at: String? = null, val by: String = "")
+
+/** A visitor on site now. */
+@Serializable
+data class OnSiteVisitor(
+    val id: String,
+    val visitor: String = "",
+    val vehicle: String? = null,
+    val pax: Int? = null,
+    val visiting: String = "",
+    val category: String = "",
+    val gateName: String = "",
+    val enteredAt: String? = null,
+    /** Time on site, in words. */
+    val stay: String = "",
+    val overdue: Boolean = false,
+    val overBy: String? = null,
+    /** Past their time and not dealt with. */
+    val needsAction: Boolean = false,
+    val action: OverstayActionInfo? = null,
+    /** In a handover: what was done in this handover, and whether something still must be. */
+    val handoverAction: OverstayActionInfo? = null,
+    val todo: Boolean = false,
+)
+
+@Serializable
+data class OnSiteList(val onSite: Int = 0, val overstays: Int = 0, val visitors: List<OnSiteVisitor> = emptyList())
+
+/** The outgoing guard's handover: every overstay needs an action before he can sign off. */
+@Serializable
+data class HandoverView(val id: String, val onSite: Int = 0, val overstays: Int = 0, val todo: Int = 0, val canSignOff: Boolean = false, val visitors: List<OnSiteVisitor> = emptyList())
 
 @Serializable
 data class KnownPerson(val surname: String = "", val names: String = "", val lastSeen: String? = null)
@@ -477,11 +535,45 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
     /** The face photo taken when a visitor on foot came in, for the guard to compare. */
     fun face(visitId: String): ByteArray = device.client().getBytes("/device/visitors/$visitId/face", device.requireGuard())
 
+    /** Everyone on site now, overstays first. */
+    fun onSite(): OnSiteList = OnParJson.decodeFromJsonElement(OnSiteList.serializer(), device.client().get("/device/visitors/on-site", device.requireGuard()))
+
+    /**
+     * What the guard does about a visitor on site: "dialled" (returns the number for the phone to
+     * dial, unseen), "confirmed" still on site, or "left" without being scanned out. The last
+     * two need a note.
+     */
+    fun overstay(visitId: String, action: String, note: String, handoverId: String?): DialReply? {
+        require(action in OVERSTAY_ACTIONS) { "Choose what to do." }
+        if (action != "dialled") require(note.trim().length >= 3) { "Type a note to say what you found." }
+        val body = buildJsonObject {
+            put("eventId", java.util.UUID.randomUUID().toString())
+            put("action", action)
+            put("note", note.trim())
+            put("handoverId", handoverId?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
+        val reply = device.client().post("/device/visitors/$visitId/overstay", body, device.requireGuard())
+        return if (action == "dialled") OnParJson.decodeFromJsonElement(DialReply.serializer(), reply) else null
+    }
+
+    /** "Hand over shift": the outgoing guard's handover, the same one if he comes back to it. */
+    fun handoverStart(): HandoverView = OnParJson.decodeFromJsonElement(HandoverView.serializer(), device.client().post("/device/visitors/handover/start", buildJsonObject { }, device.requireGuard()))
+
+    fun handoverSignOff(id: String) {
+        device.client().post("/device/visitors/handover/$id/sign-off", buildJsonObject { }, device.requireGuard())
+    }
+
+    /** The incoming guard has read the handover. */
+    fun handoverAcknowledge(id: String) {
+        device.client().post("/device/visitors/handover/$id/acknowledge", buildJsonObject { }, device.requireGuard())
+    }
+
     fun clear() {
         cache.delete()
     }
 
     companion object {
+        val OVERSTAY_ACTIONS = setOf("dialled", "confirmed", "left")
         val CALL_OUTCOMES = linkedMapOf("approved" to "Approved by phone", "denied" to "Denied by phone", "no_answer" to "No answer")
     }
 }

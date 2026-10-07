@@ -800,3 +800,35 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 **Not built yet:** staff cannot yet open an exception's photo on the website (it shows "photo kept"). Overstays and the handover are step 6. Scanning out without signal is step 7.
 
 **Not yet proven:** by the owner on real phones.
+
+**Proven 7 Oct 2026 (owner, build 0.1.129):** scanning out, exceptions and the already-on-site warning, tested "in lots of different ways". The owner agrees with the guard confirming the driver on the way out in place of a second licence scan.
+
+### 7 Oct 2026: visitor management, step 6 of 7, on-site list, overstays and handover (D-40)
+
+- **ON SITE NOW** on the gate phone: everyone scanned in and not out, with vehicle, passengers, unit, kind of visitor, when they came in and how long they have been on site. Visitors past their time are at the top in red.
+- **When a visitor is past their time** (only with the site's "Overstay alert" check on):
+  - The category's limit: so many hours on site, or gone by a time of day. For an announced visitor also the end of the day announced; for a regular, the end of their hours or of their fixed period. Whichever comes first.
+  - The gate phone sounds once and its Visitors button turns red with the number waiting.
+  - The guard can **Dial the customer** (the number is not shown), or type a note and choose **Still on site** or **Left, not scanned out**. "Left" closes the visit as Left without scan-out, as an exception for the supervisor. Any visitor on the list, overstay or not, can be marked as left this way.
+  - If the guard has not confirmed or closed it within the site's escalation time (30 minutes), the supervisor is alerted, once. A phone call alone does not count as dealt with.
+- **HAND OVER SHIFT** on the gate phone:
+  - Shows the on-site list. Each visitor past their time needs an action taken in this handover; an earlier confirmation does not carry over. Sign-off is refused until each has one.
+  - Saved with the guard, the time, the on-site count, and each overstay's action and note. An overstay that was only phoned about is "unresolved" and the supervisor is alerted.
+  - **Duty From on a gate phone is refused until the guard has signed off a handover in this shift** (owner's answer 7). The home screen shows HAND OVER SHIFT in its place. An ordinary post phone is not affected; a supervisor's release and a late-sent Duty From are not held up.
+  - **The incoming guard** sees "HANDOVER FROM <name>" at the top of Visitors, with the counts and notes, and taps **I HAVE READ THIS**. Both names are saved. A confirmation made in the handover holds for the new shift.
+- **On the website,** a site's page has **Visitors on site now** (overstays first, with what the gate did) and **Visitor handovers** (who handed over to whom, the count, the notes, and "Not yet" where nobody acknowledged).
+- **In the customer app,** Home shows **On site now** for the customer's own visitors, and **History** lists their last 100 visitors with anything that did not match.
+- Migration `0035_visit_handover.sql`: `visit_overstays`, `visit_handovers`, `visit_overstay_actions` (append-only).
+- Tests: 15 new server tests, 5 new rules tests, 3 new phone-logic tests.
+
+**Choices made where the spec is silent, for the owner to know:**
+- A visitor let in **after** their category's time of day (a contractor at 18:00, limit 17:00) has until that time the next day, so he is not red the moment he comes in.
+- An announced visitor's time ("about 14:30") is when they arrive, not how long they may stay, so it is not used as an overstay limit; the day is.
+- The incoming guard's acknowledgement is asked for but does not block his work.
+- The guard is alerted on the gate phone itself (sound, red button). Guards have no alert feed of their own outside the app.
+
+**Not built yet:** working without signal (step 7). The supervisor dashboard, reports and emergency roll-call follow after step 7.
+
+**Not yet proven:** by the owner on real phones.
+
+**Raised by the owner, 7 Oct 2026 (D-45, to plan after step 7):** the shift handover should be more than visitors. Wanted: an itemised equipment list set up per site (cell phone, radio, and so on) that the outgoing guard checks off and the incoming guard confirms; a handover note, with a voice note as a nice-to-have; and one handover screen that passes from the old shift to the new. The visitor handover built here is meant to become one part of that screen.

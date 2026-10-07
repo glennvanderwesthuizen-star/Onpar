@@ -63,6 +63,10 @@ sealed interface Page {
     data class Visit(val id: String) : Page
     /** A visitor leaving: the exit scan, the entry record, and any exception. */
     data object VisitorExit : Page
+    /** Everyone on site now, overstays first. */
+    data object OnSite : Page
+    /** The outgoing gate guard hands the visitors on site over to the next shift. */
+    data object Handover : Page
     data object Uniform : Page
     data object Call : Page
     /** ID card (TSF number) and PIN, from the front screen. */
@@ -129,6 +133,13 @@ data class UiState(
     val exitFace: PhotoBytes? = null,
     /** How the scan-out ended. */
     val exitDone: za.onpar.core.ExitReply? = null,
+    /** Everyone on site now. */
+    val onSite: za.onpar.core.OnSiteList? = null,
+    /** The outgoing guard's handover while he works through it, and whether he has signed it off. */
+    val handover: za.onpar.core.HandoverView? = null,
+    val handoverDone: Boolean = false,
+    /** Goes up each time a new overstay needs the guard, so the phone sounds once for it. */
+    val overstayAlarm: Int = 0,
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
     val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
@@ -196,7 +207,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val s = device.state()
             _state.update { it.copy(home = s, online = true, owed = device.owedDeclaration(s)) }
             // Whether this phone stands at a gate, so the home screen can show Visitors.
-            runCatching { device.visitors.setup() }.getOrNull()?.let { g -> _state.update { it.copy(gate = g) } }
+            runCatching { device.visitors.setup() }.getOrNull()?.let { g ->
+                _state.update {
+                    // A visitor has newly gone past their time: the phone sounds, once.
+                    val more = g.counts.needAction > (it.gate?.counts?.needAction ?: 0)
+                    it.copy(gate = g, overstayAlarm = if (more) it.overstayAlarm + 1 else it.overstayAlarm)
+                }
+            }
         } catch (e: ApiException) {
             if (e.unauthorised) signOut() else _state.update { it.copy(error = e.message) }
         } catch (e: OfflineException) {
@@ -315,6 +332,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null) }
         if (page == Page.VisitorExit) _state.update { it.copy(exitFound = null, exitChecked = false, exitFace = null, exitDone = null) }
+        if (page == Page.OnSite) loadOnSite()
+        if (page == Page.Handover) startHandover()
         if (page is Page.Visit) {
             _state.update { it.copy(visit = it.visit?.takeIf { v -> v.id == page.id }, calledContact = null) }
             watchVisit(page.id)
@@ -416,6 +435,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }
         }
+    }
+
+    fun loadOnSite() = run {
+        val list = device.visitors.onSite()
+        _state.update { it.copy(onSite = list) }
+    }
+
+    /** "Hand over shift": opens the guard's handover, or the one he already started. */
+    fun startHandover() = run {
+        _state.update { it.copy(handoverDone = false) }
+        val h = device.visitors.handoverStart()
+        _state.update { it.copy(handover = h) }
+    }
+
+    /**
+     * What the guard does about a visitor on site: "dialled" phones the customer (the number is
+     * never shown), "confirmed" and "left" take a note. In a handover it counts towards the handover.
+     */
+    fun overstayAction(visitId: String, action: String, note: String, inHandover: Boolean) = run {
+        try {
+            val handoverId = if (inHandover) _state.value.handover?.id else null
+            val dial = device.visitors.overstay(visitId, action, note, handoverId)
+            if (dial != null && !Calls.placeHidden(getApplication(), dial.number, dial.label)) _state.update { it.copy(error = "The phone could not start the call.") }
+            if (inHandover) {
+                val h = device.visitors.handoverStart()
+                _state.update { it.copy(handover = h) }
+            } else {
+                val list = device.visitors.onSite()
+                _state.update { it.copy(onSite = list) }
+            }
+            runCatching { device.visitors.setup() }.getOrNull()?.let { g -> _state.update { it.copy(gate = g) } }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    /** The outgoing guard signs the handover off. After this he can log Duty From. */
+    fun signOffHandover() = run {
+        val h = _state.value.handover
+        if (h != null) {
+            device.visitors.handoverSignOff(h.id)
+            _state.update { it.copy(handover = null, handoverDone = true) }
+            refreshHome()
+        }
+    }
+
+    /** The incoming guard has read the handover. */
+    fun acknowledgeHandover(id: String) = run {
+        device.visitors.handoverAcknowledge(id)
+        val setup = device.visitors.setup()
+        _state.update { it.copy(gate = setup) }
     }
 
     fun saveVisit(draft: za.onpar.core.VisitDraft) = run {

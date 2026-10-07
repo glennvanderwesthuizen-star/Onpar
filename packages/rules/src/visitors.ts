@@ -404,3 +404,76 @@ export function exceptionHandlingError(reason: string | null, note: string): str
   if (reason === null && note.trim().length < 3) return 'Choose a reason or type a note before you continue.';
   return null;
 }
+
+// --- Step 6: who is on site, overstays and the shift handover ---------------------------------
+
+/** What decides how long a visitor may stay. Times of day are HH:MM in South Africa; dates are YYYY-MM-DD. */
+export interface StayLimits {
+  entryAt: Date;
+  /** The category's limit: minutes on site, or a time of day to be gone by. */
+  limitMinutes: number | null;
+  limitUntil: string | null;
+  /** The announcement the visitor was let in on, if any. */
+  pass: { kind: PassKind; visitDate: string | null; hoursTo: string | null; endDate: string | null } | null;
+}
+
+const SAST = '+02:00';
+const localDay = (at: Date) => new Date(at.getTime() + 2 * 3600_000).toISOString().slice(0, 10);
+const localInstant = (day: string, hhmm: string) => new Date(`${day}T${hhmm.slice(0, 5)}:00${SAST}`);
+const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * When a visitor should have left: the earliest of the category's limit, the end of the hours
+ * a regular is allowed, and the end of the day or period the customer announced. Null: no limit.
+ * A visitor let in after a "gone by" time of day has until that time the next day.
+ */
+export function visitDueAt(l: StayLimits): Date | null {
+  const day = localDay(l.entryAt);
+  const due: Date[] = [];
+  if (l.limitMinutes !== null) due.push(new Date(l.entryAt.getTime() + l.limitMinutes * 60_000));
+  const goneBy = (hhmm: string) => {
+    const today = localInstant(day, hhmm);
+    return today.getTime() > l.entryAt.getTime() ? today : localInstant(nextDay(day), hhmm);
+  };
+  if (l.limitUntil) due.push(goneBy(l.limitUntil));
+  if (l.pass?.kind === 'once' && l.pass.visitDate && l.pass.visitDate >= day) due.push(localInstant(nextDay(l.pass.visitDate), '00:00'));
+  if (l.pass?.kind === 'ongoing') {
+    if (l.pass.hoursTo) due.push(goneBy(l.pass.hoursTo));
+    if (l.pass.endDate && l.pass.endDate >= day) due.push(localInstant(nextDay(l.pass.endDate), '00:00'));
+  }
+  return due.length ? new Date(Math.min(...due.map((d) => d.getTime()))) : null;
+}
+
+/** A length of time for a list: "45 min", "3 h 05 min", "2 days 4 h". */
+export function stayText(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ${String(minutes % 60).padStart(2, '0')} min`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ${hours % 24} h`;
+}
+
+/** What a guard can do about an overstay (spec: handover). */
+export const OVERSTAY_ACTIONS = ['dialled', 'confirmed', 'left'] as const;
+export type OverstayAction = (typeof OVERSTAY_ACTIONS)[number];
+export const OVERSTAY_ACTION_LABELS: Record<OverstayAction, string> = {
+  dialled: 'Dialled the customer',
+  confirmed: 'Confirmed still on site',
+  left: 'Left without scan-out',
+};
+
+/** "Confirmed still on site" and "Left without scan-out" need a note. Null when fine. */
+export function overstayActionError(action: OverstayAction, note: string): string | null {
+  return action !== 'dialled' && note.trim().length < 3 ? 'Type a note to say what you found.' : null;
+}
+
+/**
+ * Whether an overstay has been dealt with. The guard's latest action counts: "confirmed still
+ * on site" deals with it; a phone call alone does not. A confirmation from before the last
+ * completed handover began no longer counts, so each shift looks at it afresh.
+ */
+export function overstayDealtWith(latest: { action: OverstayAction; at: Date } | null, lastHandoverStartedAt: Date | null): boolean {
+  if (!latest || latest.action !== 'confirmed') return false;
+  return !lastHandoverStartedAt || latest.at.getTime() >= lastHandoverStartedAt.getTime();
+}

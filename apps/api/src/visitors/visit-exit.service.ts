@@ -249,6 +249,24 @@ export class VisitExitService {
     });
   }
 
+  /** A guard marks a visitor on the on-site list as having left without being scanned out: the visit is closed as an exception for the supervisor. */
+  async markLeft(tx: Tx, gate: Gate, guard: GuardActor, visitId: string, note: string, eventId: string): Promise<void> {
+    const v = (await tx.query(`${OPEN} WHERE v.id = $1 AND v.site_id = $2 AND v.status = 'on_site' FOR UPDATE OF v`, [visitId, gate.siteId])).rows[0] as OpenVisit | undefined;
+    if (!v) return;
+    await tx.query(`UPDATE visits SET status = 'left_no_scan_out', exit_gate_id = $2, exit_device_id = $3, exit_guard = $4 WHERE id = $1`, [v.id, gate.id, guard.deviceId, guard.employeeId]);
+    const ids = await this.raise(tx, gate, guard, ['no_scan_out'], { visitId: v.id, personId: v.personId, vehicleId: v.vehicleId, paxOut: null, handling: { reason: 'not_scanned_out', note, allowed: true }, eventId, photoKey: null, photoType: null });
+    await this.audit.record(tx, { actorType: 'employee', actorId: guard.employeeId, actorLabel: guard.name, action: 'visit.left_no_scan_out', entityType: 'visit', entityId: v.id, after: { gateId: gate.id, deviceId: guard.deviceId, exceptionIds: ids, note, because: 'marked_by_guard' } });
+    await this.notifications.recordForSite(tx, gate.siteId, {
+      kind: 'visitor_exception',
+      title: `Visitor exception at ${gate.siteName}`,
+      body: `${visitorName(v.surname, v.names)}, visiting ${v.unitName ? `unit ${v.unitName}` : 'the office'}, was marked at ${gate.name} as having left without being scanned out.`,
+      lockScreen: 'A visitor exception was raised at a gate.',
+      url: `/sites/${gate.siteId}`,
+      entityType: 'visit',
+      entityId: v.id,
+    });
+  }
+
   private async raise(
     tx: Tx,
     gate: Gate,

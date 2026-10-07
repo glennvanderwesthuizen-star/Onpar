@@ -1,13 +1,14 @@
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { VISIT_STATUS_LABELS, VisitStatus, vehicleLine, visitorName } from '@onpar/rules';
+import { EXCEPTION_LABELS, ExceptionType, VISIT_STATUS_LABELS, VisitStatus, vehicleLine, visitorName } from '@onpar/rules';
 import { CurrentCustomer, CustomerAuthGuard, CustomerPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { VisitApprovalService } from './visit-approval.service';
+import { VisitOnSiteService } from './visit-onsite.service';
 
 const DecideBody = z.object({ decision: z.enum(['accept', 'refuse'], { message: 'Choose Accept or Refuse.' }) });
 
@@ -33,6 +34,7 @@ export class CustomerVisitsController {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly approval: VisitApprovalService,
+    private readonly onSite: VisitOnSiteService,
   ) {}
 
   /** Visitors waiting for an answer, and the last few that were answered. */
@@ -47,7 +49,33 @@ export class CustomerVisitsController {
           [me.siteId, me.unitId, me.customerKind],
         )
       ).rows.map(shape);
-      return { waiting: rows.filter((r) => r.status === 'awaiting_approval'), recent: rows.filter((r) => r.status !== 'awaiting_approval') };
+      // This customer's own visitors who are on site now.
+      const onSite = (await this.onSite.list(tx, me.siteId, new Date(), { unitId: me.customerKind === 'client' && !me.unitId ? null : me.unitId }))
+        .filter((v) => (v.unitId ? v.unitId === me.unitId : me.customerKind === 'client'))
+        .map((v) => ({ id: v.id, visitor: v.visitor, vehicle: v.vehicle, pax: v.pax, category: v.category, enteredAt: v.enteredAt, stay: v.stay, overdue: v.overdue, overBy: v.overBy }));
+      return { waiting: rows.filter((r) => r.status === 'awaiting_approval'), recent: rows.filter((r) => r.status !== 'awaiting_approval'), onSite };
+    });
+  }
+
+  /** History: this customer's past visitors, newest first, with anything that did not match at the gate. */
+  @Get('history')
+  history(@CurrentCustomer() me: CustomerPrincipal) {
+    return this.db.withTenant(me.companyId, async (tx) => {
+      const rows = (
+        await tx.query(
+          `SELECT ${COLUMNS}, v.exit_at AS "exitAt", COALESCE(v.entry_at, v.captured_at) AS "enteredAt",
+                  (SELECT array_agg(DISTINCT x.type) FROM visit_exceptions x WHERE x.visit_id = v.id) AS exceptions
+             FROM ${FROM} WHERE ${MINE} AND v.status <> 'awaiting_approval' AND v.denied_reason IS DISTINCT FROM 'barred'
+            ORDER BY v.captured_at DESC LIMIT 100`,
+          [me.siteId, me.unitId, me.customerKind],
+        )
+      ).rows;
+      return rows.map((r) => ({
+        ...shape(r),
+        enteredAt: r.status === 'denied' || r.status === 'denied_no_response' ? null : (r.enteredAt as Date),
+        exitAt: r.exitAt as Date | null,
+        exceptions: ((r.exceptions ?? []) as ExceptionType[]).map((t) => EXCEPTION_LABELS[t]),
+      }));
     });
   }
 

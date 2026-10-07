@@ -14,6 +14,7 @@ import {
   normaliseCell,
   normaliseIdNumber,
   normalisePlate,
+  OVERSTAY_ACTIONS,
   reconcileTime,
   VISIT_STATUS_LABELS,
   VISIT_TYPES,
@@ -32,6 +33,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 import { VisitApprovalService } from './visit-approval.service';
 import { REASON_LIST, VisitExitService } from './visit-exit.service';
+import { VisitOnSiteService } from './visit-onsite.service';
 import { VisitPassService } from './visit-pass.service';
 import { VisitorSetupService } from './visitor-setup.service';
 
@@ -110,6 +112,7 @@ const ExitBody = z.object({
   deviceClock: isoTime,
 });
 
+const OverstayBody = z.object({ eventId: z.string().uuid(), action: z.enum(OVERSTAY_ACTIONS, { message: 'Choose what to do.' }), note: short(300), handoverId: z.string().uuid().nullable().default(null) });
 const DialBody = z.object({ contact: z.enum(CALL_CONTACTS) });
 const OutcomeBody = z.object({ eventId: z.string().uuid(), contact: z.enum(CALL_CONTACTS), outcome: z.enum(CALL_OUTCOMES, { message: 'Choose how the call went.' }) });
 const EventBody = z.object({ eventId: z.string().uuid() });
@@ -142,6 +145,7 @@ export class GateController {
     private readonly approval: VisitApprovalService,
     private readonly passes: VisitPassService,
     private readonly exits: VisitExitService,
+    private readonly onSite: VisitOnSiteService,
   ) {}
 
   /** Everything the gate phone needs before a visitor arrives: its gate, the site's checks, categories and units. */
@@ -162,6 +166,10 @@ export class GateController {
         units,
         hasClient: await this.hasClient(tx, gate.siteId),
         today: await this.today(tx),
+        // For the home screen: how many are on site, and how many are past their time and waiting for the guard.
+        counts: await this.onSite.counts(tx, gate.siteId, new Date()),
+        // A handover from the last guard that this guard has not yet acknowledged.
+        handover: await this.onSite.pending(tx, gate, guard.employeeId),
       };
     });
   }
@@ -442,6 +450,37 @@ export class GateController {
     return this.db.withTenant(guard.companyId, async (tx) => this.exits.exit(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard), b, time.officialAt, photo));
   }
 
+  /** Everyone on site now: overstays first, in red on the phone. */
+  @Get('on-site')
+  onSiteList(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const gate = await this.requireGate(tx, guard);
+      const visitors = await this.onSite.list(tx, gate.siteId, new Date());
+      return { onSite: visitors.length, overstays: visitors.filter((v) => v.overdue).length, visitors };
+    });
+  }
+
+  /** "Hand over shift": the outgoing guard's handover, with every overstay to deal with. */
+  @Post('handover/start')
+  @HttpCode(200)
+  handoverStart(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => this.onSite.start(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard)));
+  }
+
+  /** The outgoing guard signs the list off. Safe to retry. */
+  @Post('handover/:id/sign-off')
+  @HttpCode(200)
+  handoverSignOff(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(guard.companyId, async (tx) => this.onSite.signOff(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard), id));
+  }
+
+  /** The incoming guard has read the handover. Safe to retry. */
+  @Post('handover/:id/acknowledge')
+  @HttpCode(200)
+  handoverAcknowledge(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(guard.companyId, async (tx) => this.onSite.acknowledge(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard), id));
+  }
+
   /** The gate's "Expected today" list: announced visitors and regulars due today. */
   @Get('expected')
   expected(@CurrentGuard() guard: GuardPrincipal) {
@@ -501,6 +540,18 @@ export class GateController {
   dial(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const b = parseBody(DialBody, body);
     return this.db.withTenant(guard.companyId, async (tx) => this.approval.dial(tx, await this.actor(tx, guard), id, (await this.requireGate(tx, guard)).siteId, b.contact));
+  }
+
+  /**
+   * What the guard does about a visitor on site past their time: phone the customer (the number
+   * goes to the phone to dial, unseen), confirm they are still on site, or mark them as having
+   * left without being scanned out. Safe to retry.
+   */
+  @Post(':id/overstay')
+  @HttpCode(200)
+  overstay(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(OverstayBody, body);
+    return this.db.withTenant(guard.companyId, async (tx) => this.onSite.act(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard), id, b));
   }
 
   /** After the call: Approved by phone, Denied by phone or No answer. Safe to retry. */

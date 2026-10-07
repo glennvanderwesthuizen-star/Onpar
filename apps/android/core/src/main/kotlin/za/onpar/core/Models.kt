@@ -25,6 +25,8 @@ data class Attendance(
     val siteName: String? = null,
     /** Whether he may log Duty From yet (D-33). */
     val relief: Relief? = null,
+    /** On a gate phone: the visitors on site must be handed over before Duty From. */
+    val visitorHandoverOwed: Boolean = false,
 )
 
 /** Relief at shift change, as the server sees it (D-33). */

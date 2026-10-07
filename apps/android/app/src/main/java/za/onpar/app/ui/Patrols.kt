@@ -133,7 +133,7 @@ private fun ActivePatrolCard(vm: AppViewModel, p: LocalPatrol, points: List<Patr
 }
 
 /** A short alarm when the patrol runs over its time, also with no signal (brief section 6.5). */
-private fun alarm(context: Context) {
+internal fun alarm(context: Context) {
     runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 100).startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 2000) }
     runCatching {
         @Suppress("DEPRECATION")

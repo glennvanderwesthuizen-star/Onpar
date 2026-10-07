@@ -9,6 +9,7 @@ import { TasksService } from './tasks/tasks.service';
 import { PatrolsService } from './patrols/patrols.service';
 import { RetentionService } from './privacy/retention.service';
 import { DutyService } from './attendance/duty.service';
+import { VisitOnSiteService } from './visitors/visit-onsite.service';
 import { VisitPassService } from './visitors/visit-pass.service';
 import { NotificationsService } from './notifications/notifications.service';
 
@@ -33,6 +34,7 @@ if (require.main === module) {
     app.get(DutyService).startReliefTimer();
     app.get(NotificationsService).startTimer();
     app.get(VisitPassService).startTimer();
+    app.get(VisitOnSiteService).startTimer();
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }

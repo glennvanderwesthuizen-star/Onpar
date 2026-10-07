@@ -7,6 +7,10 @@ import {
   exitExceptions,
   normaliseCell,
   normalisePlate,
+  overstayActionError,
+  overstayDealtWith,
+  stayText,
+  visitDueAt,
   passErrors,
   passWhen,
   VISITOR_CHECK_INFO,
@@ -153,6 +157,49 @@ describe('visitor management: the groundwork', () => {
       expect(exceptionHandlingError('made_up', 'x')).toBe('Choose a reason from the list.');
       expect(exceptionHandlingError('passenger_driving', '')).toBeNull();
       expect(exceptionHandlingError(null, 'His wife is driving.')).toBeNull();
+    });
+  });
+
+  describe('how long a visitor may stay', () => {
+    const at = (t: string) => new Date(`${t}+02:00`);
+    const none = { limitMinutes: null, limitUntil: null, pass: null };
+
+    it('uses the category: so many minutes, or gone by a time of day', () => {
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T10:00:00'), limitMinutes: 240 })).toEqual(at('2026-10-07T14:00:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T10:00:00'), limitUntil: '17:00' })).toEqual(at('2026-10-07T17:00:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T10:00:00') })).toBeNull();
+    });
+
+    it('gives a visitor let in after the time of day until that time the next day', () => {
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T18:30:00'), limitUntil: '17:00:00' })).toEqual(at('2026-10-08T17:00:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-31T23:30:00'), limitUntil: '17:00' })).toEqual(at('2026-11-01T17:00:00'));
+    });
+
+    it('also ends with the day announced, a regular\u2019s hours, or the last day of a fixed period: whichever comes first', () => {
+      const once = { kind: 'once' as const, visitDate: '2026-10-07', hoursTo: null, endDate: null };
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T22:00:00'), limitMinutes: 240, pass: once })).toEqual(at('2026-10-08T00:00:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T09:00:00'), limitMinutes: 240, pass: once })).toEqual(at('2026-10-07T13:00:00'));
+      const regular = { kind: 'ongoing' as const, visitDate: null, hoursTo: '16:00', endDate: '2026-10-09' };
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T08:00:00'), limitUntil: '17:00', pass: regular })).toEqual(at('2026-10-07T16:00:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-09T08:00:00'), pass: { ...regular, hoursTo: null } })).toEqual(at('2026-10-10T00:00:00'));
+    });
+
+    it('writes time on site in a short form', () => {
+      expect(stayText(44 * 60_000)).toBe('44 min');
+      expect(stayText(185 * 60_000)).toBe('3 h 05 min');
+      expect(stayText((2 * 24 + 4) * 3600_000)).toBe('2 days 4 h');
+    });
+
+    it('counts an overstay as dealt with only when confirmed since the last handover began', () => {
+      const t = (h: number) => new Date(Date.UTC(2026, 9, 7, h));
+      expect(overstayDealtWith(null, null)).toBe(false);
+      expect(overstayDealtWith({ action: 'dialled', at: t(10) }, null)).toBe(false);
+      expect(overstayDealtWith({ action: 'confirmed', at: t(10) }, null)).toBe(true);
+      expect(overstayDealtWith({ action: 'confirmed', at: t(10) }, t(16))).toBe(false);
+      expect(overstayDealtWith({ action: 'confirmed', at: t(16) }, t(16))).toBe(true);
+      expect(overstayActionError('confirmed', ' ')).toBe('Type a note to say what you found.');
+      expect(overstayActionError('dialled', '')).toBeNull();
+      expect(overstayActionError('left', 'Tenant says he left at lunch.')).toBeNull();
     });
   });
 });

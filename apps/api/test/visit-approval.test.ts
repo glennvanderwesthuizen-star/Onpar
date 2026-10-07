@@ -99,7 +99,7 @@ describe('visitor management: approval', () => {
     expect(mine.waiting[0]).toMatchObject({ visitor: 'Dlamini, T J', vehicle: 'CA551 White Toyota Corolla', pax: 1, gateName: 'Main gate', visiting: 'Unit 14', outcome: null });
     expect(JSON.stringify(mine)).not.toMatch(/P0000000|idNumber/);
     const id = mine.waiting[0].id;
-    expect((await w.http().get('/api/customer/visits').set(auth(nomsa.token))).body).toEqual({ waiting: [], recent: [] });
+    expect((await w.http().get('/api/customer/visits').set(auth(nomsa.token))).body).toEqual({ waiting: [], recent: [], onSite: [] });
     expect((await w.http().get(`/api/customer/visits/${id}`).set(auth(nomsa.token))).status).toBe(404);
     expect((await decide(nomsa, id, 'accept')).status).toBe(404);
     expect((await decide(carol, id, 'accept')).status).toBe(404);

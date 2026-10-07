@@ -320,4 +320,51 @@ class VisitorTest {
         assertEquals("jpeg-bytes", String(device.visitors.face("v1")))
         assertEquals("/api/device/visitors/v1/face", server.takeRequest().path)
     }
+
+    @Test
+    fun `the gate reads who is on site, with overstays and what was done about them`() {
+        server.enqueue(MockResponse().setBody("""{"onSite":2,"overstays":1,"visitors":[{"id":"v1","type":"vehicle","visitor":"Dlamini, T J","vehicle":"CA123456 White Toyota Corolla","pax":1,"visiting":"Unit 14","unitId":"u14","category":"Once-off visitor","gateName":"Main gate","enteredAt":"2026-10-07T06:10:00.000Z","stay":"5 h 02 min","dueAt":"2026-10-07T10:10:00.000Z","overdue":true,"overBy":"1 h 02 min","action":{"action":"dialled","label":"Dialled the customer","note":"","at":"2026-10-07T11:00:00.000Z","by":"John Smith","handoverId":null},"needsAction":true},{"id":"v2","type":"pedestrian","visitor":"Nkosi, S","vehicle":null,"pax":null,"visiting":"The office","category":"Regular visitor","gateName":"Main gate","enteredAt":"2026-10-07T09:00:00.000Z","stay":"2 h 12 min","dueAt":null,"overdue":false,"overBy":null,"action":null,"needsAction":false}]}"""))
+        val list = device.visitors.onSite()
+        assertEquals("/api/device/visitors/on-site", server.takeRequest().path)
+        assertEquals(2, list.onSite)
+        assertTrue(list.visitors[0].overdue && list.visitors[0].needsAction)
+        assertEquals("dialled", list.visitors[0].action?.action)
+        assertNull(list.visitors[1].vehicle)
+    }
+
+    @Test
+    fun `an overstay is phoned about, confirmed with a note, or marked as left with a note`() {
+        server.enqueue(MockResponse().setBody("""{"ok":true,"number":"082 555 0140","label":"Unit 14"}"""))
+        assertEquals(DialReply("082 555 0140", "Unit 14"), device.visitors.overstay("v1", "dialled", "", "h1"))
+        val dial = server.takeRequest()
+        assertEquals("/api/device/visitors/v1/overstay", dial.path)
+        val sent = dial.body.readUtf8()
+        assertTrue(sent.contains("\"action\":\"dialled\"") && sent.contains("\"handoverId\":\"h1\"") && sent.contains("eventId"))
+        assertThrows<IllegalArgumentException> { device.visitors.overstay("v1", "confirmed", " ", null) }
+        assertThrows<IllegalArgumentException> { device.visitors.overstay("v1", "ignored", "A note.", null) }
+        server.enqueue(MockResponse().setBody("""{"ok":true}"""))
+        assertNull(device.visitors.overstay("v1", "left", "Tenant says she left at lunch.", null))
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"handoverId\":null"))
+    }
+
+    @Test
+    fun `the outgoing guard hands over, and the incoming guard is given it to acknowledge`() {
+        server.enqueue(MockResponse().setBody("""{"id":"h1","onSite":3,"overstays":1,"todo":1,"canSignOff":false,"visitors":[{"id":"v1","visitor":"Dlamini, T J","overdue":true,"overBy":"1 h 02 min","todo":true,"handoverAction":null}]}"""))
+        val h = device.visitors.handoverStart()
+        assertEquals("/api/device/visitors/handover/start", server.takeRequest().path)
+        assertFalse(h.canSignOff)
+        assertTrue(h.visitors.single().todo)
+        server.enqueue(MockResponse().setBody("""{"ok":true,"id":"h1"}"""))
+        device.visitors.handoverSignOff("h1")
+        assertEquals("/api/device/visitors/handover/h1/sign-off", server.takeRequest().path)
+        server.enqueue(MockResponse().setBody("""{"gate":{"id":"g1","name":"Main gate"},"counts":{"onSite":3,"overstays":1,"needAction":0},"handover":{"id":"h1","signedOffAt":"2026-10-07T16:02:00.000Z","onSite":3,"overstays":1,"unresolved":0,"from":"John Smith","notes":[{"visitor":"Dlamini, T J","vehicle":"CA123456","visiting":"Unit 14","overBy":"1 h 02 min","action":"Confirmed still on site","note":"Tenant confirmed."}]}}"""))
+        val setup = device.visitors.setup()
+        server.takeRequest()
+        assertEquals(GateCounts(3, 1, 0), setup.counts)
+        assertEquals("John Smith", setup.handover?.from)
+        assertEquals("Tenant confirmed.", setup.handover?.notes?.single()?.note)
+        server.enqueue(MockResponse().setBody("""{"ok":true}"""))
+        device.visitors.handoverAcknowledge("h1")
+        assertEquals("/api/device/visitors/handover/h1/acknowledge", server.takeRequest().path)
+    }
 }
