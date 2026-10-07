@@ -100,6 +100,41 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
         return sessions().filter { it.number != number }
     }
 
+    /** The guards due on duty at this site about now: the sign-in screen lists them, so a guard taps his name and types his PIN. */
+    fun expectedGuards(): List<ExpectedGuard> = OnParJson.decodeFromJsonElement(ListSerializer(ExpectedGuard.serializer()), api.get("/device/expected-guards"))
+
+    // --- Two guards, one phone (owner, 7 Oct 2026) ---------------------------------------------
+    //
+    // The guard holding the phone is the primary: what is done on it is recorded under his name.
+    // When a second guard comes on duty on the same phone, the phone goes back to the guard who
+    // was holding it, unless the newcomer is locked to this position. Either takes over with his PIN.
+
+    /**
+     * "Another guard: Duty On". The guard holding the phone steps aside (he stays on duty) so a
+     * colleague can sign in; the phone remembers to come back to him.
+     */
+    fun makeWayForAnotherGuard() {
+        store["returnTo"] = store["active"]
+        lock()
+    }
+
+    /** The guard the phone goes back to after a colleague has come on duty, if he is still signed in. */
+    val returnTo: GuardSession? get() = store["returnTo"]?.let { n -> sessions().firstOrNull { it.number == n } }
+
+    /**
+     * After the second guard's Duty On (or when he gives up): the phone goes back to the guard who
+     * was holding it, without a PIN, because it never left the post. With `stay` the newcomer
+     * keeps the phone (he is locked to this position). Returns true when the phone changed hands.
+     */
+    fun handBack(stay: Boolean = false): Boolean {
+        val back = returnTo
+        store["returnTo"] = null
+        if (stay || back == null || back.number == store["active"]) return false
+        store["active"] = back.number
+        clearGuardData()
+        return true
+    }
+
     /**
      * The scanned ID card (or a typed TSF number or employee number), then the PIN. Needs signal:
      * the server checks the PIN and locks after five wrong tries.

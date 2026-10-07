@@ -1,5 +1,6 @@
 import { BadRequestException, Body, UnauthorizedException, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
-import { normaliseTsfNumber, parseCardQr } from '@onpar/rules';
+import { normaliseTsfNumber, parseCardQr, sastDate, sastInstant } from '@onpar/rules';
+import { RosterService } from '../roster/roster.service';
 import { badgeOwner } from '../officers/badges';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
@@ -30,6 +31,7 @@ export class DeviceController {
     private readonly db: DbService,
     private readonly jwt: JwtService,
     private readonly pins: PinService,
+    private readonly roster: RosterService,
   ) {}
 
   /**
@@ -62,6 +64,49 @@ export class DeviceController {
       ),
     );
     return { serverTime: new Date().toISOString() };
+  }
+
+  /**
+   * The guards due on duty at this phone's site about now, for the sign-in screen (owner,
+   * 7 Oct 2026): a guard taps his name and types his PIN. Those whose shift starts within the
+   * next three hours or is running, and who are not on duty yet. Names and shift times only.
+   */
+  @Get('expected-guards')
+  expectedGuards(@CurrentDevice() device: DevicePrincipal) {
+    if (!device.siteId) return [];
+    return this.db.withTenant(device.companyId, async (tx) => {
+      const now = new Date();
+      const today = sastDate(now);
+      const yesterday = sastDate(new Date(now.getTime() - 86_400_000));
+      const people = (
+        await tx.query(
+          `SELECT e.id, e.full_name AS name, e.employee_number AS "employeeNumber", e.tsf_number AS "tsfNumber" FROM employees e
+            WHERE e.status = 'active' AND e.pin_hash IS NOT NULL
+              AND (e.home_site_id = $1 OR EXISTS (SELECT 1 FROM roster_allocations a WHERE a.employee_id = e.id AND a.site_id = $1 AND (a.end_date IS NULL OR a.end_date > $2::date)))
+              AND NOT EXISTS (SELECT 1 FROM attendance t WHERE t.employee_id = e.id AND t.duty_from_at IS NULL)`,
+          [device.siteId, yesterday],
+        )
+      ).rows as { id: string; name: string; employeeNumber: string | null; tsfNumber: string | null }[];
+      if (!people.length) return [];
+      const days = await this.roster.days(tx, people.map((p) => p.id), yesterday, today);
+      const done = new Set(
+        (await tx.query(`SELECT employee_id || '|' || to_char(shift_date, 'YYYY-MM-DD') AS k FROM attendance WHERE employee_id = ANY($1::uuid[]) AND shift_date >= $2::date`, [people.map((p) => p.id), yesterday])).rows.map((r) => r.k as string),
+      );
+      const out: { login: string; name: string; shift: string; startsAt: Date }[] = [];
+      for (const p of people) {
+        for (const d of days.get(p.id) ?? []) {
+          if (d.status !== 'working' || d.siteId !== device.siteId || done.has(`${p.id}|${d.date}`)) continue;
+          const start = sastInstant(d.date, d.startTime.slice(0, 5));
+          let end = sastInstant(d.date, d.endTime.slice(0, 5));
+          if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 86_400_000);
+          if (now.getTime() < start.getTime() - 3 * 3600_000 || now.getTime() >= end.getTime()) continue;
+          const login = p.tsfNumber ?? p.employeeNumber;
+          if (login) out.push({ login, name: p.name, shift: `${d.shiftName} ${d.startTime.slice(0, 5)} to ${d.endTime.slice(0, 5)}`, startsAt: start });
+          break;
+        }
+      }
+      return out.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.name.localeCompare(b.name));
+    });
   }
 
   /** Guard login: ID card QR (or TSF number, or employee number), then the PIN, every time. */

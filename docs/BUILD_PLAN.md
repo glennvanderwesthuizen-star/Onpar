@@ -911,3 +911,24 @@ The owner found the tenant's form complicated ("One visit / A regular", then "A 
 - Migration `0040_staff_vehicle.sql`. One new server test, and the matching test now covers a match let in automatically.
 
 **Legal, still for a specialist and not decided here:** the comparison now decides entry by itself for a clear match, on stored photos of people who are not employees. The owner's view is that a face at a gate is public. Whether POPIA needs each worker's consent or a notice for this is to be confirmed; the switch is there if the answer is no.
+
+### 7 Oct 2026: coming on duty, two guards on one phone, lock or roam (D-48)
+
+The owner found Duty On clumsy: a PIN to sign in, then everything open while not on duty, then a second PIN for Duty On.
+
+- **Tap your name, one PIN.** The sign-in screen ("Come on duty") lists the guards rostered at this site whose shift starts within three hours or is running and who are not on duty yet. The guard taps his name and types his PIN. **My name is not here** keeps the ID card scan and the typed number, for a relief guard not on the roster. With nobody rostered, or no signal, the card scan shows as before.
+- **Signing in is coming on duty.** A guard who is not on duty goes straight from his PIN to Duty On and its declaration and selfie. The PIN is still asked for Duty From. (The brief, section 6.1, asked for the PIN again at Duty On; the owner has replaced that.)
+- **Nothing opens before Duty On.** A guard who is signed in but not on duty (for example Duty On was refused) sees his shift, DUTY ON, PANIC, BOLO, Call and Log out. Visitors, Patrols, Tasks, Report and the rest appear once he is on duty.
+- **ANOTHER GUARD: DUTY ON** on the home screen. The guard holding the phone stays on duty; the second guard taps his name, types his PIN and does his own declaration and selfie. The phone then goes back to the first guard without a PIN, because it never left the post. If the second guard gives up, Back returns it the same way.
+- **The primary is the guard holding the phone.** The home screen says who that is and lists who else is on duty, each with **Take over** (his PIN). What is done on the phone is recorded, and scored, under the guard holding it at the time.
+- **Lock or roam.** On the site's page, **Positions: lock or roam** lists the site's guards; each is **Roams** or **Locked to** a position (a post phone, by its post name). Supervisors and managers can change it.
+  - A locked guard who comes on duty as the second guard on his own position's phone keeps the phone.
+  - A locked guard who comes on duty on another position's phone is told "You are posted at Main gate", may carry on, and the supervisor gets a "Guard at another position" alert.
+  - A roaming guard can take the phone from a locked guard with his PIN.
+- Migration `0041_guard_postings.sql`. Tests: 6 new server tests, 3 new phone-logic tests.
+
+**For the owner to know:**
+- A guard can no longer sign in on a post phone just to look at his score or roster before his shift: signing in puts him on duty. A supervisor's own phone is unchanged.
+- The sign-in list shows names and shift times to anyone who picks up the post phone. It shows no numbers; the PIN is still needed.
+
+**Not yet proven:** by the owner on real phones. This changes how every guard comes on duty, so it should be tried on one phone before it goes to a site.

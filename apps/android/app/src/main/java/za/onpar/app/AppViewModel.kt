@@ -151,6 +151,10 @@ data class UiState(
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
     val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
+    /** The guards due on duty at this site about now, for the sign-in screen. */
+    val expectedGuards: List<za.onpar.core.ExpectedGuard> = emptyList(),
+    /** A second guard is coming on duty on this phone: who it goes back to afterwards. */
+    val returnTo: String? = null,
     val online: Boolean = true,
     val waiting: Int = 0,
     val busy: Boolean = false,
@@ -284,10 +288,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Sign in -------------------------------------------------------------
 
+    /**
+     * Signing in is coming on duty (owner, 7 Oct 2026): one PIN. A guard who is not yet on duty
+     * goes straight to Duty On and its declaration, with the PIN he has just typed.
+     */
     fun signIn(employeeNumber: String, pin: String) = run {
         val e = device.signIn(employeeNumber, pin)
         _state.update { it.copy(screen = Screen.Home, guardName = e.name, page = Page.Home, lockedGuards = device.lockedGuards()) }
         refreshHome()
+        val now = _state.value
+        if (now.home != null && now.home.attendance == null && now.owed == null) logDuty(DutyKind.ON, pin)
+        // Already on duty (he only took the phone back): nothing to hand back afterwards.
+        else if (now.home?.attendance != null && now.owed == null && device.returnTo != null) {
+            device.handBack(stay = true)
+            _state.update { it.copy(returnTo = null) }
+        }
+    }
+
+    /** The sign-in screen's list of guards due on duty now. Quiet: with no signal the guard scans his card as before. */
+    fun loadExpectedGuards() {
+        viewModelScope.launch {
+            val due = withContext(Dispatchers.IO) { runCatching { device.expectedGuards() }.getOrDefault(emptyList()) }
+            _state.update { it.copy(expectedGuards = due) }
+        }
+    }
+
+    /** "Another guard: Duty On". The guard holding the phone stays on duty; the phone comes back to him afterwards. */
+    fun anotherGuard() {
+        device.makeWayForAnotherGuard()
+        _state.update {
+            it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.SignIn, tasks = emptyList(), lockedGuards = device.lockedGuards(), returnTo = device.returnTo?.name, error = null, message = null)
+        }
+        loadExpectedGuards()
+    }
+
+    /**
+     * The phone goes back to the guard who was holding it: after the second guard's Duty On, or
+     * when nobody signed in after all. With `stay`, the newcomer keeps it (he is locked to this position).
+     */
+    fun handBack(stay: Boolean = false) = run {
+        val changed = device.handBack(stay)
+        _state.update { it.copy(returnTo = null, lockedGuards = device.lockedGuards()) }
+        if (changed) {
+            _state.update { it.copy(screen = Screen.Home, guardName = device.guardName, page = Page.Home, home = null, owed = null, tasks = emptyList()) }
+            refreshHome()
+        } else if (device.guardToken == null) {
+            _state.update { it.copy(screen = Screen.Login, page = Page.Home) }
+        }
     }
 
     fun signOut() {
@@ -330,6 +377,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
         if (page == Page.Call) loadContacts()
+        if (page == Page.SignIn) loadExpectedGuards()
         if (page == Page.Visitors) {
             _state.update { it.copy(expectedHint = null, expectedNotFound = false) }
             loadVisitors()
@@ -815,7 +863,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Duty ----------------------------------------------------------------
 
-    fun duty(kind: DutyKind, pin: String) = run {
+    fun duty(kind: DutyKind, pin: String) = run { logDuty(kind, pin) }
+
+    private suspend fun logDuty(kind: DutyKind, pin: String) {
         val (_, r) = device.duty(kind, pin)
         when (r) {
             is Submitted.Sent -> {
@@ -852,10 +902,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update {
                         it.copy(
                             owed = null,
-                            message = if (r is Submitted.Sent) "Declaration saved. Thank you." else "Declaration saved on the phone. It will be sent when there is signal.",
+                            message = if (r is Submitted.Sent) "You are on duty. Thank you." else "Declaration saved on the phone. It will be sent when there is signal.",
                         )
                     }
                     refreshHome()
+                    // A second guard has just come on duty on this phone: it goes back to the guard who was
+                    // holding it, unless the newcomer is locked to this position.
+                    if (device.returnTo != null) {
+                        val newcomer = _state.value.guardName
+                        val stays = _state.value.home?.posting?.here == true
+                        val changed = device.handBack(stay = stays)
+                        _state.update { it.copy(returnTo = null, lockedGuards = device.lockedGuards()) }
+                        if (changed) {
+                            _state.update {
+                                it.copy(guardName = device.guardName, page = Page.Home, home = null, tasks = emptyList(), message = "${newcomer ?: "The second guard"} is on duty. The phone is back with ${device.guardName ?: "the first guard"}.")
+                            }
+                            refreshHome()
+                        }
+                    }
                 }
             }
         } catch (e: IllegalArgumentException) {

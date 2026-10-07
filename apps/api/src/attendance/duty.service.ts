@@ -183,13 +183,28 @@ export class DutyService implements OnModuleDestroy {
           ],
         );
         const summary = await this.attendanceSummary(tx, attendanceId);
+        // Locked to another position (owner, 7 Oct 2026): he is warned and may carry on, and the supervisor is told.
+        const posting = input.kind === 'duty_on' && !guard.ownPhone ? await this.posting(tx, guard.employeeId, siteId, guard.deviceId) : null;
+        if (posting && !posting.here) {
+          const who = (await tx.query('SELECT full_name FROM employees WHERE id = $1', [guard.employeeId])).rows[0]?.full_name ?? 'A guard';
+          const at = (await tx.query(`SELECT COALESCE(NULLIF(post_name, ''), label) AS post FROM devices WHERE id = $1`, [guard.deviceId])).rows[0]?.post ?? 'another phone';
+          await this.notifications.recordForSite(tx, siteId, {
+            kind: 'wrong_post',
+            title: 'Guard at another position',
+            body: `${who} is posted at ${posting.postName} but came on duty on the ${at} phone.`,
+            lockScreen: 'A guard came on duty at another position.',
+            url: '/attendance',
+            entityType: 'attendance',
+            entityId: attendanceId,
+          });
+        }
         await this.audit.record(tx, {
           actorType: 'employee',
           actorId: guard.employeeId,
           action: input.kind === 'duty_on' ? 'attendance.duty_on' : 'attendance.duty_from',
           entityType: 'attendance',
           entityId: attendanceId,
-          after: { ...summary, lateSynced: time.lateSynced, driftSeconds: time.driftSeconds },
+          after: { ...summary, lateSynced: time.lateSynced, driftSeconds: time.driftSeconds, ...(posting && !posting.here ? { postedAt: posting.postName } : {}) },
         });
         return { dutyEventId: input.eventId, attendance: summary, declaration: declarationFor(input.kind, !!guard.ownPhone) };
       });
@@ -404,6 +419,8 @@ export class DutyService implements OnModuleDestroy {
         serverTime: new Date().toISOString(),
         attendance,
         pendingDeclaration,
+        // Locked to a position of this site (the primary on that position's phone), or null when he roams.
+        posting: guard.ownPhone ? null : await this.posting(tx, guard.employeeId, guard.siteId, guard.deviceId),
         // The guard's real shift today and the next few days (section 40).
         roster: await this.roster.guardRoster(tx, guard.employeeId, sastDate(new Date())),
       };
@@ -509,6 +526,22 @@ export class DutyService implements OnModuleDestroy {
       }
     }
     return attendanceId;
+  }
+
+  /**
+   * The position a guard is locked to at a site, if any, and whether this phone is that
+   * position's. Null: he roams.
+   */
+  private async posting(tx: Tx, employeeId: string, siteId: string | null, deviceId: string | null): Promise<{ postName: string; here: boolean } | null> {
+    if (!siteId) return null;
+    const r = (
+      await tx.query(
+        `SELECT p.device_id AS "deviceId", COALESCE(NULLIF(d.post_name, ''), d.label) AS "postName" FROM guard_postings p JOIN devices d ON d.id = p.device_id
+          WHERE p.site_id = $1 AND p.employee_id = $2`,
+        [siteId, employeeId],
+      )
+    ).rows[0];
+    return r ? { postName: r.postName, here: r.deviceId === deviceId } : null;
   }
 
   /**

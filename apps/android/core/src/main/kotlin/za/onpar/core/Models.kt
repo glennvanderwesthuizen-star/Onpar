@@ -56,4 +56,14 @@ data class GuardState(
     val pendingDeclaration: PendingDeclaration? = null,
     /** The guard's real shift today and the coming working days (brief section 40). */
     val roster: GuardRoster? = null,
+    /** The position he is locked to at this site; null when he roams. */
+    val posting: Posting? = null,
 )
+
+/** A guard locked to a position: its name, and whether this phone is that position's. */
+@Serializable
+data class Posting(val postName: String = "", val here: Boolean = true)
+
+/** A guard due on duty at this phone's site about now, for the sign-in screen. `login` is what signs him in with his PIN. */
+@Serializable
+data class ExpectedGuard(val login: String, val name: String = "", val shift: String = "")

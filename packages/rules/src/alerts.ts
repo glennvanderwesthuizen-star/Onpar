@@ -4,7 +4,7 @@ import { can, Permission, Role } from './roles';
  * Alerts sent to a person's own phone (plan of 6 Oct 2026, decision D-38). One list for every
  * app, so the alerts page, the settings and the server always agree.
  */
-export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_overstay', 'visitor_handover', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending', 'visitor_left', 'visitor_exit_exception', 'visitor_still_on_site'] as const;
+export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'wrong_post', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_overstay', 'visitor_handover', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending', 'visitor_left', 'visitor_exit_exception', 'visitor_still_on_site'] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export interface AlertInfo {
@@ -27,6 +27,7 @@ export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   bolo: { label: 'BOLO', about: 'A guard sent a BOLO from one of your sites.', permission: 'reports.view', optional: true },
   patrol_overdue: { label: 'Patrol overdue', about: 'A patrol was started and not finished in time.', permission: 'patrols.alerts', optional: true },
   post_uncovered: { label: 'Post uncovered', about: 'A relief guard has not arrived and the post is uncovered.', permission: 'attendance.view', optional: true },
+  wrong_post: { label: 'Guard at another position', about: 'A guard who is locked to one position came on duty on another position’s phone.', permission: 'attendance.view', optional: true },
   red_report: { label: 'Red report', about: 'A report with Red priority was raised.', permission: 'reports.view', optional: true },
   visitor_barred: { label: 'Barred visitor', about: 'Someone on the barred list tried to come in at one of your gates.', permission: 'visitors.view', optional: true },
   visitor_exception: { label: 'Visitor exception', about: 'Something did not match when a visitor left, or a visitor was scanned in while still recorded as on site.', permission: 'visitors.view', optional: true },

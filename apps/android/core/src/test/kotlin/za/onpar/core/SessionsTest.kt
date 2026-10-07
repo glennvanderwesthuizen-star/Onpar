@@ -94,4 +94,50 @@ class SessionsTest {
         val settings = File(dir, "settings.json").readText()
         assertTrue(!settings.contains("\"1234\""))
     }
+
+    @Test
+    fun `the sign-in screen lists the guards due on duty now`() {
+        server.enqueue(MockResponse().setBody("""[{"login":"BCD123GP","name":"Michael Themba","shift":"Night shift 18:00 to 06:00","startsAt":"2026-10-07T16:00:00.000Z"},{"login":"0002","name":"Abram Komapi","shift":"Night shift 18:00 to 06:00"}]"""))
+        val due = device.expectedGuards()
+        val req = server.takeRequest()
+        assertEquals("/api/device/expected-guards", req.path)
+        assertNull(req.getHeader("Authorization")) // before anyone has signed in
+        assertEquals(listOf("Michael Themba", "Abram Komapi"), due.map { it.name })
+        assertEquals("BCD123GP", due[0].login)
+    }
+
+    @Test
+    fun `when a second guard comes on duty the phone goes back to the guard who was holding it`() {
+        login("1001", "Michael", "t-michael")
+        device.makeWayForAnotherGuard()
+        assertNull(device.guardToken)
+        assertEquals("Michael", device.returnTo?.name)
+        login("2002", "Abram", "t-abram")
+        assertEquals("t-abram", device.guardToken)
+        // Abram's Duty On is done: no PIN is needed for the phone to return to Michael.
+        assertTrue(device.handBack())
+        assertEquals("t-michael", device.guardToken)
+        assertEquals(listOf("Abram"), device.lockedGuards().map { it.name })
+        assertNull(device.returnTo)
+        assertTrue(!device.handBack()) // nothing more to hand back
+        // Abram takes the phone to go on patrol: that needs his PIN.
+        assertThrows<IllegalArgumentException> { device.unlock("2002", "0000") }
+        device.unlock("2002", "1234")
+        assertEquals("t-abram", device.guardToken)
+    }
+
+    @Test
+    fun `a newcomer who is locked to this position keeps the phone, and a newcomer who gives up hands it back`() {
+        login("1001", "Michael", "t-michael")
+        device.makeWayForAnotherGuard()
+        login("2002", "Abram", "t-abram")
+        assertTrue(!device.handBack(stay = true))
+        assertEquals("t-abram", device.guardToken)
+        assertEquals(listOf("Michael"), device.lockedGuards().map { it.name })
+        // The other way round: Abram makes way, nobody signs in, and the phone returns to him.
+        device.makeWayForAnotherGuard()
+        assertNull(device.guardToken)
+        assertTrue(device.handBack())
+        assertEquals("t-abram", device.guardToken)
+    }
 }
