@@ -152,6 +152,7 @@ describe('alerts to a phone', () => {
       ['bolo', true, true],
       ['patrol_overdue', true, true],
       ['post_uncovered', true, true],
+      ['wrong_post', true, true],
       ['red_report', true, true],
       ['visitor_barred', true, true],
       ['visitor_exception', true, true],
