@@ -56,13 +56,10 @@ describe('visitor management: the groundwork', () => {
     });
   });
 
-  it('starts with the five categories and the limits the owner agreed (7 Oct 2026)', () => {
-    expect(DEFAULT_VISITOR_CATEGORIES.map((c) => [c.name, c.kind, categoryLimitText(c)])).toEqual([
-      ['Once-off visitor', 'once_off', '4 hours'],
-      ['Regular visitor', 'regular', 'No limit'],
-      ['Contractor, once-off', 'once_off', 'Until 17:00'],
-      ['Regular contractor', 'regular', 'Until 17:00'],
-      ['Contractor, fixed period', 'fixed_period', 'Until 17:00'],
+  it('starts with two kinds of visitor: a visitor with no time limit, and a contractor gone by 18:00 (owner, 7 Oct 2026)', () => {
+    expect(DEFAULT_VISITOR_CATEGORIES.map((c) => [c.name, c.contractor, categoryLimitText(c)])).toEqual([
+      ['Visitor', false, 'No limit'],
+      ['Contractor', true, 'Until 18:00'],
     ]);
     for (const c of DEFAULT_VISITOR_CATEGORIES) expect(visitorCategoryErrors(c)).toEqual({});
   });
@@ -96,8 +93,8 @@ describe('visitor management: the groundwork', () => {
   });
 
   describe('a pass a customer makes for a visitor', () => {
-    const once = { kind: 'once' as const, visitorName: 'Sipho Nkosi', categoryKind: 'once_off' as const, idNumber: '', cell: '082 555 0140', registration: '', visitDate: '2026-10-08', time: null, days: [], hoursFrom: null, hoursTo: null, startDate: null, endDate: null };
-    const regular = { ...once, kind: 'ongoing' as const, categoryKind: 'regular' as const, visitDate: null, days: [1, 3, 5], hoursFrom: '08:00', hoursTo: '17:00' };
+    const once = { kind: 'once' as const, visitorName: 'Sipho Nkosi', idNumber: '', cell: '082 555 0140', registration: '', visitDate: '2026-10-08', time: null, days: [], hoursFrom: null, hoursTo: null, startDate: null, endDate: null };
+    const regular = { ...once, kind: 'ongoing' as const, visitDate: null, days: [1, 3, 5], hoursFrom: '08:00', hoursTo: '17:00' };
 
     it('needs a name and at least one way for the gate to recognise the visitor', () => {
       expect(passErrors(once, '2026-10-07')).toEqual({});
@@ -109,18 +106,15 @@ describe('visitor management: the groundwork', () => {
       expect(passErrors({ ...once, visitDate: '2026-10-06' }, '2026-10-07')).toEqual({ visitDate: 'That day has passed.' });
       expect(passErrors({ ...once, visitDate: null }, '2026-10-07')).toEqual({ visitDate: 'Choose the day they are coming.' });
       expect(passErrors({ ...once, time: '25:00' }, '2026-10-07')).toEqual({ time: 'Enter the time, for example 14:30.' });
-      expect(passErrors({ ...once, categoryKind: 'regular' }, '2026-10-07')).toEqual({ categoryId: 'Choose a kind of visitor that is for one visit.' });
       expect(passWhen({ ...once, time: '14:30' })).toBe('2026-10-08, about 14:30');
     });
 
     it('takes a regular on set days and hours, and a fixed-period contractor between two dates', () => {
       expect(passErrors(regular, '2026-10-07')).toEqual({});
-      expect(passErrors({ ...regular, categoryKind: 'once_off' }, '2026-10-07')).toEqual({ categoryId: 'Choose a kind of visitor that comes regularly.' });
       expect(passErrors({ ...regular, hoursTo: null }, '2026-10-07')).toEqual({ hoursTo: 'Give both the start and the end time, or neither.' });
       expect(passErrors({ ...regular, hoursTo: '07:00' }, '2026-10-07')).toEqual({ hoursTo: 'The end time must be after the start time.' });
       expect(passErrors({ ...regular, days: [0, 8] }, '2026-10-07')).toEqual({ days: 'Choose the days of the week.' });
-      expect(passErrors({ ...regular, categoryKind: 'fixed_period' }, '2026-10-07')).toEqual({ startDate: 'Choose the first day.', endDate: 'Choose the last day.' });
-      expect(passErrors({ ...regular, categoryKind: 'fixed_period', startDate: '2026-10-10', endDate: '2026-10-09' }, '2026-10-07')).toEqual({ endDate: 'The last day must be on or after the first day.' });
+      expect(passErrors({ ...regular, startDate: '2026-10-10', endDate: '2026-10-09' }, '2026-10-07')).toEqual({ endDate: 'The last day must be on or after the first day.' });
       expect(passWhen(regular)).toBe('Mon, Wed, Fri, 08:00 to 17:00');
       expect(passWhen({ ...regular, days: [], hoursFrom: null, hoursTo: null, startDate: '2026-10-10', endDate: '2026-11-20' })).toBe('Every day, any time, 2026-10-10 to 2026-11-20');
     });

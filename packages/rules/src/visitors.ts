@@ -93,8 +93,8 @@ export function visitorSettingsErrors(s: VisitorSettings): Record<string, string
 }
 
 /**
- * How a category's approval lasts: one entry; until the customer removes the visitor; or
- * between a start and an end date.
+ * No longer used (owner, 7 Oct 2026): whether a visitor needs approval each time is set by the
+ * customer's announcement, not by the kind of visitor. Kept because the column exists.
  */
 export const CATEGORY_KINDS = ['once_off', 'regular', 'fixed_period'] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
@@ -114,13 +114,15 @@ export interface VisitorCategory {
   limitUntil: string | null;
 }
 
-/** The five categories every site starts with. The administrator can change them and add more. */
+/**
+ * The two kinds of visitor every site starts with (owner, 7 Oct 2026). A visitor comes to see
+ * someone or to deliver, and has no time limit: who is still inside is picked up at the shift
+ * handover. A contractor comes to do work on site and should be gone by 18:00. The
+ * administrator can change the limits and add kinds of their own.
+ */
 export const DEFAULT_VISITOR_CATEGORIES: readonly VisitorCategory[] = [
-  { name: 'Once-off visitor', kind: 'once_off', contractor: false, limitMinutes: 240, limitUntil: null },
-  { name: 'Regular visitor', kind: 'regular', contractor: false, limitMinutes: null, limitUntil: null },
-  { name: 'Contractor, once-off', kind: 'once_off', contractor: true, limitMinutes: null, limitUntil: '17:00' },
-  { name: 'Regular contractor', kind: 'regular', contractor: true, limitMinutes: null, limitUntil: '17:00' },
-  { name: 'Contractor, fixed period', kind: 'fixed_period', contractor: true, limitMinutes: null, limitUntil: '17:00' },
+  { name: 'Visitor', kind: 'once_off', contractor: false, limitMinutes: null, limitUntil: null },
+  { name: 'Contractor', kind: 'once_off', contractor: true, limitMinutes: null, limitUntil: '18:00' },
 ];
 
 export function visitorCategoryErrors(c: VisitorCategory): Record<string, string> {
@@ -273,8 +275,6 @@ export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as con
 export interface PassInput {
   kind: PassKind;
   visitorName: string;
-  /** How the category's approval lasts (from the site's category list). */
-  categoryKind: CategoryKind;
   idNumber: string;
   cell: string;
   registration: string;
@@ -306,12 +306,10 @@ export function passErrors(p: PassInput, today: string): Record<string, string> 
   if (cell && (cell.length < 9 || cell.length > 15)) e.cell = 'Enter the full cell number.';
   if (reg && (reg.length < 2 || reg.length > 12)) e.registration = 'Enter the number plate.';
   if (p.kind === 'once') {
-    if (p.categoryKind !== 'once_off') e.categoryId = 'Choose a kind of visitor that is for one visit.';
     if (!p.visitDate || !DAY.test(p.visitDate)) e.visitDate = 'Choose the day they are coming.';
     else if (p.visitDate < today) e.visitDate = 'That day has passed.';
     if (p.time !== null && !CLOCK.test(p.time)) e.time = 'Enter the time, for example 14:30.';
   } else {
-    if (p.categoryKind === 'once_off') e.categoryId = 'Choose a kind of visitor that comes regularly.';
     if (p.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) e.days = 'Choose the days of the week.';
     if ((p.hoursFrom === null) !== (p.hoursTo === null)) e.hoursTo = 'Give both the start and the end time, or neither.';
     else if (p.hoursFrom !== null && p.hoursTo !== null) {
@@ -319,11 +317,6 @@ export function passErrors(p: PassInput, today: string): Record<string, string> 
       else if (p.hoursTo <= p.hoursFrom) e.hoursTo = 'The end time must be after the start time.';
     }
     for (const k of ['startDate', 'endDate'] as const) if (p[k] !== null && !DAY.test(p[k] as string)) e[k] = 'Choose a date.';
-    // A fixed-period contractor has a first and a last day.
-    if (p.categoryKind === 'fixed_period') {
-      if (!p.startDate) e.startDate ??= 'Choose the first day.';
-      if (!p.endDate) e.endDate ??= 'Choose the last day.';
-    }
     if (p.startDate && p.endDate && !e.startDate && !e.endDate && p.endDate < p.startDate) e.endDate = 'The last day must be on or after the first day.';
     if (p.endDate && !e.endDate && p.endDate < today) e.endDate = 'That day has passed.';
   }

@@ -323,7 +323,8 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
 
     // The visit.
     var pax by remember { mutableStateOf("") }
-    var categoryId by remember { mutableStateOf("") }
+    // "Visitor" is already chosen; the guard taps Contractor for someone coming to do work on site.
+    var categoryId by remember { mutableStateOf(setup.categories.firstOrNull()?.id.orEmpty()) }
     var unitId by remember { mutableStateOf<String?>(null) }
     var office by remember { mutableStateOf(false) }
     var unitSearch by remember { mutableStateOf("") }

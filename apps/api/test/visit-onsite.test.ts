@@ -78,9 +78,10 @@ describe('visitor management: on-site list, overstays and handover', () => {
     unit14 = (await w.http().post(`${site()}/units`).set(auth(admin)).send({ name: '14' })).body.id;
     unit20 = (await w.http().post(`${site()}/units`).set(auth(admin)).send({ name: '20' })).body.id;
     const cats = (await w.http().get(`${site()}/visitor-setup`).set(auth(admin))).body.categories as { id: string; name: string }[];
-    onceOff = cats.find((c) => c.name === 'Once-off visitor')!.id;
-    regular = cats.find((c) => c.name === 'Regular visitor')!.id;
-    contractor = cats.find((c) => c.name === 'Contractor, once-off')!.id;
+    regular = cats.find((c) => c.name === 'Visitor')!.id; // no time limit
+    contractor = cats.find((c) => c.name === 'Contractor')!.id; // gone by 18:00
+    // A site may still give a kind of visitor a limit in hours: this one has four.
+    onceOff = (await w.http().post(`${site()}/visitor-categories`).set(auth(admin)).send({ name: 'Short visit', limitMinutes: 240 })).body.id;
     thabo = await customer({ kind: 'tenant', fullName: 'Thabo Tenant', email: 'thabo@home.test', unitId: unit14, phone: '082 555 0140' });
     nomsa = await customer({ kind: 'tenant', fullName: 'Nomsa Other', email: 'nomsa@home.test', unitId: unit20 });
   });
@@ -92,12 +93,12 @@ describe('visitor management: on-site list, overstays and handover', () => {
 
   it('lists everyone on site with time on site, overstays first and marked', async () => {
     fresh = await letIn();
-    late = await letIn({}, 5); // once-off: 4 hours
+    late = await letIn({}, 5); // short visit: 4 hours
     noLimit = await letIn({ categoryId: regular, unitId: unit20 }, 30);
     const list = await onSite();
     expect(list).toMatchObject({ onSite: 3, overstays: 1 });
     expect(list.visitors.map((v: { id: string }) => v.id)).toEqual([late.id, noLimit.id, fresh.id]);
-    expect(list.visitors[0]).toMatchObject({ visitor: late.name, vehicle: expect.stringContaining('White Toyota Corolla'), pax: 1, visiting: 'Unit 14', category: 'Once-off visitor', overdue: true, needsAction: true, action: null });
+    expect(list.visitors[0]).toMatchObject({ visitor: late.name, vehicle: expect.stringContaining('White Toyota Corolla'), pax: 1, visiting: 'Unit 14', category: 'Short visit', overdue: true, needsAction: true, action: null });
     expect(list.visitors[0].stay).toMatch(/^5 h 0\d min$/);
     expect(list.visitors[0].overBy).toMatch(/^1 h 0\d min$/);
     expect(list.visitors[1]).toMatchObject({ dueAt: null, overdue: false, stay: '1 day 6 h' });
@@ -127,7 +128,7 @@ describe('visitor management: on-site list, overstays and handover', () => {
     expect(a).toMatchObject({ kind: 'visitor_overstay', title: 'Visitor overstay at Estate ABC' });
     expect(a.body).toMatch(new RegExp(`^${late.name}, visiting unit 14, is 1 h \\d\\d min past their time and the gate has not dealt with it\\.$`));
     // One the guard confirms in time is never sent on.
-    const second = await letIn({ categoryId: contractor }, 30); // contractors: gone by 17:00
+    const second = await letIn({ categoryId: contractor }, 30); // contractors: gone by 18:00
     const t1 = new Date();
     await svc.tick(t1);
     expect((await act(second.id, 'confirmed', '')).status).toBe(400);
@@ -193,7 +194,7 @@ describe('visitor management: on-site list, overstays and handover', () => {
     });
 
     it('saves the handover with the count and every note, and tells the supervisor of an unresolved overstay', async () => {
-      const contractorVisit = (await onSite()).visitors.find((v: { category: string }) => v.category === 'Contractor, once-off');
+      const contractorVisit = (await onSite()).visitors.find((v: { category: string }) => v.category === 'Contractor');
       expect((await act(late.id, 'dialled', '', { handoverId })).status).toBe(200);
       expect((await act(contractorVisit.id, 'confirmed', 'Still busy in unit 14, tenant confirmed by phone.', { handoverId })).status).toBe(200);
       const view = (await w.http().post('/api/device/visitors/handover/start').set(g())).body;
@@ -234,7 +235,7 @@ describe('visitor management: on-site list, overstays and handover', () => {
 
     it('carries a confirmation made in the handover into the next shift, but not one from before it', async () => {
       const list = (await onSite(peter)).visitors;
-      expect(list.find((v: { category: string }) => v.category === 'Contractor, once-off')).toMatchObject({ overdue: true, needsAction: false });
+      expect(list.find((v: { category: string }) => v.category === 'Contractor')).toMatchObject({ overdue: true, needsAction: false });
       expect(list.find((v: { id: string }) => v.id === late.id)).toMatchObject({ overdue: true, needsAction: true });
     });
 

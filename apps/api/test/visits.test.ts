@@ -55,8 +55,8 @@ describe('visitor management: scanning a visitor in at the gate', () => {
     guard = { token: (await w.http().post('/api/device/login').set('X-Device-Token', deviceToken).send({ employeeNumber: o.body.officer.employeeNumber, pin: o.body.initialPin })).body.token };
     unit14 = (await w.http().post(`${site()}/units`).set(auth(admin)).send({ name: '14' })).body.id;
     const setup = (await w.http().get(`${site()}/visitor-setup`).set(auth(admin))).body;
-    onceOff = setup.categories.find((c: { name: string }) => c.name === 'Once-off visitor').id;
-    contractor = setup.categories.find((c: { name: string }) => c.name === 'Contractor, once-off').id;
+    onceOff = setup.categories.find((c: { name: string }) => c.name === 'Visitor').id;
+    contractor = setup.categories.find((c: { name: string }) => c.name === 'Contractor').id;
   });
   afterAll(() => w.app.close());
 
@@ -80,7 +80,7 @@ describe('visitor management: scanning a visitor in at the gate', () => {
     const s = (await w.http().get('/api/device/visitors/setup').set(g())).body;
     expect(s.gate).toEqual({ id: gateId, name: 'Main gate' });
     expect(s.checks.paxCount).toBe(true);
-    expect(s.categories).toHaveLength(5);
+    expect(s.categories).toHaveLength(2);
     expect(s.units).toEqual([{ id: unit14, name: '14' }]);
     expect(s.hasClient).toBe(false);
     expect(s.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);

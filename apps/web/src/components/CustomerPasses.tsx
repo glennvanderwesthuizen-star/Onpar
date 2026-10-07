@@ -20,7 +20,7 @@ interface Pass {
   stateLabel: string;
 }
 interface Options {
-  categories: { id: string; name: string; kind: 'once_off' | 'regular' | 'fixed_period' }[];
+  categories: { id: string; name: string }[];
   gates: { id: string; name: string }[];
   today: string;
 }
@@ -35,12 +35,11 @@ const EMPTY = { visitorName: '', categoryId: '', gateId: '', idNumber: '', cell:
  */
 export function PassForm({ options, fromVisit, startName = '', onDone, onCancel }: { options: Options; fromVisit?: string; startName?: string; onDone: () => void; onCancel: () => void }) {
   const [kind, setKind] = useState<'once' | 'ongoing'>(fromVisit ? 'ongoing' : 'once');
-  const [f, setF] = useState({ ...EMPTY, visitorName: startName, visitDate: options.today });
+  const [f, setF] = useState({ ...EMPTY, visitorName: startName, visitDate: options.today, categoryId: options.categories[0]?.id ?? '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const errors = error instanceof ApiError ? error.errors : {};
-  const categories = options.categories.filter((c) => (kind === 'once' ? c.kind === 'once_off' : c.kind !== 'once_off'));
-  const category = categories.find((c) => c.id === f.categoryId);
+  const categories = options.categories;
   const set = (patch: Partial<typeof EMPTY>) => setF({ ...f, ...patch });
 
   async function save(e: React.FormEvent) {
@@ -78,10 +77,10 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
       <h2>{fromVisit ? 'Let them in next time' : 'Tell the gate who is coming'}</h2>
       <ErrorBanner error={error} />
       <div className="m-actions" style={{ marginTop: 0, marginBottom: 12 }}>
-        <button type="button" className={`btn ${kind === 'once' ? '' : 'ghost'}`} onClick={() => (setKind('once'), set({ categoryId: '' }))}>
+        <button type="button" className={`btn ${kind === 'once' ? '' : 'ghost'}`} onClick={() => setKind('once')}>
           One visit
         </button>
-        <button type="button" className={`btn ${kind === 'ongoing' ? '' : 'ghost'}`} onClick={() => (setKind('ongoing'), set({ categoryId: '' }))}>
+        <button type="button" className={`btn ${kind === 'ongoing' ? '' : 'ghost'}`} onClick={() => setKind('ongoing')}>
           A regular
         </button>
       </div>
@@ -130,10 +129,10 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
             <Field label="Until what time" error={errors.hoursTo}>
               <input type="time" value={f.hoursTo} onChange={(e) => set({ hoursTo: e.target.value })} />
             </Field>
-            <Field label={category?.kind === 'fixed_period' ? 'First day' : 'First day (optional)'} error={errors.startDate}>
+            <Field label="First day (optional)" error={errors.startDate}>
               <input type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} />
             </Field>
-            <Field label={category?.kind === 'fixed_period' ? 'Last day' : 'Last day (optional)'} error={errors.endDate}>
+            <Field label="Last day (optional)" error={errors.endDate}>
               <input type="date" min={options.today} value={f.endDate} onChange={(e) => set({ endDate: e.target.value })} />
             </Field>
           </div>

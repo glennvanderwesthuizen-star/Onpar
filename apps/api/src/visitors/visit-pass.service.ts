@@ -136,7 +136,7 @@ export class VisitPassService implements OnModuleDestroy {
 
   /** What a customer can choose from when making a pass. */
   async options(tx: Tx, me: CustomerPrincipal) {
-    const categories = (await this.setup.categories(tx, me.siteId)).filter((c) => c.active).map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
+    const categories = (await this.setup.categories(tx, me.siteId)).filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }));
     const gates = (await tx.query('SELECT id, name FROM site_gates WHERE site_id = $1 AND active ORDER BY created_at, lower(name)', [me.siteId])).rows;
     return { categories, gates, today: await this.today(tx) };
   }
@@ -159,7 +159,7 @@ export class VisitPassService implements OnModuleDestroy {
     // Made from an approved visit: the ID number and number plate come from that visit, which the customer never sees in full.
     const idNumber = from ? (from.idNumber ?? '') : b.idNumber;
     const registration = from ? (from.registration ?? '') : b.registration;
-    throwIfErrors(passErrors({ ...b, idNumber, registration, categoryKind: category.kind as 'once_off' | 'regular' | 'fixed_period' }, await this.today(tx)));
+    throwIfErrors(passErrors({ ...b, idNumber, registration }, await this.today(tx)));
     if (b.gateId && !(await tx.query('SELECT 1 FROM site_gates WHERE id = $1 AND site_id = $2 AND active', [b.gateId, me.siteId])).rowCount) {
       throw new BadRequestException({ message: 'Choose a gate of this site.', errors: { gateId: 'Unknown gate.' } });
     }
@@ -236,7 +236,7 @@ export class VisitPassService implements OnModuleDestroy {
           await tx.query(
             `SELECT p.id, p.site_id AS "siteId", p.unit_id AS "unitId", p.visitor_name AS "visitorName", to_char(p.end_date, 'YYYY-MM-DD') AS "endDate"
                FROM visitor_passes p JOIN visitor_categories c ON c.id = p.category_id
-              WHERE p.status = 'active' AND p.kind = 'ongoing' AND c.kind = 'fixed_period' AND p.expiry_told_at IS NULL
+              WHERE p.status = 'active' AND p.kind = 'ongoing' AND p.end_date IS NOT NULL AND p.expiry_told_at IS NULL
                 AND p.end_date BETWEEN ${LOCAL}::date AND ${LOCAL}::date + 3 FOR UPDATE OF p`,
           )
         ).rows;

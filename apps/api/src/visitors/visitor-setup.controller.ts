@@ -39,7 +39,8 @@ const SettingsBody = z.object({
 });
 const CategoryBody = z.object({
   name: z.string().trim().max(60),
-  kind: z.enum(CATEGORY_KINDS, { message: 'Choose how long the approval lasts.' }),
+  // No longer asked for (owner, 7 Oct 2026); kept so the column has a value.
+  kind: z.enum(CATEGORY_KINDS).default('once_off'),
   contractor: z.boolean().default(false),
   limitMinutes: z.number().nullable().default(null),
   limitUntil: z.string().trim().nullable().default(null),

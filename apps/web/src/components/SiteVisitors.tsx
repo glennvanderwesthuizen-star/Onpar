@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BARRED_KIND_LABELS, BARRED_KINDS, BarredKind, CATEGORY_KIND_LABELS, CATEGORY_KINDS, CategoryKind, categoryLimitText, VisitorCheck, VisitorSettings } from '@onpar/rules';
+import { BARRED_KIND_LABELS, BARRED_KINDS, BarredKind, CategoryKind, categoryLimitText, VisitorCheck, VisitorSettings } from '@onpar/rules';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from './ui';
@@ -77,7 +77,7 @@ interface Setup {
 type LimitType = 'none' | 'hours' | 'until';
 type CategoryDraft = { id: string | null; name: string; kind: CategoryKind; contractor: boolean; limitType: LimitType; hours: string; until: string; active: boolean };
 
-const NEW_CATEGORY: CategoryDraft = { id: null, name: '', kind: 'once_off', contractor: false, limitType: 'hours', hours: '4', until: '17:00', active: true };
+const NEW_CATEGORY: CategoryDraft = { id: null, name: '', kind: 'once_off', contractor: false, limitType: 'none', hours: '4', until: '18:00', active: true };
 
 /**
  * Visitor management, step 1: a site's gates, visitor checks, time limits, categories and
@@ -279,13 +279,12 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
             )}
           </form>
 
-          <h3 style={{ marginTop: 22 }}>Visitor categories</h3>
+          <h3 style={{ marginTop: 22 }}>Kinds of visitor</h3>
           <div className="cust-wrap">
             <table className="cust-table">
               <thead>
                 <tr>
-                  <th>Category</th>
-                  <th>Approval lasts</th>
+                  <th>Kind of visitor</th>
                   <th>May stay</th>
                   {manage && <th />}
                 </tr>
@@ -296,7 +295,6 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
                     <td>
                       <b>{c.name}</b> {c.contractor && <Pill tone="blue">Contractor</Pill>} {!c.active && <Pill tone="grey">Not in use</Pill>}
                     </td>
-                    <td>{CATEGORY_KIND_LABELS[c.kind]}</td>
                     <td>{categoryLimitText(c)}</td>
                     {manage && (
                       <td style={{ textAlign: 'right' }}>
@@ -336,15 +334,6 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
               <div className="grid g2">
                 <Field label="Name" error={errorsIn('category').name}>
                   <input value={category.name} onChange={(e) => setCategory({ ...category, name: e.target.value })} required />
-                </Field>
-                <Field label="Approval lasts" error={errorsIn('category').kind}>
-                  <select value={category.kind} onChange={(e) => setCategory({ ...category, kind: e.target.value as CategoryKind })}>
-                    {CATEGORY_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {CATEGORY_KIND_LABELS[k]}
-                      </option>
-                    ))}
-                  </select>
                 </Field>
                 <Field label="May stay" error={errorsIn('category').limitMinutes ?? errorsIn('category').limitUntil}>
                   <select value={category.limitType} onChange={(e) => setCategory({ ...category, limitType: e.target.value as LimitType })}>

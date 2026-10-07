@@ -33,14 +33,14 @@ describe('visitor management: announced visitors', () => {
   const now = () => new Date().toISOString();
   const day = (offset: number) => new Date(Date.parse(`${today}T12:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
   const pass = (who: { token: string }, body: Record<string, unknown>) =>
-    w.http().post('/api/customer/passes').set(auth(who.token)).send({ kind: 'once', visitorName: 'Sipho Nkosi', categoryId: cats['Once-off visitor'], visitDate: today, ...body });
+    w.http().post('/api/customer/passes').set(auth(who.token)).send({ kind: 'once', visitorName: 'Sipho Nkosi', categoryId: cats['Visitor'], visitDate: today, ...body });
   const check = async (body: Record<string, unknown>) => (await w.http().post('/api/device/visitors/check').set(g()).send(body)).body;
   /** A visitor scanned in at the gate. */
   const arrive = (data: Record<string, unknown> = {}) => {
     seq += 1;
     const person = { idNumber: `P${String(seq).padStart(8, '0')}`, surname: 'Nkosi', names: 'Sipho', document: 'passport', method: 'manual' };
     const vehicle = { registration: `GP 77 ${seq}`, make: 'VW', model: 'Polo', colour: 'Red', vin: '', discExpiry: null, method: 'scan' };
-    return w.http().post('/api/device/visitors').set(g()).field('data', JSON.stringify({ eventId: randomUUID(), type: 'vehicle', person, vehicle, pax: 0, categoryId: cats['Once-off visitor'], unitId: unit20, trustedAt: now(), deviceClock: now(), ...data })).attach('identity', PNG, { filename: 'i.png', contentType: 'image/png' });
+    return w.http().post('/api/device/visitors').set(g()).field('data', JSON.stringify({ eventId: randomUUID(), type: 'vehicle', person, vehicle, pax: 0, categoryId: cats['Visitor'], unitId: unit20, trustedAt: now(), deviceClock: now(), ...data })).attach('identity', PNG, { filename: 'i.png', contentType: 'image/png' });
   };
   const myAlerts = async (who: { token: string }) => (await w.http().get('/api/notifications').set(auth(who.token))).body.alerts as { kind: string; title: string; body: string; url: string }[];
   const customer = async (body: Record<string, unknown>) => {
@@ -76,14 +76,13 @@ describe('visitor management: announced visitors', () => {
     const r = (await w.http().get('/api/customer/passes').set(auth(thabo.token))).body;
     expect(r.current).toEqual([]);
     expect(r.gates.map((x: { name: string }) => x.name)).toEqual(['Main gate', 'Back gate']);
-    expect(r.categories).toHaveLength(5);
+    expect(r.categories).toHaveLength(2);
     expect(r.today).toBe(today);
   });
 
   it('will not save an announcement without a way to recognise the visitor', async () => {
     expect((await pass(thabo, {})).body.errors).toEqual({ identifier: 'Give at least one: their ID number, cell number or number plate.' });
     expect((await pass(thabo, { registration: 'CA 1', visitDate: day(-1) })).body.errors).toEqual({ visitDate: 'That day has passed.' });
-    expect((await pass(thabo, { registration: 'CA 1', categoryId: cats['Regular visitor'] })).body.errors).toEqual({ categoryId: 'Choose a kind of visitor that is for one visit.' });
     expect((await pass(thabo, { registration: 'CA 1', gateId: randomUUID() })).body.errors).toEqual({ gateId: 'Unknown gate.' });
     expect((await pass(thabo, { registration: 'CA 1', categoryId: randomUUID() })).status).toBe(400);
   });
@@ -93,7 +92,7 @@ describe('visitor management: announced visitors', () => {
     expect(made.status).toBe(201);
     expect((await w.http().get('/api/customer/passes').set(auth(thabo.token))).body.current[0]).toMatchObject({ visitorName: 'Sipho Nkosi', registration: 'GP100200', gateName: 'Back gate', when: `${today}, any time`, stateLabel: 'Expected' });
     const found = await check({ idNumber: 'P11112222', registration: 'GP 100 200' });
-    expect(found.expected).toEqual({ passId: made.body.id, visitorName: 'Sipho Nkosi', visiting: 'Unit 14', category: 'Once-off visitor', by: 'Thabo Tenant', regular: false, namedGate: 'Back gate', mismatch: [] });
+    expect(found.expected).toEqual({ passId: made.body.id, visitorName: 'Sipho Nkosi', visiting: 'Unit 14', category: 'Visitor', by: 'Thabo Tenant', regular: false, namedGate: 'Back gate', mismatch: [] });
     const before = (await myAlerts(thabo)).length;
     // The guard had unit 20 chosen; the announcement decides who the visitor is for.
     const r = await arrive({ passId: made.body.id, vehicle: { registration: 'GP 100 200', make: 'VW', model: 'Polo', colour: 'Red', vin: '', discExpiry: null, method: 'scan' }, categoryId: null, unitId: null });
@@ -149,7 +148,7 @@ describe('visitor management: announced visitors', () => {
   });
 
   it('lets a regular in again and again, on their days and hours only', async () => {
-    const made = await pass(thabo, { kind: 'ongoing', visitorName: 'Grace the cleaner', categoryId: cats['Regular contractor'], idNumber: 'P77778888', visitDate: null, days: [1, 2, 3, 4, 5, 6, 7], hoursFrom: '00:00', hoursTo: '23:59' });
+    const made = await pass(thabo, { kind: 'ongoing', visitorName: 'Grace the cleaner', categoryId: cats['Contractor'], idNumber: 'P77778888', visitDate: null, days: [1, 2, 3, 4, 5, 6, 7], hoursFrom: '00:00', hoursTo: '23:59' });
     expect(made.status).toBe(201);
     const person = { idNumber: 'P77778888', surname: 'Mokoena', names: 'Grace', document: 'passport', method: 'manual' };
     // Never scanned out after the first visit: the guard is warned, gives a reason, and she is let in again.
@@ -165,12 +164,12 @@ describe('visitor management: announced visitors', () => {
     if (p.narrowed) expect((await check({ idNumber: 'P77778888' })).expected).toBeNull();
   });
 
-  it('gives a fixed-period contractor a first and a last day, and tells the customer three days before the end', async () => {
-    const need = await pass(thabo, { kind: 'ongoing', visitorName: 'Build It', categoryId: cats['Contractor, fixed period'], registration: 'NW 500', visitDate: null });
-    expect(need.body.errors).toEqual({ startDate: 'Choose the first day.', endDate: 'Choose the last day.' });
-    const made = await pass(thabo, { kind: 'ongoing', visitorName: 'Build It', categoryId: cats['Contractor, fixed period'], registration: 'NW 500', visitDate: null, startDate: today, endDate: day(10) });
+  it('lets a contractor in between a first and a last day, and tells the customer three days before the end', async () => {
+    const wrong = await pass(thabo, { kind: 'ongoing', visitorName: 'Build It', categoryId: cats['Contractor'], registration: 'NW 500', visitDate: null, startDate: day(10), endDate: today });
+    expect(wrong.body.errors).toEqual({ endDate: 'The last day must be on or after the first day.' });
+    const made = await pass(thabo, { kind: 'ongoing', visitorName: 'Build It', categoryId: cats['Contractor'], registration: 'NW 500', visitDate: null, startDate: today, endDate: day(10) });
     expect(made.status).toBe(201);
-    expect((await check({ registration: 'NW500' })).expected).toMatchObject({ visitorName: 'Build It', regular: true, category: 'Contractor, fixed period' });
+    expect((await check({ registration: 'NW500' })).expected).toMatchObject({ visitorName: 'Build It', regular: true, category: 'Contractor' });
     const passes = w.app.get(VisitPassService);
     expect(await passes.endingTick()).toBe(0);
     await ownerQuery(`UPDATE visitor_passes SET end_date = (now() AT TIME ZONE 'Africa/Johannesburg')::date + 2 WHERE id = $1`, [made.body.id]);
@@ -223,7 +222,7 @@ describe('visitor management: announced visitors', () => {
   it('lets a customer put a visitor they approved on their list, without ever seeing the ID number', async () => {
     const r = await arrive({ unitId: unit14 });
     expect(r.body.status).toBe('awaiting_approval');
-    const body = { kind: 'ongoing', visitorName: 'My brother', categoryId: cats['Regular visitor'], days: [6, 7] };
+    const body = { kind: 'ongoing', visitorName: 'My brother', categoryId: cats['Visitor'], days: [6, 7] };
     expect((await w.http().post(`/api/customer/visits/${r.body.id}/pass`).set(auth(thabo.token)).send(body)).status).toBe(409);
     await w.http().post(`/api/customer/visits/${r.body.id}/decide`).set(auth(thabo.token)).send({ decision: 'accept' });
     expect((await w.http().get(`/api/customer/visits/${r.body.id}`).set(auth(thabo.token))).body.canPass).toBe(true);

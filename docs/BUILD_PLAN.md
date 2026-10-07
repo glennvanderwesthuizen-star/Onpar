@@ -832,3 +832,19 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 **Not yet proven:** by the owner on real phones.
 
 **Raised by the owner, 7 Oct 2026 (D-45, to plan after step 7):** the shift handover should be more than visitors. Wanted: an itemised equipment list set up per site (cell phone, radio, and so on) that the outgoing guard checks off and the incoming guard confirms; a handover note, with a voice note as a nice-to-have; and one handover screen that passes from the old shift to the new. The visitor handover built here is meant to become one part of that screen.
+
+### 7 Oct 2026: two kinds of visitor in place of five (D-46)
+
+The owner found the five visitor types meaningless at the gate. Decided the same day:
+
+- **Visitor:** anyone coming to see someone, visit the office or deliver. **No time limit.** Nothing goes red because time has passed; who is still inside is picked up when the guard hands over his shift.
+- **Contractor:** anyone coming to do work on site (plumber, electrician). **Out by 18:00**; after that he shows as past his time for the guard to check with the customer.
+- The site can still give any kind a time limit, and add kinds of its own.
+- "Regular" and "fixed period" are no longer kinds. The customer chooses **one visit** or **a regular** when telling the gate who is coming, with days, hours and an optional first and last day. A regular with a last day gets the three-day warning, whatever kind they are.
+- On the gate phone **Visitor is already chosen**; the guard taps Contractor when it applies.
+- On the website the list is called **Kinds of visitor** and the "Approval lasts" column is gone.
+- Migration `0036_two_visitor_kinds.sql`: on sites that still have the five starting types, "Once-off visitor" becomes Visitor (limit removed), "Contractor, once-off" becomes Contractor (18:00), and the other three are taken out of use. Announcements made under those three move to Visitor or Contractor. A type an administrator renamed is left alone. Past visits keep the type they were recorded with; nothing is deleted.
+
+**Still to talk through with the owner:** how once-off and regular contractors should differ in their access rules.
+
+**Raised by the owner, 7 Oct 2026 (D-47, to plan after step 7):** staff of a unit (cleaners, gardeners) as a third way in at the gate, with the last six digits of their cell number and a photo compared with a reference photo. See OPEN_DECISIONS.

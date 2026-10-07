@@ -24,21 +24,18 @@ describe('visitor management: a site’s groundwork', () => {
   });
   afterAll(() => w.app.close());
 
-  it('starts a site on the spec’s positions, with the five standard categories and nothing else', async () => {
+  it('starts a site on the spec’s positions, with the two kinds of visitor and nothing else', async () => {
     const s = await setup();
     expect(s.gates).toEqual([]);
     expect(s.barred).toEqual([]);
     expect(s.settings).toEqual({ ...DEFAULT_VISITOR_SETTINGS, saved: false });
     expect(s.categories.map((c: { name: string; limitMinutes: number | null; limitUntil: string | null }) => [c.name, c.limitMinutes, c.limitUntil])).toEqual([
-      ['Once-off visitor', 240, null],
-      ['Regular visitor', null, null],
-      ['Contractor, once-off', null, '17:00'],
-      ['Regular contractor', null, '17:00'],
-      ['Contractor, fixed period', null, '17:00'],
+      ['Visitor', null, null],
+      ['Contractor', null, '18:00'],
     ]);
     expect(s.checks).toHaveLength(11);
     // Looking twice does not make them twice.
-    expect((await setup()).categories).toHaveLength(5);
+    expect((await setup()).categories).toHaveLength(2);
   });
 
   it('adds gates to a site, each name once, and retires one without deleting it', async () => {
@@ -115,7 +112,7 @@ describe('visitor management: a site’s groundwork', () => {
     const put = await w.http().put(`${site()}/visitor-categories/${made.body.id}`).set(auth(admin)).send({ name: 'Delivery', kind: 'once_off', contractor: false, limitMinutes: null, limitUntil: '18:30', active: false });
     expect(put.status).toBe(200);
     const cats = (await setup()).categories as { name: string; limitUntil: string | null; active: boolean }[];
-    expect(cats).toHaveLength(6);
+    expect(cats).toHaveLength(3);
     expect(cats.at(-1)).toMatchObject({ name: 'Delivery', limitUntil: '18:30', active: false });
     const [a] = await audit('visitor_category.update');
     expect(a.before).toMatchObject({ limitMinutes: 30, limitUntil: null, active: true });
