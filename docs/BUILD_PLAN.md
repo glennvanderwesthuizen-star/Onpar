@@ -901,3 +901,13 @@ The owner found the tenant's form complicated ("One visit / A regular", then "A 
 - Staff come in on foot in this version: a staff member's own vehicle is not recorded.
 
 **Not yet proven:** by the owner on real phones.
+
+### 7 Oct 2026: staff by vehicle, and automatic matching that lets a clear match in (owner)
+
+- **On foot or by vehicle.** When a staff member is registered, the tenant or administrator chooses **Comes on foot** or **Comes by vehicle** and, for a vehicle, gives the number plate. At the gate the guard sees "In CA900100", "On foot today" and "Another vehicle" (which takes a plate). They are let in whichever it is; a different vehicle, or walking in on a day, is noted on the visit. A staff visit by vehicle shows the plate on the on-site list.
+- **Automatic photo matching is on to start** (the owner's decision), and decides a clear match by itself: the guard takes the snapshot and the phone lets them in, with nothing to press. The visit is recorded as decided by the comparison.
+- **Any doubt goes to the guard:** "not sure" or "may be a different person" needs his note and his decision; "no clear face" lets him retake the photo or decide by eye. He can also press **Not the same person** over a match that is still on the screen. Every doubt is an exception for the supervisor and the unit is told, as before.
+- A site can still switch the check off; the guard then compares by eye every time.
+- Migration `0040_staff_vehicle.sql`. One new server test, and the matching test now covers a match let in automatically.
+
+**Legal, still for a specialist and not decided here:** the comparison now decides entry by itself for a clear match, on stored photos of people who are not employees. The owner's view is that a face at a gate is public. Whether POPIA needs each worker's consent or a notice for this is to be confirmed; the switch is there if the answer is no.

@@ -42,7 +42,7 @@ export const VISITOR_CHECK_INFO: Record<VisitorCheck, VisitorCheckInfo> = {
   documents: { label: 'Documents', about: 'Shows site rules or an indemnity for the visitor to accept on the gate phone.', default: false, notYet: 'This follows in a later version.' },
   entryLimit: { label: 'One entry for a once-off announcement', about: 'A once-off announced visitor is let in once only.', default: true },
   overstayAlert: { label: 'Overstay alert', about: 'Flags visitors still on site past the time limit for their category.', default: true },
-  staffFaceMatch: { label: 'Automatic photo matching for staff', about: 'When a unit’s staff member arrives, the photo taken at the gate is compared with their reference photo and the guard is told how alike they are. The guard always decides. When off, the guard compares the two photos by eye.', default: false },
+  staffFaceMatch: { label: 'Automatic photo matching for staff', about: 'When a unit’s staff member arrives, the photo taken at the gate is compared with their reference photo. A clear match lets them in at once. Any doubt goes to the guard, who decides and gives a reason. When off, the guard compares the two photos by eye every time.', default: true },
   rollCall: { label: 'Emergency roll-call', about: 'Gives the supervisor a list of everyone on site to tick off at an assembly point.', default: true },
 };
 
@@ -527,6 +527,9 @@ export interface StaffInput {
   hoursFrom: string | null;
   hoursTo: string | null;
   endDate: string | null;
+  /** Comes in their own vehicle, with this number plate; otherwise on foot. */
+  byVehicle: boolean;
+  registration: string;
 }
 
 /** Field-by-field problems with a staff member being registered; empty when fine. `today` is YYYY-MM-DD in South Africa. */
@@ -536,6 +539,10 @@ export function staffErrors(s: StaffInput, today: string): Record<string, string
   if (!staffCode(s.cell)) e.cell = 'Enter their full cell number. They give its last six digits at the gate.';
   const id = normaliseIdNumber(s.idNumber);
   if (id && (id.length < 5 || id.length > 20)) e.idNumber = 'Enter the full ID or passport number.';
+  if (s.byVehicle) {
+    const reg = normalisePlate(s.registration);
+    if (reg.length < 2 || reg.length > 12) e.registration = 'Enter the number plate of their vehicle.';
+  }
   if (s.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) e.days = 'Choose the days of the week.';
   if ((s.hoursFrom === null) !== (s.hoursTo === null)) e.hoursTo = 'Give both the start and the end time, or neither.';
   else if (s.hoursFrom !== null && s.hoursTo !== null) {
@@ -560,8 +567,16 @@ export const STAFF_FACE_TEXT: Record<StaffFaceResult, string> = {
 
 /**
  * Whether the guard must give a reason to let a staff member in: he says it is not the same
- * person, or the automatic comparison is in doubt. The match advises; the guard decides.
+ * person, or the automatic comparison is in doubt.
  */
 export function staffEntryNeedsReason(guardSaysSame: boolean, result: StaffFaceResult): boolean {
   return !guardSaysSame || result === 'uncertain' || result === 'no_match';
+}
+
+/**
+ * Whether a staff member is let in on the photos alone (owner, 7 Oct 2026): the automatic
+ * comparison is on and it is a clear match. Anything else goes to the guard.
+ */
+export function staffEntryAutomatic(result: StaffFaceResult): boolean {
+  return result === 'match';
 }

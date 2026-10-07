@@ -1133,7 +1133,28 @@ fun StaffScreen(vm: AppViewModel, state: UiState) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(hit.fullName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
             Text("Works for " + (if (hit.visiting == "The office") "the office" else hit.visiting))
-            Text(hit.days, color = Color.DarkGray, fontSize = 13.sp)
+            Text(hit.days + (hit.vehicle?.let { " · usually in $it" } ?: " · comes on foot"), color = Color.DarkGray, fontSize = 13.sp)
+        }
+    }
+    // How they came today: on foot, in their usual vehicle, or in another one.
+    var arrival by remember(hit.id) { mutableStateOf(if (hit.vehicle != null) "own" else "foot") }
+    var otherPlate by remember(hit.id) { mutableStateOf("") }
+    val plateToday: String? = when (arrival) {
+        "own" -> hit.vehicle
+        "other" -> VisitorScan.plate(otherPlate).takeIf { it.length >= 2 }
+        else -> null
+    }
+    val arrivalReady = arrival != "other" || plateToday != null
+    @Composable
+    fun ArrivalChoice() {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            hit.vehicle?.let { v -> FilterChip(selected = arrival == "own", onClick = { arrival = "own" }, label = { Text("In $v") }) }
+            FilterChip(selected = arrival == "foot", onClick = { arrival = "foot" }, label = { Text(if (hit.vehicle != null) "On foot today" else "On foot") })
+            FilterChip(selected = arrival == "other", onClick = { arrival = "other" }, label = { Text(if (hit.vehicle != null) "Another vehicle" else "In a vehicle") })
+        }
+        if (arrival == "other") {
+            OutlinedTextField(otherPlate, { otherPlate = it.take(12).uppercase() }, label = { Text("Number plate") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters), modifier = Modifier.fillMaxWidth())
         }
     }
 
@@ -1194,17 +1215,21 @@ fun StaffScreen(vm: AppViewModel, state: UiState) {
                 Text("2. Take a clear photo of their face. This is the photo they are compared with from now on.")
                 PhotoTaker(faceFile, front = false) { face = it }
             }
-            BigButton(if (state.busy) "Sending…" else "REGISTER AND LET IN", enabled = !state.busy && haveId && face != null) {
-                vm.enterStaff(StaffEntryDraft(eventId, hit.id, StaffEnrol(idNumber, surname, names, if (scanned) document else "id_card", if (scanned) "scan" else "manual"), true, face, if (scanned) null else idPhoto))
+            ArrivalChoice()
+            BigButton(if (state.busy) "Sending…" else "REGISTER AND LET IN", enabled = !state.busy && haveId && face != null && arrivalReady) {
+                vm.enterStaff(StaffEntryDraft(eventId, hit.id, StaffEnrol(idNumber, surname, names, if (scanned) document else "id_card", if (scanned) "scan" else "manual"), true, face, if (scanned) null else idPhoto, registration = plateToday))
             }
         }
     } else {
-        // A later day: the reference photo beside a snapshot taken now.
+        // A later day: a snapshot taken now is held against the reference photo. With automatic matching on,
+        // a clear match lets them in at once (owner, 7 Oct 2026); any doubt goes to the guard.
         var face by remember { mutableStateOf<File?>(null) }
         var doubt by remember { mutableStateOf(false) }
         var why by remember { mutableStateOf("") }
+        val matching = state.gate?.on("staffFaceMatch") == true
         val ref = state.staffRef
         val bitmap = remember(ref) { ref?.let { android.graphics.BitmapFactory.decodeByteArray(it.bytes, 0, it.bytes.size)?.asImageBitmap() } }
+        ArrivalChoice()
         Text("Their reference photo:", fontWeight = FontWeight.Bold)
         if (bitmap != null) androidx.compose.foundation.Image(bitmap, contentDescription = "Their reference photo", modifier = Modifier.fillMaxWidth().height(240.dp))
         else Text("The reference photo could not be loaded. Ask for their ID and check the name.", color = Amber)
@@ -1213,14 +1238,24 @@ fun StaffScreen(vm: AppViewModel, state: UiState) {
         val snapshot = face
         LaunchedEffect(snapshot?.lastModified()) { if (snapshot != null) vm.compareStaff(hit.id, snapshot) }
         val compare = state.staffCompare?.takeIf { snapshot != null }
-        if (compare != null && compare.result != "off") {
-            Text(compare.text, color = if (compare.result == "match") Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text("The phone only advises. You decide.", color = Color.DarkGray, fontSize = 13.sp)
+        fun draft(same: Boolean, allowed: Boolean? = null) = StaffEntryDraft(eventId, hit.id, null, same, snapshot, note = if (allowed != null) why else "", allowed = allowed, registration = plateToday)
+        // A clear match: sent at once, with nothing for the guard to press.
+        LaunchedEffect(compare, arrivalReady) { if (compare?.automatic == true && arrivalReady && !doubt && !state.busy) vm.enterStaff(draft(true)) }
+        if (snapshot != null && compare == null) {
+            Text(if (matching) "Comparing the photos…" else "Checking…", color = Color.DarkGray, fontWeight = FontWeight.Bold)
+        } else if (compare != null && compare.result != "off") {
+            Text(compare.text, color = if (compare.automatic) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            if (!compare.automatic) Text("You decide.", color = Color.DarkGray, fontSize = 13.sp)
         }
         val needsNote = doubt || compare?.doubtful == true
-        if (!needsNote) {
-            BigButton(if (state.busy) "Sending…" else "SAME PERSON: LET IN", enabled = !state.busy && snapshot != null) { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, true, snapshot)) }
-            OutlinedButton(onClick = { doubt = true }, enabled = snapshot != null, modifier = Modifier.fillMaxWidth()) { Text("Not the same person") }
+        if (compare?.automatic == true && !doubt) {
+            Text(if (arrivalReady) "Letting them in…" else "Enter the number plate above.", fontWeight = FontWeight.Bold)
+            // If it did not go through (no signal for a moment), the guard can send it again or object.
+            if (!state.busy && state.error != null) BigButton("TRY AGAIN", enabled = arrivalReady) { vm.enterStaff(draft(true)) }
+            OutlinedButton(onClick = { doubt = true }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Not the same person") }
+        } else if (!needsNote) {
+            BigButton(if (state.busy) "Sending…" else "SAME PERSON: LET IN", enabled = !state.busy && snapshot != null && compare != null && arrivalReady) { vm.enterStaff(draft(true)) }
+            OutlinedButton(onClick = { doubt = true }, enabled = snapshot != null && compare != null, modifier = Modifier.fillMaxWidth()) { Text("Not the same person") }
         } else {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.background(Color(0xFFFBE3E0)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1229,9 +1264,9 @@ fun StaffScreen(vm: AppViewModel, state: UiState) {
                 }
             }
             OutlinedTextField(why, { why = it.take(300) }, label = { Text("Note: what did you see?") }, modifier = Modifier.fillMaxWidth())
-            val ready = !state.busy && snapshot != null && why.trim().length >= 3
-            BigButton(if (state.busy) "Sending…" else "LET THEM IN", enabled = ready) { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, !doubt, snapshot, note = why, allowed = true)) }
-            Button(onClick = { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, !doubt, snapshot, note = why, allowed = false)) }, enabled = ready, modifier = Modifier.fillMaxWidth().height(64.dp),
+            val ready = !state.busy && snapshot != null && why.trim().length >= 3 && arrivalReady
+            BigButton(if (state.busy) "Sending…" else "LET THEM IN", enabled = ready) { vm.enterStaff(draft(!doubt, allowed = true)) }
+            Button(onClick = { vm.enterStaff(draft(!doubt, allowed = false)) }, enabled = ready, modifier = Modifier.fillMaxWidth().height(64.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("DO NOT LET THEM IN", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
             if (doubt) OutlinedButton(onClick = { doubt = false }, modifier = Modifier.fillMaxWidth()) { Text("It is the same person after all") }
         }

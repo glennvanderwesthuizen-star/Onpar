@@ -25,6 +25,8 @@ const StaffBody = z.object({
   hoursFrom: optional,
   hoursTo: optional,
   endDate: optional,
+  byVehicle: z.boolean().default(false),
+  registration: z.string().trim().max(40).default(''),
 });
 const AdminStaffBody = StaffBody.extend({ unitId: z.string().uuid().nullable().default(null) });
 const isoTime = z.string().datetime({ offset: true }).transform((s) => new Date(s));
@@ -36,6 +38,8 @@ const EnterBody = z.object({
     .nullable()
     .default(null),
   samePerson: z.boolean().default(true),
+  // The vehicle they came in today. Null: on foot.
+  registration: z.string().trim().max(40).nullable().default(null).transform((v) => v || null),
   handling: z.object({ note: z.string().trim().max(300).default(''), allowed: z.boolean() }).nullable().default(null),
   trustedAt: isoTime,
   deviceClock: isoTime,

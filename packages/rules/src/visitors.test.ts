@@ -10,6 +10,7 @@ import {
   overstayActionError,
   overstayDealtWith,
   staffCode,
+  staffEntryAutomatic,
   staffEntryNeedsReason,
   staffErrors,
   stayText,
@@ -38,7 +39,7 @@ describe('visitor management: the groundwork', () => {
       entryLimit: true,
       overstayAlert: true,
       rollCall: true,
-      staffFaceMatch: false,
+      staffFaceMatch: true,
     });
     expect(DEFAULT_VISITOR_SETTINGS).toMatchObject({ noResponseSeconds: 120, secondContact: true, overstayEscalationMinutes: 30, retentionMonths: 12 });
     expect(visitorSettingsErrors(DEFAULT_VISITOR_SETTINGS)).toEqual({});
@@ -219,7 +220,7 @@ describe('visitor management: the groundwork', () => {
   });
 
   describe('staff of a unit', () => {
-    const grace = { fullName: 'Grace Mokoena', cell: '+27 82 555 0147', idNumber: '', days: [1, 2, 3, 4, 5], hoursFrom: '07:00', hoursTo: '16:00', endDate: null };
+    const grace = { fullName: 'Grace Mokoena', cell: '+27 82 555 0147', idNumber: '', days: [1, 2, 3, 4, 5], hoursFrom: '07:00', hoursTo: '16:00', endDate: null, byVehicle: false, registration: '' };
 
     it('gives each a code: the last six digits of their cell number, however it was typed', () => {
       expect(staffCode('+27 82 555 0147')).toBe('550147');
@@ -240,6 +241,10 @@ describe('visitor management: the groundwork', () => {
       expect(staffEntryNeedsReason(true, 'uncertain')).toBe(true);
       expect(staffEntryNeedsReason(true, 'no_match')).toBe(true);
       expect(staffEntryNeedsReason(false, 'match')).toBe(true);
+      // Only a clear match lets someone in without the guard deciding.
+      expect(['match', 'uncertain', 'no_match', 'no_face', 'off'].map((r) => staffEntryAutomatic(r as 'match'))).toEqual([true, false, false, false, false]);
+      expect(staffErrors({ ...grace, byVehicle: true }, '2026-10-07')).toEqual({ registration: 'Enter the number plate of their vehicle.' });
+      expect(staffErrors({ ...grace, byVehicle: true, registration: 'ca 123-456' }, '2026-10-07')).toEqual({});
     });
   });
 });

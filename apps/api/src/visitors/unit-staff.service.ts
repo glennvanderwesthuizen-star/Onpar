@@ -3,9 +3,11 @@ import {
   faceVerdict,
   normaliseCell,
   normaliseIdNumber,
+  normalisePlate,
   sastTime,
   STAFF_FACE_TEXT,
   staffCode,
+  staffEntryAutomatic,
   staffEntryNeedsReason,
   StaffFaceResult,
   staffErrors,
@@ -43,6 +45,8 @@ export interface StaffEntry {
   samePerson: boolean;
   /** When the guard, or the comparison, is in doubt: his reason and his decision. */
   handling: { note: string; allowed: boolean } | null;
+  /** The vehicle they came in today. Null: on foot. */
+  registration: string | null;
 }
 
 const LOCAL = `(now() AT TIME ZONE 'Africa/Johannesburg')`;
@@ -51,7 +55,7 @@ const DUE_NOW = `((s.end_date IS NULL OR s.end_date >= ${LOCAL}::date) AND (s.da
   AND (s.hours_from IS NULL OR (${LOCAL}::time >= GREATEST(s.hours_from - interval '1 hour', '00:00'::time) AND ${LOCAL}::time <= s.hours_to)))`;
 const COLUMNS = `s.id, s.site_id AS "siteId", s.unit_id AS "unitId", u.name AS "unitName", s.full_name AS "fullName", s.cell, s.code, s.id_number AS "idNumber", s.days,
   to_char(s.hours_from, 'HH24:MI') AS "hoursFrom", to_char(s.hours_to, 'HH24:MI') AS "hoursTo", to_char(s.end_date, 'YYYY-MM-DD') AS "endDate", s.person_id AS "personId",
-  s.identity_document AS "identityDocument", s.ref_photo_key AS "refPhotoKey", s.ref_photo_type AS "refPhotoType", s.enrolled_at AS "enrolledAt", s.created_at AS "createdAt",
+  s.identity_document AS "identityDocument", s.ref_photo_key AS "refPhotoKey", s.ref_photo_type AS "refPhotoType", s.enrolled_at AS "enrolledAt", s.created_at AS "createdAt", s.by_vehicle AS "byVehicle", s.registration,
   ${DUE_NOW} AS "dueNow", (s.end_date IS NOT NULL AND s.end_date < ${LOCAL}::date) AS ended,
   (SELECT v.id FROM visits v WHERE v.staff_id = s.id AND v.status = 'on_site' ORDER BY v.captured_at DESC LIMIT 1) AS "onSiteVisitId",
   (SELECT max(COALESCE(v.entry_at, v.captured_at)) FROM visits v WHERE v.staff_id = s.id) AS "lastIn",
@@ -89,6 +93,8 @@ export class UnitStaffService {
       // The person who registered them knows the number; elsewhere only its end is shown.
       cell: full ? (r.cell as string) : `ends ${String(r.cell).slice(-4)}`,
       code: r.code as string,
+      // The vehicle they usually come in; null when they come on foot.
+      vehicle: (r.byVehicle ? r.registration : null) as string | null,
       when: when(r as { days: number[] | null; hoursFrom: string | null; hoursTo: string | null; endDate: string | null }),
       enrolled: !!r.enrolledAt,
       ended: r.ended as boolean,
@@ -122,8 +128,8 @@ export class UnitStaffService {
     }
     const id = (
       await tx.query(
-        `INSERT INTO unit_staff (company_id, site_id, unit_id, full_name, cell, code, id_number, days, hours_from, hours_to, end_date, added_by_customer, added_by_user)
-         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10::date, $11, $12) RETURNING id`,
+        `INSERT INTO unit_staff (company_id, site_id, unit_id, full_name, cell, code, id_number, days, hours_from, hours_to, end_date, added_by_customer, added_by_user, by_vehicle, registration)
+         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7::smallint[], $8::time, $9::time, $10::date, $11, $12, $13, $14) RETURNING id`,
         [
           siteId,
           unitId,
@@ -137,11 +143,13 @@ export class UnitStaffService {
           input.endDate,
           who.kind === 'customer' ? who.customer.customerId : null,
           who.kind === 'user' ? who.user.userId : null,
+          input.byVehicle,
+          input.byVehicle ? normalisePlate(input.registration) : null,
         ],
       )
     ).rows[0].id as string;
     // The audit trail says a staff member was registered and for when, without their numbers.
-    await this.audit.byAccount(tx, who.kind === 'customer' ? who.customer : who.user, { action: 'unit_staff.add', entityType: 'unit_staff', entityId: id, after: { siteId, unitId, when: when(input), hasIdNumber: !!input.idNumber.trim() } });
+    await this.audit.byAccount(tx, who.kind === 'customer' ? who.customer : who.user, { action: 'unit_staff.add', entityType: 'unit_staff', entityId: id, after: { siteId, unitId, when: when(input), hasIdNumber: !!input.idNumber.trim(), byVehicle: input.byVehicle } });
     return { id };
   }
 
@@ -167,6 +175,8 @@ export class UnitStaffService {
       fullName: r.fullName as string,
       visiting: r.unitName ? `Unit ${r.unitName}` : 'The office',
       when: when(r as { days: number[] | null; hoursFrom: string | null; hoursTo: string | null; endDate: string | null }),
+      /** The vehicle they usually come in; null when they come on foot. */
+      vehicle: (r.byVehicle ? r.registration : null) as string | null,
       /** First arrival: the ID is scanned and the reference photo taken. */
       enrolled: !!r.enrolledAt,
       /** On site now: the next thing is leaving. */
@@ -321,12 +331,32 @@ export class UnitStaffService {
       if (!b.handling.allowed) return { status: 'refused', visitId: null, message: 'Not let in. Your supervisor and the customer have been told.' };
     }
 
-    const checks = { staff: true, firstDay, face: { guardSaysSame: firstDay ? null : b.samePerson, comparison: result } };
+    // Let in on the photos alone when the comparison is a clear match (owner, 7 Oct 2026); otherwise the guard decided.
+    const automatic = !firstDay && !doubt && staffEntryAutomatic(result);
+    // The vehicle they came in today, if any.
+    const plate = b.registration ? normalisePlate(b.registration) : '';
+    if (b.registration && (plate.length < 2 || plate.length > 12)) throw new BadRequestException({ message: 'Enter the number plate.', errors: { registration: 'Enter the number plate.' } });
+    const vehicleId = plate
+      ? ((
+          await tx.query(
+            `INSERT INTO visitor_vehicles (company_id, site_id, registration, first_seen, last_seen) VALUES (app_company_id(), $1, $2, $3, $3)
+             ON CONFLICT (site_id, registration) DO UPDATE SET last_seen = greatest(visitor_vehicles.last_seen, excluded.last_seen) RETURNING id`,
+            [gate.siteId, plate, at],
+          )
+        ).rows[0].id as string)
+      : null;
+    const checks = {
+      staff: true,
+      firstDay,
+      face: { guardSaysSame: firstDay || automatic ? null : b.samePerson, comparison: result, automatic },
+      ...(plate && s.registration !== plate ? { otherVehicle: true } : {}),
+      ...(!plate && s.byVehicle ? { onFootToday: true } : {}),
+    };
     const visitId = (
       await tx.query(
         `INSERT INTO visits (company_id, site_id, gate_id, device_id, event_id, type, person_id, category_id, unit_id, status, capture_method, identity_document, identity_method,
-                             checks, captured_at, entry_guard, face_photo_key, face_photo_type, announced, staff_id, entry_at, decided_at)
-         VALUES (app_company_id(), $1, $2, $3, $4, 'pedestrian', $5, $6, $7, 'on_site', $8, $9, $10, $11, $12, $13, $14, $15, true, $16, now(), now()) RETURNING id`,
+                             checks, captured_at, entry_guard, face_photo_key, face_photo_type, announced, staff_id, entry_at, decided_at, vehicle_id)
+         VALUES (app_company_id(), $1, $2, $3, $4, CASE WHEN $17::uuid IS NULL THEN 'pedestrian' ELSE 'vehicle' END, $5, $6, $7, 'on_site', $8, $9, $10, $11, $12, $13, $14, $15, true, $16, now(), now(), $17) RETURNING id`,
         [
           gate.siteId,
           gate.id,
@@ -344,6 +374,7 @@ export class UnitStaffService {
           snapshotKey,
           face.mimetype,
           id,
+          vehicleId,
         ],
       )
     ).rows[0].id as string;
@@ -358,7 +389,7 @@ export class UnitStaffService {
     if (people.length) {
       await this.notifications.record(tx, { userIds: [], customerIds: people, kind: 'visitor_arrived', title: 'Your staff member has arrived', body: `${s.fullName} came in at ${gate.name} at ${sastTime(at)}.`, lockScreen: 'A member of your staff has arrived.', url: `/c/visits/${visitId}`, siteId: gate.siteId, entityType: 'visit', entityId: visitId });
     }
-    return { status: 'on_site', visitId, message: firstDay ? 'Registered. Let them in.' : 'Let them in.' };
+    return { status: 'on_site', visitId, message: firstDay ? 'Registered. Let them in.' : automatic ? 'The photos match. Let them in.' : 'Let them in.' };
   }
 
   /** A staff member going home: their code again, and the visit is closed. Safe to send twice. */

@@ -12,6 +12,7 @@ interface Staff {
   visiting: string;
   cell: string;
   code: string;
+  vehicle: string | null;
   when: string;
   enrolled: boolean;
   ended: boolean;
@@ -20,7 +21,7 @@ interface Staff {
   lastOut: string | null;
 }
 
-const EMPTY = { fullName: '', cell: '', idNumber: '', days: [] as number[], hoursFrom: '', hoursTo: '', endDate: '', unitId: '' };
+const EMPTY = { byVehicle: false, registration: '', fullName: '', cell: '', idNumber: '', days: [] as number[], hoursFrom: '', hoursTo: '', endDate: '', unitId: '' };
 
 /** The form for registering someone who works for a unit: who, their cell number, and when they work. */
 function StaffForm({ path, units, onDone, onCancel }: { path: string; units?: { id: string; name: string }[]; onDone: () => void; onCancel: () => void }) {
@@ -37,7 +38,7 @@ function StaffForm({ path, units, onDone, onCancel }: { path: string; units?: { 
     try {
       await api(path, {
         method: 'POST',
-        json: { fullName: f.fullName, cell: f.cell, idNumber: f.idNumber, days: f.days, hoursFrom: f.hoursFrom || null, hoursTo: f.hoursTo || null, endDate: f.endDate || null, ...(units ? { unitId: f.unitId || null } : {}) },
+        json: { fullName: f.fullName, cell: f.cell, idNumber: f.idNumber, days: f.days, hoursFrom: f.hoursFrom || null, hoursTo: f.hoursTo || null, endDate: f.endDate || null, byVehicle: f.byVehicle, registration: f.byVehicle ? f.registration : '', ...(units ? { unitId: f.unitId || null } : {}) },
       });
       onDone();
     } catch (err) {
@@ -70,6 +71,19 @@ function StaffForm({ path, units, onDone, onCancel }: { path: string; units?: { 
       <Field label="Cell number" error={errors.cell} hint="At the gate they give the last six digits of this number.">
         <input type="tel" value={f.cell} onChange={(e) => set({ cell: e.target.value })} required />
       </Field>
+      <div className="m-actions" style={{ marginBottom: 10 }}>
+        <button type="button" className={`btn ${f.byVehicle ? 'ghost' : ''}`} onClick={() => set({ byVehicle: false })}>
+          Comes on foot
+        </button>
+        <button type="button" className={`btn ${f.byVehicle ? '' : 'ghost'}`} onClick={() => set({ byVehicle: true })}>
+          Comes by vehicle
+        </button>
+      </div>
+      {f.byVehicle && (
+        <Field label="Number plate of their vehicle" error={errors.registration} hint="If they come in another vehicle or on foot one day, they are still let in and it is noted.">
+          <input value={f.registration} onChange={(e) => set({ registration: e.target.value })} autoCapitalize="characters" required />
+        </Field>
+      )}
       <Field label="ID or passport number (optional)" error={errors.idNumber} hint="The gate scans their ID on the first day. If you give the number, it must be the same one.">
         <input value={f.idNumber} onChange={(e) => set({ idNumber: e.target.value })} />
       </Field>
@@ -119,7 +133,7 @@ function StaffLine({ s, showUnit, onRemove }: { s: Staff; showUnit: boolean; onR
           {s.when}
         </span>
         <span className="mute small" style={{ display: 'block' }}>
-          Cell {s.cell} · gives <b>{s.code}</b> at the gate
+          Cell {s.cell} · gives <b>{s.code}</b> at the gate · {s.vehicle ? `vehicle ${s.vehicle}` : 'on foot'}
         </span>
         {s.lastIn && (
           <span className="mute small" style={{ display: 'block' }}>

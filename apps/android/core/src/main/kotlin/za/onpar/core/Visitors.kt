@@ -112,6 +112,8 @@ data class StaffHit(
     /** Due at work at this moment. When not, they come in as a visitor and the customer is asked. */
     val dueNow: Boolean = true,
     val notDue: String? = null,
+    /** The vehicle they usually come in; null when they come on foot. */
+    val vehicle: String? = null,
 )
 
 @Serializable
@@ -122,6 +124,9 @@ data class StaffFound(val staff: List<StaffHit> = emptyList())
 data class StaffCompare(val result: String = "off", val text: String = "") {
     /** The comparison is in doubt: letting them in needs a reason. */
     val doubtful: Boolean get() = result == "uncertain" || result == "no_match"
+
+    /** A clear match: they are let in on the photos alone (owner, 7 Oct 2026). */
+    val automatic: Boolean get() = result == "match"
 }
 
 /** How a staff entry or exit ended: "on_site", "refused" or "exited". */
@@ -141,6 +146,8 @@ data class StaffEntryDraft(
     val identityPhoto: File? = null,
     val note: String = "",
     val allowed: Boolean? = null,
+    /** The vehicle they came in today; null on foot. */
+    val registration: String? = null,
 )
 
 @Serializable
@@ -659,6 +666,7 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
                 put("method", e.method)
             }
             put("samePerson", d.samePerson)
+            put("registration", d.registration?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(VisitorScan.plate(it)) } ?: JsonNull)
             if (d.allowed == null) put("handling", JsonNull) else putJsonObject("handling") {
                 put("note", d.note.trim())
                 put("allowed", d.allowed)

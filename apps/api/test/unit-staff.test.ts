@@ -66,6 +66,9 @@ describe('visitor management: staff of a unit', () => {
     unit20 = (await w.http().post(`${site()}/units`).set(auth(admin)).send({ name: '20' })).body.id;
     thabo = await customer({ kind: 'tenant', fullName: 'Thabo Tenant', email: 'thabo@home.test', unitId: unit14, phone: '082 555 0140' });
     nomsa = await customer({ kind: 'tenant', fullName: 'Nomsa Other', email: 'nomsa@home.test', unitId: unit20 });
+    // Automatic photo matching starts on (owner, 7 Oct 2026). It is switched off here so the guard's own decisions are tested first.
+    expect((await w.http().get(`${site()}/visitor-setup`).set(auth(admin))).body.settings.checks.staffFaceMatch).toBe(true);
+    await faceCheck(false);
   });
   afterAll(() => w.app.close());
 
@@ -77,7 +80,7 @@ describe('visitor management: staff of a unit', () => {
     graceId = made.body.id;
     expect((await add(thabo, { fullName: 'Grace again', cell: '082 555 0147' })).status).toBe(409);
     const mine = (await w.http().get('/api/customer/staff').set(auth(thabo.token))).body;
-    expect(mine).toEqual([{ id: graceId, fullName: 'Grace Mokoena', visiting: 'Unit 14', cell: '0825550147', code: '550147', when: 'Every day, any time', enrolled: false, ended: false, onSite: false, lastIn: null, lastOut: null }]);
+    expect(mine).toEqual([{ id: graceId, fullName: 'Grace Mokoena', visiting: 'Unit 14', cell: '0825550147', code: '550147', vehicle: null, when: 'Every day, any time', enrolled: false, ended: false, onSite: false, lastIn: null, lastOut: null }]);
     // Another unit sees and removes nothing of it.
     expect((await w.http().get('/api/customer/staff').set(auth(nomsa.token))).body).toEqual([]);
     expect((await w.http().post(`/api/customer/staff/${graceId}/remove`).set(auth(nomsa.token))).status).toBe(404);
@@ -152,7 +155,7 @@ describe('visitor management: staff of a unit', () => {
     const r = await enter(graceId, { samePerson: true });
     expect(r.body).toMatchObject({ status: 'on_site', message: 'Let them in.' });
     const [v] = await ownerQuery('SELECT capture_method, checks FROM visits WHERE id = $1', [r.body.visitId]);
-    expect(v).toMatchObject({ capture_method: 'staff', checks: { staff: true, firstDay: false, face: { guardSaysSame: true, comparison: 'off' } } });
+    expect(v).toMatchObject({ capture_method: 'staff', checks: { staff: true, firstDay: false, face: { guardSaysSame: true, comparison: 'off', automatic: false } } });
     await leave(graceId);
   });
 
@@ -170,7 +173,7 @@ describe('visitor management: staff of a unit', () => {
   });
 
   describe('with automatic photo matching switched on for the site', () => {
-    it('tells the guard how alike the photos are, and still leaves the decision to him', async () => {
+    it('lets a clear match in on the photos alone, and gives any doubt to the guard', async () => {
       expect((await faceCheck(true)).status).toBe(200);
       const compare = (face: string) => w.http().post(`/api/device/staff/${graceId}/compare`).set(g()).attach('face', photo(face), { filename: 'face.jpg', contentType: 'image/jpeg' });
       expect((await compare('person-a-selfie.jpg')).body).toEqual({ result: 'match', text: 'The photos look like the same person.' });
@@ -183,11 +186,42 @@ describe('visitor management: staff of a unit', () => {
       const [a] = await ownerQuery(`SELECT after FROM audit_log WHERE action = 'unit_staff.face_doubt' ORDER BY id DESC LIMIT 1`);
       expect(a.after).toMatchObject({ guardSaysSame: true, comparison: 'no_match', allowed: true });
       await leave(graceId);
-      // A clear match needs nothing more.
-      expect((await enter(graceId, { samePerson: true }, 'person-a-selfie.jpg')).body.status).toBe('on_site');
+      // A clear match: let in at once, recorded as decided by the comparison and not by the guard.
+      const auto = await enter(graceId, { samePerson: true }, 'person-a-selfie.jpg');
+      expect(auto.body).toMatchObject({ status: 'on_site', message: 'The photos match. Let them in.' });
+      const [v] = await ownerQuery('SELECT checks FROM visits WHERE id = $1', [auto.body.visitId]);
+      expect(v.checks.face).toEqual({ guardSaysSame: null, comparison: 'match', automatic: true });
+      await leave(graceId);
+      // No clear face in the snapshot: not automatic; the guard looked and said it is her.
+      const byEye = await enter(graceId, { samePerson: true }, 'no-face.jpg');
+      expect(byEye.body).toMatchObject({ status: 'on_site', message: 'Let them in.' });
+      expect((await ownerQuery('SELECT checks FROM visits WHERE id = $1', [byEye.body.visitId]))[0].checks.face).toEqual({ guardSaysSame: true, comparison: 'no_face', automatic: false });
       await leave(graceId);
       await faceCheck(false);
     });
+  });
+
+  it('records staff who come in their own vehicle, and the vehicle they came in each day', async () => {
+    const add = (body: Record<string, unknown>) => w.http().post('/api/customer/staff').set(auth(thabo.token)).send({ fullName: 'David Driver', cell: '071 555 0333', ...body });
+    expect((await add({ byVehicle: true })).body.errors).toEqual({ registration: 'Enter the number plate of their vehicle.' });
+    const made = await add({ byVehicle: true, registration: 'ca 900-100' });
+    expect(made.status).toBe(201);
+    expect((await find('550333'))[0]).toMatchObject({ fullName: 'David Driver', vehicle: 'CA900100' });
+    const day1 = await enter(made.body.id, { enrol: { ...idCard, idNumber: '7001015009081', surname: 'Driver', names: 'David' }, registration: 'CA 900 100' });
+    expect(day1.body.status).toBe('on_site');
+    const [v] = await ownerQuery('SELECT v.type, ve.registration, v.checks FROM visits v JOIN visitor_vehicles ve ON ve.id = v.vehicle_id WHERE v.id = $1', [day1.body.visitId]);
+    expect(v).toMatchObject({ type: 'vehicle', registration: 'CA900100' });
+    expect(v.checks.otherVehicle).toBeUndefined();
+    expect((await w.http().get('/api/device/visitors/on-site').set(g())).body.visitors.find((x: { id: string }) => x.id === day1.body.visitId)).toMatchObject({ visitor: 'David Driver', vehicle: 'CA900100', staff: true });
+    await leave(made.body.id);
+    // Another day in a different vehicle, and one on foot: both are let in, and it is noted.
+    const other = await enter(made.body.id, { samePerson: true, registration: 'GP 1' });
+    expect((await ownerQuery('SELECT type, checks FROM visits WHERE id = $1', [other.body.visitId]))[0]).toMatchObject({ type: 'vehicle', checks: { otherVehicle: true } });
+    await leave(made.body.id);
+    const walked = await enter(made.body.id, { samePerson: true });
+    expect((await ownerQuery('SELECT type, checks FROM visits WHERE id = $1', [walked.body.visitId]))[0]).toMatchObject({ type: 'pedestrian', checks: { onFootToday: true } });
+    await leave(made.body.id);
+    await w.http().post(`/api/customer/staff/${made.body.id}/remove`).set(auth(thabo.token));
   });
 
   it('stops access at once when the tenant takes them off the list', async () => {
