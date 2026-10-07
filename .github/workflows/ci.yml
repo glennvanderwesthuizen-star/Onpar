@@ -31,7 +31,14 @@ jobs:
         run: pg_dump --version && pg_restore --version
       - run: pnpm --filter @onpar/rules build
       - run: pnpm typecheck
-      - run: pnpm test
+      - name: Run the tests
+        run: set -o pipefail; pnpm test 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - name: Say which tests failed
+        # Puts the failures on the run's summary page, where they can be read without downloading the log.
+        if: failure()
+        run: |
+          msg=$(sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/test.log" | grep -E -A30 "●|FAIL |error TS" | head -150 | cut -c1-300 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Failed tests::${msg:-No test failure lines were found in the log.}"
       - run: pnpm --filter @onpar/web build
 
   android:
@@ -48,7 +55,13 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - name: Test the phone logic and build the app
-        run: ./gradlew --no-daemon :core:test :app:assembleDebug
+        run: set -o pipefail; ./gradlew --no-daemon :core:test :app:assembleDebug 2>&1 | tee "$RUNNER_TEMP/build.log"
+      - name: Say what failed
+        # Puts compile errors and failed tests on the run's summary page.
+        if: failure()
+        run: |
+          msg=$(sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/build.log" | grep -E -A6 "^e: |^w: .*error|FAILED|What went wrong|Exception|AssertionFailedError|expected:" | head -150 | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Phone app build::${msg:-No error lines were found in the log.}"
       - name: Keep the app file for download
         uses: actions/upload-artifact@v4
         with:
