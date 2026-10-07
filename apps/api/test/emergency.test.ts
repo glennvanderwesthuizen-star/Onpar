@@ -79,17 +79,20 @@ describe('emergency panel', () => {
     expect((await call()).status).toBe(200);
     expect((await call()).status).toBe(200);
     await w.http().post('/api/device/emergency-calls').set('X-Device-Token', device).send({ eventId: randomUUID(), kind: 'ambulance_national', trustedAt: now(), deviceClock: now() });
+    // The control room is the first button on the panel since PANIC stopped dialling it by itself.
+    expect((await w.http().post('/api/device/emergency-calls').set('X-Device-Token', device).send({ eventId: randomUUID(), kind: 'control_room', panicId, trustedAt: now(), deviceClock: now() })).status).toBe(200);
     const rows = await ownerQuery('SELECT service, national, panic_id FROM emergency_calls WHERE site_id = $1 ORDER BY called_at', [siteId]);
     expect(rows).toEqual([
       { service: 'police', national: false, panic_id: panicId },
       { service: 'ambulance', national: true, panic_id: null },
+      { service: 'control_room', national: false, panic_id: panicId },
     ]);
     const open = (await w.http().get('/api/panic').set(auth(manager))).body.find((p: { id: string }) => p.id === panicId);
-    expect(open.emergencyCalls).toHaveLength(1);
+    expect(open.emergencyCalls).toHaveLength(2);
     expect(open.emergencyCalls[0]).toMatchObject({ service: 'police', national: false });
-    expect((await w.http().get(`/api/supervisor/panic/${panicId}`).set(auth(manager))).body.emergencyCalls).toHaveLength(1);
+    expect((await w.http().get(`/api/supervisor/panic/${panicId}`).set(auth(manager))).body.emergencyCalls).toHaveLength(2);
     const audit = await ownerQuery(`SELECT after FROM audit_log WHERE action = 'emergency.call' ORDER BY id`);
-    expect(audit).toHaveLength(2);
+    expect(audit).toHaveLength(3);
     expect(JSON.stringify(audit)).not.toContain('011 555');
     // The record cannot be changed or removed.
     await expect(ownerQuery('DELETE FROM emergency_calls')).rejects.toThrow();

@@ -174,7 +174,7 @@ fun FrontScreen(vm: AppViewModel, state: UiState) {
             vm.unlock(g.number, pin)
         }
     }
-    Text("PANIC calls the control room and alerts your supervisors. BOLO sends a photo of something to look out for.", color = Color.Gray, fontSize = 13.sp)
+    Text("PANIC alerts the control room and your supervisors, then shows the emergency numbers. BOLO sends a photo of something to look out for.", color = Color.Gray, fontSize = 13.sp)
     if (state.waiting > 0) Text("${state.waiting} waiting on the phone to be sent.", color = Color.Gray, fontSize = 13.sp)
 }
 
@@ -214,24 +214,17 @@ fun PanicSentScreen(vm: AppViewModel, state: UiState) {
             )
             Text(
                 when (p.stage) {
-                    PanicStage.Sending -> "Taking your location and alerting your supervisors."
-                    PanicStage.Sent -> "Your supervisors can see it on the website now" + if (p.located) ", with your location." else " (the phone could not get a location)."
-                    PanicStage.Saved -> "No signal. It will be sent the moment the phone has signal. Phone for help."
-                    PanicStage.Refused -> "The server refused it: ${p.refusal}. Phone for help."
+                    PanicStage.Sending -> "Taking your location and alerting the control room and your supervisors."
+                    PanicStage.Sent -> "The control room and your supervisors have been alerted" + if (p.located) ", with your location." else " (the phone could not get a location)."
+                    PanicStage.Saved -> "No signal. It will be sent the moment the phone has signal. Phone for help below."
+                    PanicStage.Refused -> "The server refused it: ${p.refusal}. Phone for help below."
                 },
                 color = Color.White, fontSize = 17.sp,
             )
             if (p.stage == PanicStage.Sending) CircularProgressIndicator(color = Color.White)
         }
     }
-    if (p.callProblem == null) Text("Calling the control room…", fontWeight = FontWeight.Bold)
-    else Text(p.callProblem, color = PanicRed, fontWeight = FontWeight.Bold)
-    p.controlRoom?.let {
-        Button(onClick = { vm.callControlRoom() }, modifier = Modifier.fillMaxWidth().height(64.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
-            Text("📞 Call control room again", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-    EmergencyPanel(vm, state, panicId = p.eventId)
+    EmergencyPanel(vm, state, panicId = p.eventId, withControlRoom = true)
     OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Other contacts", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.panicDone() }, enabled = p.stage != PanicStage.Sending, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 }

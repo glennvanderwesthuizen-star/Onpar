@@ -52,9 +52,13 @@ data class EmergencyButton(val service: String, val title: String, val options: 
 
 private val EMERGENCY_ORDER = listOf("police" to "POLICE", "fire" to "FIRE BRIGADE", "ambulance" to "AMBULANCE", "armed_response" to "ARMED RESPONSE")
 
-/** The emergency panel's buttons, in a fixed order. A service with no number has no button. */
-fun List<Contact>.emergencyButtons(): List<EmergencyButton> =
-    EMERGENCY_ORDER.mapNotNull { (service, title) -> filter { it.emergency == service }.takeIf { it.isNotEmpty() }?.let { EmergencyButton(service, title, it) } }
+/**
+ * The emergency panel's buttons, in a fixed order. A service with no number has no button.
+ * After PANIC the site's control room comes first (PANIC no longer phones it by itself: owner, 7 Oct 2026).
+ */
+fun List<Contact>.emergencyButtons(withControlRoom: Boolean = false): List<EmergencyButton> =
+    listOfNotNull(firstOrNull { it.kind == "control_room" }?.takeIf { withControlRoom }?.let { EmergencyButton("control_room", "CONTROL ROOM", listOf(it)) }) +
+        EMERGENCY_ORDER.mapNotNull { (service, title) -> filter { it.emergency == service }.takeIf { it.isNotEmpty() }?.let { EmergencyButton(service, title, it) } }
 
 /** The guard's own score, training, and the site's approved contacts. */
 class ProfileActions(private val device: OnParDevice, dataDir: File) {

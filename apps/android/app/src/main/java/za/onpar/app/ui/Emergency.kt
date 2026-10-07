@@ -40,6 +40,7 @@ private val AmbulanceGreen = Color(0xFF0B6B3A)
 private val ArmedDark = Color(0xFF22262B)
 
 private fun colourOf(service: String) = when (service) {
+    "control_room" -> Green
     "police" -> PoliceBlue
     "fire" -> FireRed
     "ambulance" -> AmbulanceGreen
@@ -53,8 +54,8 @@ private fun colourOf(service: String) = when (service) {
  * station. The armed response button carries the company's logo when the site has one.
  */
 @Composable
-fun EmergencyPanel(vm: AppViewModel, state: UiState, panicId: String?) {
-    val buttons = state.contacts.emergencyButtons()
+fun EmergencyPanel(vm: AppViewModel, state: UiState, panicId: String?, withControlRoom: Boolean = false) {
+    val buttons = state.contacts.emergencyButtons(withControlRoom)
     if (buttons.isEmpty()) return
     var open by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

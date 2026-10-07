@@ -966,3 +966,12 @@ After PANIC, and on the Call screen, the post phone shows an **EMERGENCY** panel
 - Phones on an older app version show the emergency numbers as plain rows in the Call list.
 
 **Not yet proven:** on a real phone. No real emergency number should be dialled when testing: use the test site with made-up local numbers, and do not tap 10111 or 10177.
+
+### Change the same evening: PANIC no longer phones anyone by itself (owner, 7 Oct 2026)
+
+The owner corrected the flow. This replaces the automatic control room call of D-27.
+
+- **PANIC sends the alert and opens the panel.** The alert goes to everyone responsible for the site (control room users, supervisors, managers), worded "John Smith at Estate ABC has pressed the panic button (Main gate)." The locked screen of the receiver's phone still shows only "Panic at Estate ABC".
+- **The panel after PANIC has five buttons:** Control room first, then Police, Fire brigade, Ambulance, Armed response. The guard taps who he needs. On the Call screen the control room stays in the ordinary contacts list above the four emergency buttons.
+- A tap on Control room is recorded like the others (migration `0043_control_room_call.sql`).
+- The website no longer says "The phone could not start a call"; it lists who the guard phoned from the panel, or that he has phoned nobody yet.

@@ -98,13 +98,15 @@ export default function MobilePanic() {
           <span>Guard</span>
           <b>{p.guard ? `${p.guard}${p.employeeNumber ? ` (${p.employeeNumber})` : ''}` : 'Nobody was signed in on the phone'}</b>
         </div>
+        {p.callStarted && (
+          <div className="line">
+            <span>Phone’s call to the control room</span>
+            <b>Started</b>
+          </div>
+        )}
         <div className="line">
-          <span>Phone’s call to the control room</span>
-          <b>{p.callStarted ? 'Started' : 'Not started'}</b>
-        </div>
-        <div className="line">
-          <span>Emergency numbers the guard phoned</span>
-          <b>{p.emergencyCalls.length ? p.emergencyCalls.map((c) => `${emergencyCallText(c)} ${clock(c.calledAt)}`).join(', ') : 'None'}</b>
+          <span>Who the guard phoned from the emergency panel</span>
+          <b>{p.emergencyCalls.length ? p.emergencyCalls.map((c) => `${emergencyCallText(c)} ${clock(c.calledAt)}`).join(', ') : 'Nobody yet'}</b>
         </div>
         <div className="line">
           <span>Location at that moment</span>

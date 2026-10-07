@@ -93,7 +93,7 @@ describe('the supervisor app', () => {
       expect(JSON.stringify(sender.sent[0].payload)).not.toContain('John');
       for (const who of [supervisor, manager, admin]) {
         const [a] = await myAlerts(who);
-        expect(a).toMatchObject({ kind: 'panic', title: 'Panic at Estate ABC', body: 'Main gate · John Smith', url: `/m/panic/${eventId}`, siteId: w.a.siteId });
+        expect(a).toMatchObject({ kind: 'panic', title: 'Panic at Estate ABC', body: 'John Smith at Estate ABC has pressed the panic button (Main gate).', url: `/m/panic/${eventId}`, siteId: w.a.siteId });
       }
       expect(await myAlerts(bAdmin)).toEqual([]);
       // The phone retries after a dropped connection: still one panic and one alert each.

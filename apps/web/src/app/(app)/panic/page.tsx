@@ -71,12 +71,12 @@ function PanicCard({ p, canManage, onDone }: { p: PanicAlert; canManage: boolean
             {p.lateSynced && ' · sent late (the phone was offline)'}
           </div>
           <div className="small">{p.employeeName ? `${p.employeeName} (${p.employeeNumber})` : 'Nobody was signed in on the phone'}</div>
-          <div className="small">{p.callStarted ? 'The phone started a call to the control room.' : 'The phone could not start a call.'}</div>
-          {!!p.emergencyCalls?.length && (
-            <div className="small">
-              Then phoned: {p.emergencyCalls.map((c) => `${emergencyCallText(c)} at ${formatDateTime(c.calledAt)}`).join('; ')}.
-            </div>
-          )}
+          {p.callStarted && <div className="small">The phone started a call to the control room.</div>}
+          <div className="small">
+            {p.emergencyCalls?.length
+              ? `Phoned from the emergency panel: ${p.emergencyCalls.map((c) => `${emergencyCallText(c)} at ${formatDateTime(c.calledAt)}`).join('; ')}.`
+              : 'The guard has not phoned anyone from the emergency panel.'}
+          </div>
           <div className="small">
             {p.lat != null && p.lng != null ? (
               <>

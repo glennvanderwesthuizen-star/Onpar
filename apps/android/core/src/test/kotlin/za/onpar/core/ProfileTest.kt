@@ -78,6 +78,8 @@ class ProfileTest {
         assertEquals(listOf("police", "fire", "ambulance", "armed_response"), buttons.map { it.service })
         assertEquals(listOf("10111", "011 555 0001"), buttons[0].options.map { it.phone })
         assertEquals(1, buttons[1].options.size)
+        // After PANIC the control room is the first of five.
+        assertEquals(listOf("control_room", "police", "fire", "ambulance", "armed_response"), device.profile.cachedContacts().emergencyButtons(withControlRoom = true).map { it.service })
         assertEquals("LOGO", device.profile.armedLogo()?.decodeToString())
         assertTrue(device.profile.isApproved("10111"))
         assertTrue(device.profile.isApproved("10177"))

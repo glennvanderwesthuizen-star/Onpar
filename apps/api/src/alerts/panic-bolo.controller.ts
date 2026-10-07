@@ -46,7 +46,7 @@ const PanicBody = z.object({
 
 const EmergencyCallBody = z.object({
   eventId: z.string().uuid(),
-  kind: z.enum(EMERGENCY_OPTION_KINDS),
+  kind: z.enum(['control_room', ...EMERGENCY_OPTION_KINDS]),
   panicId: z.string().uuid().nullish(),
   trustedAt: isoTime,
   deviceClock: isoTime,
@@ -122,7 +122,7 @@ export class DevicePanicBoloController {
       )
     ).rows[0];
     const site: string = r.site ?? 'a phone not yet assigned to a site';
-    return { site, detail: [r.post || device.label, r.guard].filter(Boolean).join(' · ') };
+    return { site, post: (r.post || device.label) as string, guard: (r.guard ?? null) as string | null, detail: [r.post || device.label, r.guard].filter(Boolean).join(' · ') };
   }
 
   /** Raises a panic. Safe to retry: the same eventId is recorded once. */
@@ -155,7 +155,8 @@ export class DevicePanicBoloController {
       await this.notifications.recordForSite(tx, device.siteId, {
         kind: 'panic',
         title: `Panic at ${where.site}`,
-        body: where.detail,
+        // Who and where, in plain words (owner, 7 Oct 2026). The locked screen still shows the site only.
+        body: `${where.guard ?? 'Someone'} at ${where.site} has pressed the panic button (${where.post}).`,
         lockScreen: `Panic at ${where.site}`,
         url: `/m/panic/${b.eventId}`,
         entityType: 'panic_alert',
@@ -181,7 +182,7 @@ export class DevicePanicBoloController {
       if ((await tx.query('SELECT 1 FROM emergency_calls WHERE id = $1', [b.eventId])).rowCount) return { id: b.eventId };
       // What the kind means does not depend on the site's numbers, so every kind is offered here.
       const all = { name: '', phone: 'x' };
-      const option = [...emergencyOptions({}), ...emergencyOptions({ police_station: all, fire: all, ambulance: all, armed_response: all })].find((o) => o.kind === b.kind)!;
+      const option = [...emergencyOptions({}), ...emergencyOptions({ police_station: all, fire: all, ambulance: all, armed_response: all })].find((o) => o.kind === b.kind) ?? { kind: 'control_room', service: 'control_room', national: false };
       await tx.query(
         `INSERT INTO emergency_calls (id, company_id, site_id, device_id, employee_id, panic_id, service, option_kind, national, called_at, late_synced)
          VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10)`,

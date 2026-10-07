@@ -953,20 +953,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // --- Panic and BOLO (decisions D-27, D-28) --------------------------------
 
     /**
-     * PANIC, after the button was held for two seconds. In this order: call the site's
-     * control room at once, take one location reading (a few seconds at most), then send
-     * the alert to the website. Works with nobody signed in, and with no data (the call
-     * uses the mobile network; the alert waits on the phone and goes first when signal returns).
+     * PANIC, after the button was held for two seconds. It sends the alert to the control room,
+     * supervisors and managers (with one location reading, a few seconds at most) and opens the
+     * emergency panel. It does not phone anyone by itself (owner, 7 Oct 2026): the guard taps
+     * who he needs. Works with nobody signed in; with no data the alert waits on the phone and
+     * goes first when signal returns, and the panel's calls still work on the mobile network.
      */
     fun panic() {
         if (_state.value.panic?.stage == PanicStage.Sending) return
         val app = getApplication<Application>()
         val control = (_state.value.contacts.ifEmpty { device.profile.cachedContacts() }).firstOrNull { it.kind == "control_room" }
-        val callProblem = when {
-            control == null -> "No control room number is set up for this site, so the phone could not call. Phone for help another way."
-            !Calls.place(app, control.phone) -> "The phone could not start the call to the control room (On Par may not make calls). Phone for help another way."
-            else -> null
-        }
+        val callProblem: String? = null
         val eventId = java.util.UUID.randomUUID().toString()
         _state.update { it.copy(page = Page.PanicSent, panic = PanicStatus(PanicStage.Sending, callProblem, controlRoom = control, eventId = eventId), error = null, message = null) }
         // The emergency panel on the panic screen needs the numbers even if the Call screen was never opened.
@@ -974,7 +971,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val fix = runCatching { za.onpar.app.ui.takePanicFix(app, PANIC_FIX_TIMEOUT_MS) }.getOrNull()
             val r = withContext(Dispatchers.IO) {
-                runCatching { device.alerts.panic(fix, callStarted = callProblem == null, eventId = eventId) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
+                runCatching { device.alerts.panic(fix, callStarted = false, eventId = eventId) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
             }
             val stage = when (r) {
                 is Submitted.Sent -> PanicStage.Sent
@@ -989,12 +986,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
-    }
-
-    /** Calls the control room again from the panic screen. */
-    fun callControlRoom() {
-        val c = _state.value.panic?.controlRoom ?: return
-        if (!Calls.place(getApplication(), c.phone)) _state.update { it.copy(error = "The phone could not start the call.") }
     }
 
     fun panicDone() = _state.update { it.copy(panic = null, page = Page.Home) }
