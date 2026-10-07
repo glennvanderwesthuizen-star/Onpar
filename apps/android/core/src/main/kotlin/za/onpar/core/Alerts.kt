@@ -22,8 +22,7 @@ class AlertActions(private val device: OnParDevice) {
      * could not get one in time. It is sent straight away, ahead of anything else waiting;
      * with no signal it waits in the outbox, at the front, and is sent first when signal returns.
      */
-    fun panic(fix: Fix?, callStarted: Boolean): Submitted {
-        val eventId = UUID.randomUUID().toString()
+    fun panic(fix: Fix?, callStarted: Boolean, eventId: String = UUID.randomUUID().toString()): Submitted {
         val body = buildJsonObject {
             put("eventId", eventId)
             put("trustedAt", device.clock.now().toString())
@@ -47,6 +46,22 @@ class AlertActions(private val device: OnParDevice) {
             device.outbox.add(eventId, "PANIC", "/device/panic", body, token, urgent = true)
             Submitted.Queued
         }
+    }
+
+    /**
+     * Records that the guard tapped a number on the emergency panel (the phone itself dials).
+     * `kind` is the contact's kind; `panicId` is the panic it followed, if any. Works offline.
+     */
+    fun emergencyCall(kind: String, panicId: String?): Submitted {
+        val eventId = UUID.randomUUID().toString()
+        val body = buildJsonObject {
+            put("eventId", eventId)
+            put("kind", kind)
+            if (panicId != null) put("panicId", panicId)
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        return device.outbox.submit(device.client(), eventId, "Emergency call", "/device/emergency-calls", body, device.guardToken)
     }
 
     /**

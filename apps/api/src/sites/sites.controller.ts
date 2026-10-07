@@ -1,15 +1,24 @@
 import {
   Body,
   ConflictException,
+  BadRequestException,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { IMAGE_TYPES, StorageService } from '../storage/storage.service';
 import { siteErrors, guardsNeededPerDay, DEFAULT_PAYROLL_START_DAY } from '@onpar/rules';
 import { z } from 'zod';
 import { assertSiteAccess, CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
@@ -42,10 +51,20 @@ const SiteBody = z.object({
   payrollStartDay: z.number().int().default(DEFAULT_PAYROLL_START_DAY),
   shifts: z.array(Shift),
   contacts: z
-    .object({ supervisor: Contact.optional(), site_manager: Contact.optional(), control_room: Contact.optional() })
+    .object({
+      supervisor: Contact.optional(),
+      site_manager: Contact.optional(),
+      control_room: Contact.optional(),
+      // The emergency panel (owner, 7 Oct 2026). "name" is who it is: the station, the service, the armed response company.
+      police_station: Contact.optional(),
+      fire: Contact.optional(),
+      ambulance: Contact.optional(),
+      armed_response: Contact.optional(),
+    })
     .default({}),
 });
 type SiteBody = z.infer<typeof SiteBody>;
+const MAX_LOGO_BYTES = 1024 * 1024;
 
 @Controller('sites')
 @UseGuards(UserAuthGuard)
@@ -53,7 +72,49 @@ export class SitesController {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** The armed response company's logo, shown on its button on the post phone. A small JPEG, PNG or WebP. */
+  @Post(':id/armed-response-logo')
+  @RequirePermission('sites.edit')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('logo', { limits: { fileSize: MAX_LOGO_BYTES } }))
+  async setLogo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() logo?: { mimetype: string; buffer: Buffer }) {
+    assertSiteAccess(user, id);
+    if (!logo || !IMAGE_TYPES[logo.mimetype]) throw new BadRequestException('The logo must be a JPEG, PNG or WebP image.');
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const before = (await tx.query('SELECT armed_response_logo_key AS key FROM sites WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      if (!before) throw new NotFoundException('Site not found.');
+      const key = await this.storage.put(user.companyId, `sites/${id}/armed-response`, logo.buffer, IMAGE_TYPES[logo.mimetype]);
+      await tx.query('UPDATE sites SET armed_response_logo_key = $2, armed_response_logo_type = $3, updated_at = now() WHERE id = $1', [id, key, logo.mimetype]);
+      await this.audit.byUser(tx, user, { action: 'site.armed_response_logo_set', entityType: 'site', entityId: id });
+      return { ok: true };
+    });
+  }
+
+  @Delete(':id/armed-response-logo')
+  @RequirePermission('sites.edit')
+  @HttpCode(200)
+  removeLogo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    assertSiteAccess(user, id);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const r = await tx.query('UPDATE sites SET armed_response_logo_key = NULL, armed_response_logo_type = NULL, updated_at = now() WHERE id = $1 AND armed_response_logo_key IS NOT NULL', [id]);
+      if (r.rowCount) await this.audit.byUser(tx, user, { action: 'site.armed_response_logo_remove', entityType: 'site', entityId: id });
+      return { ok: true };
+    });
+  }
+
+  @Get(':id/armed-response-logo')
+  @RequirePermission('sites.view')
+  async logo(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    assertSiteAccess(user, id);
+    const l = await this.db.withTenant(user.companyId, async (tx) => (await tx.query('SELECT armed_response_logo_key AS key, armed_response_logo_type AS type FROM sites WHERE id = $1', [id])).rows[0]);
+    if (!l?.key) throw new NotFoundException('This site has no armed response logo.');
+    res.setHeader('Content-Type', l.type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await this.storage.get(l.key));
+  }
 
   @Get()
   @RequirePermission('sites.view')
@@ -184,7 +245,7 @@ export class SitesController {
     const site = (
       await tx.query(
         `SELECT id, name, address, client, province, minimum_grade AS "minimumGrade", armed,
-                payroll_start_day AS "payrollStartDay", updated_at AS "updatedAt"
+                payroll_start_day AS "payrollStartDay", updated_at AS "updatedAt", (armed_response_logo_key IS NOT NULL) AS "armedResponseLogo"
            FROM sites WHERE id = $1`,
         [id],
       )

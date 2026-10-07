@@ -51,7 +51,7 @@ export class SupervisorController {
     const now = new Date();
     return this.db.withTenant(user.companyId, async (tx) => {
       const sites = (await tx.query(`SELECT id, name FROM sites WHERE ($1::uuid[] IS NULL OR id = ANY($1::uuid[])) ORDER BY lower(name)`, [user.siteIds])).rows;
-      const contacts = (await tx.query(`SELECT site_id, kind, name, phone FROM site_contacts WHERE ($1::uuid[] IS NULL OR site_id = ANY($1::uuid[]))`, [user.siteIds])).rows;
+      const contacts = (await tx.query(`SELECT site_id, kind, name, phone FROM site_contacts WHERE kind IN ('supervisor','site_manager','control_room') AND ($1::uuid[] IS NULL OR site_id = ANY($1::uuid[]))`, [user.siteIds])).rows;
       const onDuty = (
         await tx.query(
           `SELECT a.id, a.site_id, a.employee_id, e.full_name, e.employee_number, e.cell_number, a.shift_name, a.scheduled_start, a.scheduled_end,
@@ -117,6 +117,12 @@ export class SupervisorController {
         accuracyM: p.accuracy_m,
         locationMock: p.location_mock,
         callStarted: p.call_started,
+        emergencyCalls: (
+          await tx.query(
+            `SELECT c.service, c.national, c.called_at AS "calledAt", e.full_name AS by FROM emergency_calls c LEFT JOIN employees e ON e.id = c.employee_id WHERE c.panic_id = $1 ORDER BY c.called_at`,
+            [id],
+          )
+        ).rows,
         guard: p.guard,
         employeeNumber: p.employee_number,
         guardCell: p.guard_cell,

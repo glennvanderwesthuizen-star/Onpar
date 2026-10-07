@@ -31,7 +31,7 @@ export interface SiteValue {
   armed: boolean;
   payrollStartDay: number;
   shifts: Shift[];
-  contacts: { supervisor?: Contact; site_manager?: Contact; control_room?: Contact };
+  contacts: { supervisor?: Contact; site_manager?: Contact; control_room?: Contact; police_station?: Contact; fire?: Contact; ambulance?: Contact; armed_response?: Contact };
 }
 
 export const EMPTY_SITE: SiteValue = {
@@ -53,6 +53,14 @@ const CONTACTS: { key: keyof SiteValue['contacts']; label: string }[] = [
   { key: 'supervisor', label: 'Supervisor' },
   { key: 'site_manager', label: 'Site manager' },
   { key: 'control_room', label: 'Control room' },
+];
+
+/** The emergency panel on the post phone (owner, 7 Oct 2026). */
+const EMERGENCY: { key: keyof SiteValue['contacts']; label: string; nameLabel: string; empty: string }[] = [
+  { key: 'police_station', label: 'Local police station', nameLabel: 'Station name', empty: 'The phone always offers 10111 as well.' },
+  { key: 'fire', label: 'Fire brigade', nameLabel: 'Name', empty: 'Left empty, the phone offers 10177.' },
+  { key: 'ambulance', label: 'Ambulance', nameLabel: 'Name of the service', empty: 'Left empty, the phone offers 10177.' },
+  { key: 'armed_response', label: 'Armed response', nameLabel: 'Company name', empty: 'Left empty, the phone shows no armed response button.' },
 ];
 
 function ShiftCard({
@@ -397,6 +405,32 @@ export function SiteForm({
                 <Field label="Phone number">
                   <input type="tel" value={c.phone} onChange={(e) => update({ phone: e.target.value })} />
                 </Field>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Emergency numbers</h2>
+        <p className="mute small">
+          After PANIC, and on the Call screen, the guard sees Police, Fire brigade, Ambulance and Armed response. The phone never dials these by itself: the guard taps the one he needs,
+          and each call is recorded.
+        </p>
+        <div className="grid g2">
+          {EMERGENCY.map(({ key, label, nameLabel, empty }) => {
+            const c = site.contacts[key] ?? { name: '', phone: '' };
+            const update = (patch: Partial<Contact>) => set({ contacts: { ...site.contacts, [key]: { ...c, ...patch } } });
+            return (
+              <div key={key}>
+                <h3>{label}</h3>
+                <Field label={nameLabel}>
+                  <input value={c.name} onChange={(e) => update({ name: e.target.value })} />
+                </Field>
+                <Field label="Phone number">
+                  <input type="tel" value={c.phone} onChange={(e) => update({ phone: e.target.value })} />
+                </Field>
+                <p className="mute small">{empty}</p>
               </div>
             );
           })}

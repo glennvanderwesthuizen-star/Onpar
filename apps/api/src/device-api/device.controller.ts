@@ -1,5 +1,7 @@
-import { BadRequestException, Body, UnauthorizedException, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
-import { normaliseTsfNumber, parseCardQr, sastDate, sastInstant } from '@onpar/rules';
+import { BadRequestException, Body, UnauthorizedException, Controller, Get, HttpCode, NotFoundException, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
+import { StorageService } from '../storage/storage.service';
+import { emergencyOptions, normaliseTsfNumber, parseCardQr, sastDate, sastInstant } from '@onpar/rules';
 import { RosterService } from '../roster/roster.service';
 import { badgeOwner } from '../officers/badges';
 import { JwtService } from '@nestjs/jwt';
@@ -32,6 +34,7 @@ export class DeviceController {
     private readonly jwt: JwtService,
     private readonly pins: PinService,
     private readonly roster: RosterService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -44,10 +47,37 @@ export class DeviceController {
     return this.db.withTenant(device.companyId, async (tx) => {
       const labels: Record<string, string> = { supervisor: 'Supervisor', site_manager: 'Site manager', control_room: 'Control room' };
       const order = ['supervisor', 'site_manager', 'control_room'];
-      return (await tx.query('SELECT kind, name, phone FROM site_contacts WHERE site_id = $1', [device.siteId])).rows
+      const rows = (await tx.query('SELECT kind, name, phone FROM site_contacts WHERE site_id = $1', [device.siteId])).rows as { kind: string; name: string; phone: string }[];
+      const logo = (await tx.query('SELECT armed_response_logo_key AS key, updated_at FROM sites WHERE id = $1', [device.siteId])).rows[0];
+      const site = rows
+        .filter((c) => order.includes(c.kind))
         .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
-        .map((c) => ({ kind: c.kind, label: labels[c.kind] ?? c.kind, name: c.name, phone: c.phone }));
+        .map((c) => ({ kind: c.kind, label: labels[c.kind], name: c.name, phone: c.phone }));
+      // The emergency panel (owner, 7 Oct 2026): police, fire, ambulance, armed response. Also approved numbers.
+      const emergency = emergencyOptions(Object.fromEntries(rows.map((c) => [c.kind, c]))).map((o) => ({
+        kind: o.kind,
+        label: o.label,
+        name: o.name,
+        phone: o.phone,
+        emergency: o.service,
+        national: o.national,
+        // Changes when the logo does, so the phone knows to fetch it again.
+        logo: o.kind === 'armed_response' && logo?.key ? String(logo.key).split('/').pop() : null,
+      }));
+      return [...site, ...emergency];
     });
+  }
+
+  /** The armed response company's logo for this phone's site. */
+  @Get('armed-response-logo')
+  async armedResponseLogo(@CurrentDevice() device: DevicePrincipal, @Res() res: Response) {
+    const l = device.siteId
+      ? await this.db.withTenant(device.companyId, async (tx) => (await tx.query('SELECT armed_response_logo_key AS key, armed_response_logo_type AS type FROM sites WHERE id = $1', [device.siteId])).rows[0])
+      : null;
+    if (!l?.key) throw new NotFoundException('No logo.');
+    res.setHeader('Content-Type', l.type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await this.storage.get(l.key));
   }
 
   @Post('heartbeat')

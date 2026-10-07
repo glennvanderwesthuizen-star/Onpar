@@ -169,8 +169,9 @@ fun CallScreen(vm: AppViewModel, state: UiState, back: () -> Unit) {
     val role = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     Title("Call", back)
     Text("Approved contacts, set by your administrator.", color = Color.Gray)
-    if (state.contacts.isEmpty()) Text(if (state.busy) "Loading…" else "No contacts are set up for this site yet.", color = Color.Gray)
-    state.contacts.forEach { c ->
+    val siteContacts = state.contacts.filter { it.emergency == null }
+    if (siteContacts.isEmpty()) Text(if (state.busy) "Loading…" else "No contacts are set up for this site yet.", color = Color.Gray)
+    siteContacts.forEach { c ->
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -188,6 +189,7 @@ fun CallScreen(vm: AppViewModel, state: UiState, back: () -> Unit) {
             }
         }
     }
+    EmergencyPanel(vm, state, panicId = null)
     Text("Calls use the mobile network, so they work without data.", color = Color.Gray, fontSize = 13.sp)
     if (!Kiosk.isCallingApp(context)) {
         Spacer(Modifier.height(8.dp))

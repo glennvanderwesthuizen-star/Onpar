@@ -946,3 +946,23 @@ Everything is made up: ID numbers have month 13, plates start with TEST, cell nu
 **Not made:** guards and phones. A guard is a real enrolment (photos, ID, PSIRA), so the owner moves a guard to the test site and registers a phone there as usual.
 
 **For the owner to know:** a test site cannot be deleted (nothing in On Par is), and it shows in the site list and dashboards like any other site. Server endpoint `POST /api/test-sites`, administrator only. Tests: 3 new server tests.
+
+## Emergency panel (owner's request, 7 Oct 2026)
+
+After PANIC, and on the Call screen, the post phone shows an **EMERGENCY** panel: Police, Fire brigade, Ambulance, Armed response.
+
+- **PANIC is unchanged and goes first.** The alert is sent and the phone calls the control room exactly as before (D-27). The panel is on the panic screen underneath.
+- **Nothing on the panel dials by itself.** The guard taps the service he needs; the call uses the mobile network, so it works with no data.
+- **Police** opens to two choices when the site has its local station's number: **10111** and the **local station**. With no local number it is one button, 10111.
+- **Fire brigade** and **Ambulance**: the site's own number; **10177** only when the site has none.
+- **Armed response**: only when the site has a number. The button carries the company's name and, when one is uploaded, its **logo** (kept on the phone, so it shows with no signal).
+- **Set per site** on the site's page: a new **Emergency numbers** card (name and number for each) and an **Armed response logo** card (JPEG/PNG/WebP up to 1 MB). These numbers are approved contacts, so the locked-down phone can dial them and nothing else.
+- **Every tap is recorded** (`emergency_calls`, never changed): the service, local or national, which phone, the guard if signed in, the time, and the panic it followed. The number itself is not stored. The panic page on the website and in the supervisor app lists "Emergency numbers the guard phoned". Audit action `emergency.call`.
+- Migration `0042_emergency_panel.sql`. Rules in `packages/rules/src/emergency.ts`. Tests: 3 rules, 5 server, 1 phone-logic.
+
+**For the owner to decide or know:**
+- The national numbers (10111 police; 10177 ambulance and fire) are in one place in the rules and can be changed.
+- While the phone's automatic call to the control room is in progress, the in-call screen covers the panel; the guard sees the panel when that call ends. Whether PANIC should keep dialling the control room by itself now that the panel exists is the owner's decision (D-27 stands until he says otherwise).
+- Phones on an older app version show the emergency numbers as plain rows in the Call list.
+
+**Not yet proven:** on a real phone. No real emergency number should be dialled when testing: use the test site with made-up local numbers, and do not tap 10111 or 10177.

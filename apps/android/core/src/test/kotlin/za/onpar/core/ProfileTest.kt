@@ -63,4 +63,37 @@ class ProfileTest {
         server.shutdown()
         assertEquals(listOf("Supervisor", "Control room"), device.profile.contacts().map { it.label })
     }
+
+    @Test
+    fun `the emergency panel has police with two numbers, keeps the armed response logo on the phone, and records a tapped call`() {
+        val list = """[{"kind":"control_room","label":"Control room","phone":"011 555 0100"},
+          {"kind":"police_national","label":"Police 10111","name":"National emergency number","phone":"10111","emergency":"police","national":true},
+          {"kind":"police_station","label":"Local police station","name":"Sandton SAPS","phone":"011 555 0001","emergency":"police"},
+          {"kind":"fire_national","label":"Fire brigade 10177","phone":"10177","emergency":"fire","national":true},
+          {"kind":"ambulance","label":"Ambulance","name":"Private ambulance","phone":"011 555 0003","emergency":"ambulance"},
+          {"kind":"armed_response","label":"Armed response","name":"Fast Response","phone":"011 555 0004","emergency":"armed_response","logo":"abc.png"}]"""
+        server.enqueue(MockResponse().setBody(list))
+        server.enqueue(MockResponse().setBody("LOGO"))
+        val buttons = device.profile.contacts().emergencyButtons()
+        assertEquals(listOf("police", "fire", "ambulance", "armed_response"), buttons.map { it.service })
+        assertEquals(listOf("10111", "011 555 0001"), buttons[0].options.map { it.phone })
+        assertEquals(1, buttons[1].options.size)
+        assertEquals("LOGO", device.profile.armedLogo()?.decodeToString())
+        assertTrue(device.profile.isApproved("10111"))
+        assertTrue(device.profile.isApproved("10177"))
+        assertFalse(device.profile.isApproved("10112"))
+        server.takeRequest(); assertEquals("/api/device/armed-response-logo", server.takeRequest().path)
+        // The same logo is not fetched again.
+        server.enqueue(MockResponse().setBody(list))
+        device.profile.contacts()
+        assertEquals(5, server.requestCount)
+        // A tapped number is recorded against the panic.
+        server.enqueue(MockResponse().setBody("""{"id":"x"}"""))
+        assertTrue(device.alerts.emergencyCall("police_station", "11111111-1111-1111-1111-111111111111") is Submitted.Sent)
+        server.takeRequest(); server.takeRequest().let { r -> assertEquals("/api/device/emergency-calls", r.path); assertTrue(r.body.readUtf8().contains("police_station")) }
+        // With no signal the logo and the numbers are still there.
+        server.shutdown()
+        assertEquals(4, device.profile.contacts().emergencyButtons().size)
+        assertEquals("LOGO", device.profile.armedLogo()?.decodeToString())
+    }
 }

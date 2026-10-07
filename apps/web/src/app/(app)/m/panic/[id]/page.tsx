@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { ErrorBanner, formatDateTime } from '@/components/ui';
 import { ago, clock, tel } from '@/lib/supervisor';
+import { EmergencyCall, emergencyCallText } from '@/components/PanicBanner';
 
 interface Panic {
   id: string;
@@ -18,6 +19,7 @@ interface Panic {
   accuracyM: number | null;
   locationMock: boolean;
   callStarted: boolean;
+  emergencyCalls: EmergencyCall[];
   guard: string | null;
   employeeNumber: string | null;
   guardCell: string | null;
@@ -99,6 +101,10 @@ export default function MobilePanic() {
         <div className="line">
           <span>Phone’s call to the control room</span>
           <b>{p.callStarted ? 'Started' : 'Not started'}</b>
+        </div>
+        <div className="line">
+          <span>Emergency numbers the guard phoned</span>
+          <b>{p.emergencyCalls.length ? p.emergencyCalls.map((c) => `${emergencyCallText(c)} ${clock(c.calledAt)}`).join(', ') : 'None'}</b>
         </div>
         <div className="line">
           <span>Location at that moment</span>

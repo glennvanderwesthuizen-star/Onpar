@@ -64,7 +64,7 @@ describe('devices and guard login', () => {
   it("gives the phone only its site's approved contacts to call, even before anyone logs in (section 6.10)", async () => {
     const r = await w.http().get('/api/device/contacts').set('X-Device-Token', deviceToken);
     expect(r.status).toBe(200);
-    expect(r.body.map((c: { label: string }) => c.label)).toEqual(['Supervisor', 'Site manager', 'Control room']);
+    expect(r.body.map((c: { label: string }) => c.label)).toEqual(['Supervisor', 'Site manager', 'Control room', 'Police 10111', 'Fire brigade 10177', 'Ambulance 10177']);
     expect(r.body[0]).toMatchObject({ kind: 'supervisor', phone: expect.any(String) });
     expect((await w.http().get('/api/device/contacts')).status).toBe(401);
   });

@@ -21,7 +21,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
-import { can, reconcileTime, sastDate } from '@onpar/rules';
+import { can, EMERGENCY_OPTION_KINDS, emergencyOptions, reconcileTime, sastDate } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentDevice, CurrentUser, DeviceAuthGuard, DevicePrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
@@ -42,6 +42,14 @@ const PanicBody = z.object({
   accuracyM: z.number().min(0).max(100000).nullish(),
   mock: z.boolean().default(false),
   callStarted: z.boolean().default(false),
+});
+
+const EmergencyCallBody = z.object({
+  eventId: z.string().uuid(),
+  kind: z.enum(EMERGENCY_OPTION_KINDS),
+  panicId: z.string().uuid().nullish(),
+  trustedAt: isoTime,
+  deviceClock: isoTime,
 });
 
 const BoloBody = z.object({
@@ -86,7 +94,9 @@ const PANIC_COLUMNS = `p.id, p.raised_at AS "raisedAt", p.received_at AS "receiv
   p.acknowledged_at AS "acknowledgedAt", ua.full_name AS "acknowledgedBy", p.resolved_at AS "resolvedAt",
   ur.full_name AS "resolvedBy", p.resolution_note AS "resolutionNote",
   s.id AS "siteId", s.name AS "siteName", d.label AS "deviceLabel", d.post_name AS "postName",
-  e.full_name AS "employeeName", e.employee_number AS "employeeNumber"`;
+  e.full_name AS "employeeName", e.employee_number AS "employeeNumber",
+  (SELECT coalesce(json_agg(json_build_object('service', c.service, 'national', c.national, 'calledAt', c.called_at, 'by', ce.full_name) ORDER BY c.called_at), '[]'::json)
+     FROM emergency_calls c LEFT JOIN employees ce ON ce.id = c.employee_id WHERE c.panic_id = p.id) AS "emergencyCalls"`;
 const PANIC_FROM = `panic_alerts p JOIN devices d ON d.id = p.device_id LEFT JOIN sites s ON s.id = p.site_id
   LEFT JOIN employees e ON e.id = p.employee_id LEFT JOIN users ua ON ua.id = p.acknowledged_by LEFT JOIN users ur ON ur.id = p.resolved_by`;
 
@@ -150,6 +160,41 @@ export class DevicePanicBoloController {
         url: `/m/panic/${b.eventId}`,
         entityType: 'panic_alert',
         entityId: b.eventId,
+      });
+      return { id: b.eventId };
+    });
+  }
+
+  /**
+   * The guard tapped a number on the emergency panel (owner, 7 Oct 2026). The phone dials; this
+   * only records what was dialled, by whom and when, against the panic if there was one. The
+   * number itself is not stored: the service and whether it was the local or national number are.
+   */
+  @Post('emergency-calls')
+  @HttpCode(200)
+  async emergencyCall(@CurrentDevice() device: DevicePrincipal, @Req() req: Request, @Body() body: unknown) {
+    const b = parseBody(EmergencyCallBody, body);
+    const time = reconcileTime(b.trustedAt, b.deviceClock, new Date());
+    if (!time.ok) throw new UnprocessableEntityException(time.reason);
+    const employeeId = await optionalGuard(this.jwt, req, device);
+    return this.db.withTenant(device.companyId, async (tx) => {
+      if ((await tx.query('SELECT 1 FROM emergency_calls WHERE id = $1', [b.eventId])).rowCount) return { id: b.eventId };
+      // What the kind means does not depend on the site's numbers, so every kind is offered here.
+      const all = { name: '', phone: 'x' };
+      const option = [...emergencyOptions({}), ...emergencyOptions({ police_station: all, fire: all, ambulance: all, armed_response: all })].find((o) => o.kind === b.kind)!;
+      await tx.query(
+        `INSERT INTO emergency_calls (id, company_id, site_id, device_id, employee_id, panic_id, service, option_kind, national, called_at, late_synced)
+         VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [b.eventId, device.siteId, device.deviceId, employeeId, b.panicId ?? null, option.service, option.kind, option.national, time.officialAt, time.lateSynced],
+      );
+      await this.audit.record(tx, {
+        actorType: employeeId ? 'employee' : 'device',
+        actorId: employeeId ?? device.deviceId,
+        actorLabel: device.label,
+        action: 'emergency.call',
+        entityType: 'emergency_call',
+        entityId: b.eventId,
+        after: { siteId: device.siteId, service: option.service, national: option.national, panicId: b.panicId ?? null, lateSynced: time.lateSynced },
       });
       return { id: b.eventId };
     });

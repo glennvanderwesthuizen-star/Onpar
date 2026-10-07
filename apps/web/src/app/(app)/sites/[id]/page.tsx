@@ -10,9 +10,10 @@ import { ErrorBanner, Pill, useLoad } from '@/components/ui';
 import { SiteCustomers } from '@/components/SiteCustomers';
 import { SiteUnitStaff } from '@/components/UnitStaff';
 import { SitePostings } from '@/components/SitePostings';
+import { SiteArmedLogo } from '@/components/SiteArmedLogo';
 import { SiteVisitExceptions, SiteVisitHandovers, SiteVisitors, SiteVisitorsOnSite, SiteVisits } from '@/components/SiteVisitors';
 
-type Site = SiteValue & { id: string; coverage: { officers: number; neededPerDay: number } };
+type Site = SiteValue & { id: string; armedResponseLogo?: boolean; coverage: { officers: number; neededPerDay: number } };
 
 export default function SitePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -61,6 +62,7 @@ export default function SitePage({ params }: { params: Promise<{ id: string }> }
       ) : (
         <ReadOnlySite site={data} />
       )}
+      <SiteArmedLogo siteId={id} initial={!!data.armedResponseLogo} />
       <SitePostings siteId={id} />
       <SiteCustomers siteId={id} />
       <SiteUnitStaff siteId={id} />

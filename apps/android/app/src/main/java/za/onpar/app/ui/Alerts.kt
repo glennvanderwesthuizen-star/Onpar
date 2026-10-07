@@ -231,6 +231,7 @@ fun PanicSentScreen(vm: AppViewModel, state: UiState) {
             Text("📞 Call control room again", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
     }
+    EmergencyPanel(vm, state, panicId = p.eventId)
     OutlinedButton(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Other contacts", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.panicDone() }, enabled = p.stage != PanicStage.Sending, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 }

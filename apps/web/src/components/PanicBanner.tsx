@@ -26,6 +26,20 @@ export interface PanicAlert {
   postName: string | null;
   employeeName: string | null;
   employeeNumber: string | null;
+  emergencyCalls?: EmergencyCall[];
+}
+
+/** An emergency number the guard tapped after a panic. The number itself is not kept. */
+export interface EmergencyCall {
+  service: 'police' | 'fire' | 'ambulance' | 'armed_response';
+  national: boolean;
+  calledAt: string;
+  by: string | null;
+}
+const SERVICE: Record<EmergencyCall['service'], string> = { police: 'Police', fire: 'Fire brigade', ambulance: 'Ambulance', armed_response: 'Armed response' };
+export function emergencyCallText(c: EmergencyCall): string {
+  if (c.service === 'armed_response') return SERVICE[c.service];
+  return `${SERVICE[c.service]} (${c.national ? 'national number' : c.service === 'police' ? 'local station' : 'local number'})`;
 }
 
 const POLL_MS = 15_000;

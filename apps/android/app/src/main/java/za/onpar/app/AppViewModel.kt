@@ -88,6 +88,8 @@ data class PanicStatus(
     val located: Boolean = false,
     val refusal: String? = null,
     val controlRoom: Contact? = null,
+    /** The panic's own id, so emergency calls made from its screen are recorded against it. */
+    val eventId: String? = null,
 )
 
 data class UiState(
@@ -112,6 +114,8 @@ data class UiState(
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
     val contacts: List<Contact> = emptyList(),
+    /** The armed response company's logo for the emergency panel, if the site has one. */
+    val armedLogo: PhotoBytes? = null,
     /** The gate this phone stands at and what it needs to scan visitors in; its `gate` is null on an ordinary post phone. */
     val gate: za.onpar.core.GateSetup? = null,
     val visits: List<za.onpar.core.VisitRow> = emptyList(),
@@ -194,7 +198,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun background() = withContext(Dispatchers.IO) {
         if (device.setup == null) return@withContext
         val online = runCatching { device.heartbeat(version, battery(), Kiosk.status(getApplication())) }.isSuccess
-        runCatching { device.profile.contacts() }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list) } }
+        runCatching { device.profile.contacts() }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list, armedLogo = device.profile.armedLogo()?.let(::PhotoBytes)) } }
         runCatching { device.sync() }
         // A locked guard whose shift has ended (for example a supervisor released him) is forgotten.
         if (online) {
@@ -630,7 +634,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadContacts() = run {
         val c = device.profile.contacts()
-        _state.update { it.copy(contacts = c) }
+        _state.update { it.copy(contacts = c, armedLogo = device.profile.armedLogo()?.let(::PhotoBytes)) }
+    }
+
+    /**
+     * The guard tapped a number on the emergency panel (owner, 7 Oct 2026). The phone dials it
+     * (the mobile network, so it works with no data) and On Par records which service was phoned,
+     * against the panic when it was tapped on the panic screen. Nothing here dials by itself.
+     */
+    fun emergencyCall(c: Contact, panicId: String?) {
+        if (!canCall(c.phone)) return
+        if (!Calls.place(getApplication(), c.phone)) {
+            _state.update { it.copy(error = "The phone could not start the call (On Par may not make calls). Phone for help another way.") }
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { device.alerts.emergencyCall(c.kind, panicId) }
+            _state.update { it.copy(waiting = device.outbox.pending().size) }
+        }
     }
 
     /** Only approved contacts can be called (brief section 6.10). */
@@ -946,11 +967,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             !Calls.place(app, control.phone) -> "The phone could not start the call to the control room (On Par may not make calls). Phone for help another way."
             else -> null
         }
-        _state.update { it.copy(page = Page.PanicSent, panic = PanicStatus(PanicStage.Sending, callProblem, controlRoom = control), error = null, message = null) }
+        val eventId = java.util.UUID.randomUUID().toString()
+        _state.update { it.copy(page = Page.PanicSent, panic = PanicStatus(PanicStage.Sending, callProblem, controlRoom = control, eventId = eventId), error = null, message = null) }
+        // The emergency panel on the panic screen needs the numbers even if the Call screen was never opened.
+        if (_state.value.contacts.isEmpty()) _state.update { it.copy(contacts = device.profile.cachedContacts(), armedLogo = device.profile.armedLogo()?.let(::PhotoBytes)) }
         viewModelScope.launch {
             val fix = runCatching { za.onpar.app.ui.takePanicFix(app, PANIC_FIX_TIMEOUT_MS) }.getOrNull()
             val r = withContext(Dispatchers.IO) {
-                runCatching { device.alerts.panic(fix, callStarted = callProblem == null) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
+                runCatching { device.alerts.panic(fix, callStarted = callProblem == null, eventId = eventId) }.getOrElse { Submitted.Refused(it.message ?: "The panic could not be sent.", emptyMap()) }
             }
             val stage = when (r) {
                 is Submitted.Sent -> PanicStage.Sent

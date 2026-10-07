@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Pill, formatDateTime, useLoad } from '@/components/ui';
-import { PanicAlert, panicPlace } from '@/components/PanicBanner';
+import { PanicAlert, emergencyCallText, panicPlace } from '@/components/PanicBanner';
 
 export default function PanicPage() {
   const { can } = useSession();
@@ -72,6 +72,11 @@ function PanicCard({ p, canManage, onDone }: { p: PanicAlert; canManage: boolean
           </div>
           <div className="small">{p.employeeName ? `${p.employeeName} (${p.employeeNumber})` : 'Nobody was signed in on the phone'}</div>
           <div className="small">{p.callStarted ? 'The phone started a call to the control room.' : 'The phone could not start a call.'}</div>
+          {!!p.emergencyCalls?.length && (
+            <div className="small">
+              Then phoned: {p.emergencyCalls.map((c) => `${emergencyCallText(c)} at ${formatDateTime(c.calledAt)}`).join('; ')}.
+            </div>
+          )}
           <div className="small">
             {p.lat != null && p.lng != null ? (
               <>

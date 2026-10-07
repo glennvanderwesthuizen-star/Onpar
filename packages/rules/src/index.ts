@@ -18,3 +18,4 @@ export * from './tsf-number';
 export * from './face';
 export * from './alerts';
 export * from './visitors';
+export * from './emergency';

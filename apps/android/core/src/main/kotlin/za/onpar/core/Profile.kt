@@ -38,9 +38,23 @@ data class Score(
 @Serializable
 data class Qualification(val name: String, val type: String? = null, val expiryDate: String? = null, val status: String)
 
-/** An approved number the guard may call: supervisor, site manager, control room (brief section 6.10). */
+/**
+ * An approved number the guard may call: supervisor, site manager, control room (brief section 6.10),
+ * and the emergency panel's numbers (owner, 7 Oct 2026). For those, `emergency` is the service
+ * ("police", "fire", "ambulance", "armed_response"), `national` says it is a national number, and
+ * `logo` (armed response only) changes whenever the company's logo does.
+ */
 @Serializable
-data class Contact(val kind: String, val label: String, val name: String = "", val phone: String)
+data class Contact(val kind: String, val label: String, val name: String = "", val phone: String, val emergency: String? = null, val national: Boolean = false, val logo: String? = null)
+
+/** One button of the emergency panel: a service and the numbers behind it (police can have two). */
+data class EmergencyButton(val service: String, val title: String, val options: List<Contact>)
+
+private val EMERGENCY_ORDER = listOf("police" to "POLICE", "fire" to "FIRE BRIGADE", "ambulance" to "AMBULANCE", "armed_response" to "ARMED RESPONSE")
+
+/** The emergency panel's buttons, in a fixed order. A service with no number has no button. */
+fun List<Contact>.emergencyButtons(): List<EmergencyButton> =
+    EMERGENCY_ORDER.mapNotNull { (service, title) -> filter { it.emergency == service }.takeIf { it.isNotEmpty() }?.let { EmergencyButton(service, title, it) } }
 
 /** The guard's own score, training, and the site's approved contacts. */
 class ProfileActions(private val device: OnParDevice, dataDir: File) {
@@ -81,7 +95,27 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
     fun training(): List<Qualification> = fetch("/device/qualifications", trainingFile, device.requireGuard())
 
     /** The approved contacts, kept on the phone so calls work with no data. */
-    fun contacts(): List<Contact> = fetch("/device/contacts", contactsFile, null)
+    fun contacts(): List<Contact> = fetch<Contact>("/device/contacts", contactsFile, null).also { runCatching { syncArmedLogo(it) } }
+
+    private val logoFile = File(dataDir, "armed-logo.img")
+    private val logoTagFile = File(dataDir, "armed-logo.tag")
+
+    /** Keeps the armed response company's logo on the phone, so the button shows it with no data. Fetched only when it has changed. */
+    private fun syncArmedLogo(list: List<Contact>) {
+        val tag = list.firstOrNull { it.emergency == "armed_response" }?.logo
+        val have = if (logoTagFile.exists() && logoFile.exists()) logoTagFile.readText() else null
+        if (tag == null) {
+            // Only forget the logo when the server really says there is none (not when reading the kept copy with no signal).
+            if (list.any { it.emergency != null } && have != null) { logoFile.delete(); logoTagFile.delete() }
+            return
+        }
+        if (tag == have) return
+        logoFile.writeBytes(device.client().getBytes("/device/armed-response-logo"))
+        logoTagFile.writeText(tag)
+    }
+
+    /** The armed response logo kept on the phone, if any. */
+    fun armedLogo(): ByteArray? = if (logoFile.exists() && logoTagFile.exists()) runCatching { logoFile.readBytes() }.getOrNull() else null
 
     private fun <T> fetch(path: String, file: File, token: String?, s: kotlinx.serialization.KSerializer<List<T>>): List<T> = try {
         val fresh = OnParJson.decodeFromJsonElement(s, device.client().get(path, token))
