@@ -769,3 +769,5 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 
 **Not yet proven:** by the owner on real phones.
 
+**Changed 7 Oct 2026 (owner):** the gate asks "Are you expected?" first. The Visitors screen has an **EXPECTED VISITOR** button next to NEW VISITOR: the guard types the visitor's cell number, ID number or number plate (or taps the name under Expected today) and sees the announcement at once. The visitor is then still scanned in full, licence disc and driver's licence, and is let in on the announcement only if the scan (or the cell number) matches it; otherwise the customer is asked as for any unannounced visitor. The owner chose this over looking up without scanning. The Expected today list moved onto that screen.
+
