@@ -9,6 +9,7 @@ import {
   VISITOR_CHECKS,
   visitorCategoryErrors,
   visitorSettingsErrors,
+  visitWarnings,
 } from './visitors';
 
 describe('visitor management: the groundwork', () => {
@@ -78,5 +79,11 @@ describe('visitor management: the groundwork', () => {
     expect(barredValue('id_number', '800101 5009 087')).toEqual({ value: '8001015009087' });
     expect(barredValue('id_number', 'a1234567')).toEqual({ value: 'A1234567' });
     expect(barredValue('id_number', '12')).toEqual({ error: 'Enter the ID or passport number.' });
+  });
+
+  it('warns about an expired licence or disc only when the site does not accept them', () => {
+    expect(visitWarnings({ expiredLicenceOk: true }, '2026-10-07', '2020-01-01', '2020-01-01')).toEqual([]);
+    expect(visitWarnings({ expiredLicenceOk: false }, '2026-10-07', '2026-10-06', '2026-10-07')).toEqual(['licence_expired']);
+    expect(visitWarnings({ expiredLicenceOk: false }, '2026-10-07', null, '2026-09-30')).toEqual(['disc_expired']);
   });
 });

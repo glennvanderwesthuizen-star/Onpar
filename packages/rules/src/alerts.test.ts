@@ -2,7 +2,7 @@ import { alertKindsFor, deviceLabel, isPushEndpoint, wantsAlert } from './alerts
 
 describe('alerts', () => {
   it('offers each role only the alerts its permissions allow', () => {
-    expect(alertKindsFor('site_supervisor')).toEqual(['panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report']);
+    expect(alertKindsFor('site_supervisor')).toEqual(['panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred']);
     expect(alertKindsFor('client_manager')).toEqual([]);
     expect(alertKindsFor('hr_admin')).toEqual([]);
     expect(alertKindsFor('stores_clerk')).toEqual([]);

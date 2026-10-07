@@ -8,7 +8,7 @@ import { useSession } from '@/lib/session';
 import { SiteForm, SiteValue } from '@/components/SiteForm';
 import { ErrorBanner, Pill, useLoad } from '@/components/ui';
 import { SiteCustomers } from '@/components/SiteCustomers';
-import { SiteVisitors } from '@/components/SiteVisitors';
+import { SiteVisitors, SiteVisits } from '@/components/SiteVisitors';
 
 type Site = SiteValue & { id: string; coverage: { officers: number; neededPerDay: number } };
 
@@ -60,6 +60,7 @@ export default function SitePage({ params }: { params: Promise<{ id: string }> }
         <ReadOnlySite site={data} />
       )}
       <SiteCustomers siteId={id} />
+      <SiteVisits siteId={id} />
       <SiteVisitors siteId={id} />
     </>
   );

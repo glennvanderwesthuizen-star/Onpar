@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { BARRED_KIND_LABELS, BARRED_KINDS, BarredKind, CATEGORY_KIND_LABELS, CATEGORY_KINDS, CategoryKind, categoryLimitText, VisitorCheck, VisitorSettings } from '@onpar/rules';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { ErrorBanner, Field, Pill, formatDate, useLoad } from './ui';
+import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from './ui';
 
 interface Gate {
   id: string;
@@ -32,8 +32,38 @@ interface Barred {
   reviewDue: string;
   reviewNow: boolean;
 }
+interface Phone {
+  id: string;
+  label: string;
+  postName: string;
+  gateId: string | null;
+}
+interface Visit {
+  id: string;
+  type: 'vehicle' | 'pedestrian';
+  status: string;
+  statusLabel: string;
+  deniedReason: string | null;
+  at: string;
+  surname: string;
+  names: string;
+  idNumber: string;
+  registration: string | null;
+  make: string | null;
+  model: string | null;
+  colour: string | null;
+  unitName: string | null;
+  category: string;
+  pax: number | null;
+  gateName: string;
+  guard: string;
+  captureMethod: 'scan' | 'manual';
+  documentLabel: string;
+  warnings: string[];
+}
 interface Setup {
   gates: Gate[];
+  phones: Phone[];
   settings: VisitorSettings & { saved: boolean };
   checks: { key: VisitorCheck; label: string; about: string; notYet: string | null }[];
   limits: Record<'noResponseSeconds' | 'overstayEscalationMinutes' | 'retentionMonths', { min: number; max: number }>;
@@ -139,7 +169,7 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
     <div className="card">
       <h2>Visitors</h2>
       <p className="mute small">
-        How visitors are handled at this site: its gates, the checks at the gate, how long visitors may stay, and who is barred. Nothing is recorded at the gate yet; this is the groundwork for it.
+        How visitors are handled at this site: its gates, the checks at the gate, how long visitors may stay, and who is barred.
         {manage ? '' : ' Only the system administrator can change these.'}
       </p>
       <ErrorBanner error={error ?? actionError} />
@@ -170,6 +200,34 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
               {errorsIn('gate').name && <span className="err">{errorsIn('gate').name}</span>}
             </form>
           )}
+
+          <h3 style={{ marginTop: 22 }}>Gate phones</h3>
+          <p className="mute small">A post phone at a gate gets a Visitors button for scanning visitors in. Choose the gate each phone stands at.</p>
+          {data.phones.length === 0 && <p className="mute">This site has no phones yet. Register one on the Devices page and give it this site.</p>}
+          {data.phones.map((p) => (
+            <div key={p.id} className="row" style={{ marginBottom: 6 }}>
+              <span style={{ minWidth: 180 }}>
+                <b>{p.label}</b>
+                {p.postName && <span className="mute small"> · {p.postName}</span>}
+              </span>
+              <select
+                style={{ maxWidth: 240 }}
+                aria-label={`Gate for ${p.label}`}
+                value={p.gateId ?? ''}
+                disabled={!manage || busy}
+                onChange={(e) => run('phone', () => api(`${base}/gate-phones/${p.id}`, { method: 'PUT', json: { gateId: e.target.value || null } }))}
+              >
+                <option value="">Not a gate phone</option>
+                {data.gates
+                  .filter((g) => g.active)
+                  .map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          ))}
 
           <form onSubmit={saveSettings}>
             <h3 style={{ marginTop: 22 }}>Checks at the gate</h3>
@@ -430,6 +488,99 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
             </form>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'grey'> = {
+  awaiting_approval: 'amber',
+  on_site: 'green',
+  exited: 'grey',
+  exited_exception: 'red',
+  denied: 'red',
+  denied_no_response: 'red',
+  left_no_scan_out: 'red',
+};
+
+/** The visitors recorded at a site's gates, newest first (visitor management, step 2). ID numbers show their last four characters only. */
+export function SiteVisits({ siteId }: { siteId: string }) {
+  const { can } = useSession();
+  const allowed = can('visitors.view');
+  const { data, error, reload } = useLoad(() => (allowed ? api<Visit[]>(`/sites/${siteId}/visits`) : Promise.resolve([] as Visit[])), [siteId, allowed]);
+  if (!allowed) return null;
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>Visitors at the gate</h2>
+        <button className="btn ghost sm" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <p className="mute small">The last 50 visitors scanned in at this site.</p>
+      <ErrorBanner error={error} />
+      {!data && !error && <p className="mute">Loading…</p>}
+      {data && data.length === 0 && <p className="mute">No visitors have been scanned in yet.</p>}
+      {data && data.length > 0 && (
+        <div className="cust-wrap">
+          <table className="cust-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Visitor</th>
+                <th>Vehicle</th>
+                <th>Visiting</th>
+                <th>Gate</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((v) => (
+                <tr key={v.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDateTime(v.at)}</td>
+                  <td>
+                    <b>
+                      {v.surname}
+                      {v.names ? `, ${v.names}` : ''}
+                    </b>
+                    <div className="mute small">
+                      {v.documentLabel} {v.idNumber}
+                    </div>
+                    <div className="mute small">{v.category}</div>
+                  </td>
+                  <td>
+                    {v.type === 'pedestrian' ? (
+                      <span className="mute">On foot</span>
+                    ) : (
+                      <>
+                        <b>{v.registration}</b>
+                        <div className="mute small">{[v.colour, v.make, v.model].filter(Boolean).join(' ')}</div>
+                        {v.pax !== null && (
+                          <div className="mute small">
+                            {v.pax} passenger{v.pax === 1 ? '' : 's'}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </td>
+                  <td>{v.unitName ? `Unit ${v.unitName}` : 'The office'}</td>
+                  <td>
+                    {v.gateName}
+                    <div className="mute small">{v.guard}</div>
+                  </td>
+                  <td>
+                    <div className="row" style={{ gap: 4 }}>
+                      <Pill tone={STATUS_TONE[v.status] ?? 'grey'}>{v.statusLabel}</Pill>
+                      {v.deniedReason === 'barred' && <Pill tone="red">Barred</Pill>}
+                      {v.captureMethod === 'manual' && <Pill tone="grey">Manual capture</Pill>}
+                      {v.warnings.length > 0 && <Pill tone="amber">Expired document</Pill>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

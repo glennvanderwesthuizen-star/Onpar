@@ -102,6 +102,9 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
+                    Page.Visitors -> if (state.owed != null) HomeScreen(vm, state) else VisitorsScreen(vm, state)
+                    Page.NewVisitor -> if (state.owed != null) HomeScreen(vm, state) else NewVisitorScreen(vm, state)
+                    Page.VisitSaved -> if (state.owed != null) HomeScreen(vm, state) else VisitSavedScreen(vm, state)
                     // Calling is always allowed, even with a declaration owed.
                     Page.Call -> CallScreen(vm, state) { vm.go(Page.Home) }
                     // Panic and BOLO are always allowed too.
@@ -298,6 +301,10 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
                 OutlinedButton(onClick = { askTurnPin = true }, modifier = Modifier.fillMaxWidth()) { Text("Let my partner go first") }
             }
         }
+    }
+    // Only on a phone the administrator has put at a gate.
+    if (state.gate?.gate != null) {
+        Button(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Visitors", fontSize = 18.sp) }
     }
     OutlinedButton(onClick = { vm.go(Page.Patrols) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Patrols", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.go(Page.Tasks) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Tasks", fontSize = 18.sp) }

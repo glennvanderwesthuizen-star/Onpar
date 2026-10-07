@@ -183,3 +183,56 @@ export function barredValue(kind: BarredKind, text: string): { value: string } |
   const value = normaliseIdNumber(text);
   return value.length >= 5 && value.length <= 20 ? { value } : { error: 'Enter the ID or passport number.' };
 }
+
+// --- Step 2: scanning a visitor in ------------------------------------------------------------
+
+export const VISIT_TYPES = ['vehicle', 'pedestrian'] as const;
+export type VisitType = (typeof VISIT_TYPES)[number];
+
+/** The spec's visit statuses. */
+export const VISIT_STATUSES = ['awaiting_approval', 'on_site', 'exited', 'exited_exception', 'denied', 'denied_no_response', 'left_no_scan_out'] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
+  awaiting_approval: 'Awaiting approval',
+  on_site: 'On site',
+  exited: 'Exited',
+  exited_exception: 'Exited with exception',
+  denied: 'Denied',
+  denied_no_response: 'Denied, no response',
+  left_no_scan_out: 'Left without scan-out',
+};
+
+/** The document the visitor was identified from. */
+export const IDENTITY_DOCUMENTS = ['id_card', 'id_book', 'drivers_licence', 'passport', 'other'] as const;
+export type IdentityDocument = (typeof IDENTITY_DOCUMENTS)[number];
+export const IDENTITY_DOCUMENT_LABELS: Record<IdentityDocument, string> = {
+  id_card: 'ID card',
+  id_book: 'ID book',
+  drivers_licence: 'Driver’s licence',
+  passport: 'Passport',
+  other: 'Other document',
+};
+
+/** How a document's details got onto the phone: read from its barcode, or typed by the guard with a photo. */
+export const CAPTURE_METHODS = ['scan', 'manual'] as const;
+export type CaptureMethod = (typeof CAPTURE_METHODS)[number];
+
+/** What the guard must be warned about before asking for approval. He decides, and his choice is recorded. */
+export const VISIT_WARNINGS = ['licence_expired', 'disc_expired'] as const;
+export type VisitWarning = (typeof VISIT_WARNINGS)[number];
+export const VISIT_WARNING_TEXT: Record<VisitWarning, string> = {
+  licence_expired: 'The driver’s licence has expired.',
+  disc_expired: 'The vehicle’s licence disc has expired.',
+};
+
+/**
+ * The warnings for a visit. With "Expired licence acceptable" on, an expired licence or disc
+ * is ignored. `today` and the dates are YYYY-MM-DD in South African time.
+ */
+export function visitWarnings(checks: Pick<VisitorChecks, 'expiredLicenceOk'>, today: string, licenceExpiry: string | null, discExpiry: string | null): VisitWarning[] {
+  if (checks.expiredLicenceOk) return [];
+  const out: VisitWarning[] = [];
+  if (licenceExpiry && licenceExpiry < today) out.push('licence_expired');
+  if (discExpiry && discExpiry < today) out.push('disc_expired');
+  return out;
+}

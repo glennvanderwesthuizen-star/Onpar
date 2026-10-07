@@ -54,6 +54,10 @@ sealed interface Page {
     data object Score : Page
     data object Training : Page
     data object Roster : Page
+    /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
+    data object Visitors : Page
+    data object NewVisitor : Page
+    data object VisitSaved : Page
     data object Uniform : Page
     data object Call : Page
     /** ID card (TSF number) and PIN, from the front screen. */
@@ -97,6 +101,12 @@ data class UiState(
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
     val contacts: List<Contact> = emptyList(),
+    /** The gate this phone stands at and what it needs to scan visitors in; its `gate` is null on an ordinary post phone. */
+    val gate: za.onpar.core.GateSetup? = null,
+    val visits: List<za.onpar.core.VisitRow> = emptyList(),
+    /** What the site already knows about the visitor being scanned in. */
+    val scanCheck: za.onpar.core.ScanCheck? = null,
+    val visitDone: za.onpar.core.VisitReply? = null,
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
     val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
@@ -163,6 +173,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val s = device.state()
             _state.update { it.copy(home = s, online = true, owed = device.owedDeclaration(s)) }
+            // Whether this phone stands at a gate, so the home screen can show Visitors.
+            runCatching { device.visitors.setup() }.getOrNull()?.let { g -> _state.update { it.copy(gate = g) } }
         } catch (e: ApiException) {
             if (e.unauthorised) signOut() else _state.update { it.copy(error = e.message) }
         } catch (e: OfflineException) {
@@ -271,6 +283,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
         if (page == Page.Call) loadContacts()
+        if (page == Page.Visitors) loadVisitors()
+        if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null, visitDone = null) }
+    }
+
+    // --- Visitors at the gate ------------------------------------------------
+
+    fun loadVisitors() = run {
+        val setup = device.visitors.setup()
+        val list = if (setup.gate != null) device.visitors.recent() else emptyList()
+        _state.update { it.copy(gate = setup, visits = list) }
+    }
+
+    /** After a scan: a returning visitor's details and whether they are barred. Quiet: it must not hide what the guard is doing. */
+    fun checkVisitor(idNumber: String, registration: String?, unitId: String?) {
+        viewModelScope.launch {
+            val found = withContext(Dispatchers.IO) { runCatching { device.visitors.check(idNumber, registration, unitId) }.getOrNull() }
+            _state.update { it.copy(scanCheck = found) }
+        }
+    }
+
+    fun saveVisit(draft: za.onpar.core.VisitDraft) = run {
+        try {
+            val setup = _state.value.gate ?: device.visitors.setup()
+            val reply = device.visitors.create(setup, draft)
+            listOfNotNull(draft.face, draft.identityPhoto, draft.discPhoto).forEach { it.delete() }
+            _state.update { it.copy(visitDone = reply, scanCheck = null, page = Page.VisitSaved) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     // --- Score, training, calls ----------------------------------------------

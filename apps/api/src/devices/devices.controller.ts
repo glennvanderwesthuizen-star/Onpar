@@ -104,7 +104,8 @@ export class DevicesController {
       const before = await this.load(tx, id);
       if (before.status === 'retired') throw new ConflictException('A retired device cannot be changed.');
       await this.assertSite(tx, input.siteId);
-      await tx.query('UPDATE devices SET site_id = $2, post_name = $3, status = $4 WHERE id = $1', [
+      await tx.query(// A phone that moves to another site is no longer at its old site's gate.
+        'UPDATE devices SET gate_id = CASE WHEN site_id IS DISTINCT FROM $2 THEN NULL ELSE gate_id END, site_id = $2, post_name = $3, status = $4 WHERE id = $1', [
         id,
         input.siteId,
         input.postName,

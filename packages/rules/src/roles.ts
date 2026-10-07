@@ -83,6 +83,8 @@ export const PERMISSIONS = {
   // Visitor management: gates, checks, time limits, categories and the barred list of a site. Only the administrator changes them (owner, 7 Oct 2026).
   'visitors.setup.view': ['system_admin', 'company_manager'],
   'visitors.setup.manage': ['system_admin'],
+  // The visitors recorded at a site's gates.
+  'visitors.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   // Customers (phase 3, D-39): units, the client and tenants of a site. Only the administrator creates them.
   'customers.view': ['system_admin', 'company_manager'],
   'customers.manage': ['system_admin'],

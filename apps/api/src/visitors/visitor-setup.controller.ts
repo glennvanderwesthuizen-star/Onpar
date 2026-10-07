@@ -1,6 +1,10 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  maskIdNumber,
+  VISIT_STATUS_LABELS,
+  VisitStatus,
+  IDENTITY_DOCUMENT_LABELS,
   BARRED_KIND_LABELS,
   BARRED_KINDS,
   barredValue,
@@ -40,6 +44,7 @@ const BarredBody = z.object({
   unitId: z.string().uuid().nullable().default(null),
   reason: z.string().trim().min(3, 'Say why this is barred.').max(300),
 });
+const GatePhoneBody = z.object({ gateId: z.string().uuid().nullable() });
 const RemoveBody = z.object({ reason: z.string().trim().min(3, 'Say why this is being taken off the list.').max(300) });
 
 /**
@@ -73,8 +78,12 @@ export class VisitorSetupController {
         )
       ).rows.map((b) => ({ ...b, kindLabel: BARRED_KIND_LABELS[b.kind as keyof typeof BARRED_KIND_LABELS] }));
       const units = (await tx.query('SELECT id, name FROM site_units WHERE site_id = $1 AND active ORDER BY length(name), lower(name)', [siteId])).rows;
+      const phones = (
+        await tx.query(`SELECT id, label, post_name AS "postName", gate_id AS "gateId" FROM devices WHERE site_id = $1 AND status <> 'retired' ORDER BY label`, [siteId])
+      ).rows;
       return {
         gates,
+        phones,
         settings,
         checks: VISITOR_CHECKS.map((key) => ({ key, ...VISITOR_CHECK_INFO[key], notYet: VISITOR_CHECK_INFO[key].notYet ?? null })),
         limits: VISITOR_LIMITS,
@@ -108,8 +117,54 @@ export class VisitorSetupController {
       if (!before) throw new NotFoundException('Gate not found.');
       await this.nameFree(tx, 'site_gates', siteId, b.name, id, 'This site already has a gate with that name.');
       await tx.query('UPDATE site_gates SET name = $2, active = $3 WHERE id = $1', [id, b.name, b.active]);
+      // A retired gate has no phone: its phones become ordinary post phones again.
+      if (!b.active) await tx.query('UPDATE devices SET gate_id = NULL WHERE gate_id = $1', [id]);
       await this.audit.byUser(tx, user, { action: 'gate.update', entityType: 'site_gate', entityId: id, before, after: b });
       return { ok: true };
+    });
+  }
+
+  /** Makes one of the site's post phones the phone at a gate, or an ordinary post phone again. */
+  @Put('gate-phones/:deviceId')
+  @RequirePermission('visitors.setup.manage')
+  gatePhone(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string, @Param('deviceId', ParseUUIDPipe) deviceId: string, @Body() body: unknown) {
+    const b = parseBody(GatePhoneBody, body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      const before = (await tx.query(`SELECT gate_id AS "gateId" FROM devices WHERE id = $1 AND site_id = $2 AND status <> 'retired' FOR UPDATE`, [deviceId, siteId])).rows[0];
+      if (!before) throw new NotFoundException('That phone is not at this site.');
+      if (b.gateId && !(await tx.query('SELECT 1 FROM site_gates WHERE id = $1 AND site_id = $2 AND active', [b.gateId, siteId])).rowCount) {
+        throw new BadRequestException({ message: 'Choose a gate of this site that is in use.', errors: { gateId: 'Unknown gate.' } });
+      }
+      await tx.query('UPDATE devices SET gate_id = $2 WHERE id = $1', [deviceId, b.gateId]);
+      await this.audit.byUser(tx, user, { action: 'device.gate', entityType: 'device', entityId: deviceId, before, after: b });
+      return { ok: true };
+    });
+  }
+
+  /** The visitors recorded at this site's gates, newest first. ID numbers show their last four characters only. */
+  @Get('visits')
+  @RequirePermission('visitors.view')
+  visits(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      return (
+        await tx.query(
+          `SELECT v.id, v.type, v.status, v.denied_reason AS "deniedReason", v.captured_at AS "at", v.late_synced AS "lateSynced", p.surname, p.names, p.id_number,
+                  ve.registration, ve.make, ve.model, ve.colour, u.name AS "unitName", c.name AS "category", v.pax_in AS "pax", g.name AS "gateName",
+                  e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks
+             FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id
+             JOIN visitor_categories c ON c.id = v.category_id JOIN site_gates g ON g.id = v.gate_id JOIN employees e ON e.id = v.entry_guard
+            WHERE v.site_id = $1 ORDER BY v.captured_at DESC LIMIT 50`,
+          [siteId],
+        )
+      ).rows.map(({ id_number, document, checks, ...r }) => ({
+        ...r,
+        idNumber: maskIdNumber(id_number),
+        documentLabel: IDENTITY_DOCUMENT_LABELS[document as keyof typeof IDENTITY_DOCUMENT_LABELS],
+        statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],
+        warnings: (checks?.warnings ?? []) as string[],
+      }));
     });
   }
 

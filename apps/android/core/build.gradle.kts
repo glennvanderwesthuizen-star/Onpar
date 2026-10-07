@@ -13,6 +13,8 @@ dependencies {
     api(libs.coroutines.core)
     api(libs.serialization.json)
     api(libs.okhttp)
+    // Reads the barcodes on licence discs and ID cards (Apache 2.0, runs on the phone, no Google services).
+    api(libs.zxing.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
