@@ -92,6 +92,8 @@ export class NotificationsService implements OnModuleDestroy {
   private readonly timers = new Set<NodeJS.Timeout>();
   private sweep?: NodeJS.Timeout;
   private closed = false;
+  /** Sends in progress, whoever started them (a caller, the short timers or the sweep). */
+  private readonly inFlight = new Set<Promise<DeliverySummary>>();
 
   constructor(
     private readonly db: DbService,
@@ -193,7 +195,20 @@ export class NotificationsService implements OnModuleDestroy {
   }
 
   /** Sends every recorded alert of one company that has not been sent yet. Each is sent once, even if two checks overlap. */
-  async dispatch(companyId: string): Promise<DeliverySummary> {
+  dispatch(companyId: string): Promise<DeliverySummary> {
+    const run = this.dispatchNow(companyId);
+    this.inFlight.add(run);
+    const done = () => this.inFlight.delete(run);
+    run.then(done, done);
+    return run;
+  }
+
+  /** Resolves once every send that has started has finished. Tests wait on this; nothing else needs to. */
+  async settled(): Promise<void> {
+    while (this.inFlight.size) await Promise.allSettled([...this.inFlight]);
+  }
+
+  private async dispatchNow(companyId: string): Promise<DeliverySummary> {
     const summary: DeliverySummary = { alerts: 0, sent: 0, failed: 0, noDevice: 0 };
     if (this.closed) return summary;
     const ids = await this.db.withTenant(companyId, async (tx) =>

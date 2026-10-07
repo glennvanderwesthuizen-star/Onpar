@@ -45,6 +45,8 @@ describe('the supervisor app', () => {
   const send = async () => {
     await alerts.dispatch(w.a.companyId);
     await alerts.dispatch(w.b.companyId);
+    // The service's own short timer may have picked an alert up first: wait for that send too.
+    await alerts.settled();
   };
 
   beforeAll(async () => {
@@ -104,6 +106,7 @@ describe('the supervisor app', () => {
     it('is not sent twice when two checks overlap', async () => {
       await panic(deviceToken);
       await Promise.all([alerts.dispatch(w.a.companyId), alerts.dispatch(w.a.companyId), alerts.dispatch(w.a.companyId)]);
+      await alerts.settled();
       expect(sender.sent).toHaveLength(1);
     });
 

@@ -694,4 +694,30 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 
 **Nothing uses these settings yet.** No visitor is recorded until step 2. Removing old visitor records after the keeping period is built with the records themselves.
 
-**Not yet proven:** by the owner on the server.
+**Not yet proven:** by the owner on the server. (The owner said "go ahead" to step 2 on 7 Oct 2026 without reporting a test of step 1.)
+
+### 7 Oct 2026: visitor management, step 2 of 7, scan a visitor in (D-40)
+
+- **Gate phones.** On the site's page, under Visitors, each of the site's post phones can be given a gate. Only a phone with a gate shows the green **Visitors** button on its home screen. Retiring a gate, or moving the phone to another site, makes it an ordinary post phone again.
+- **On the gate phone**, Visitors, then NEW VISITOR, one step at a time so only one camera is open at once:
+  1. **The vehicle** (the default): scan the licence disc. Number plate, make, model, colour, VIN and expiry fill in. If it will not scan, the guard photographs the disc and types the details.
+  2. **The driver:** driver's licence (photographed, and surname, initials and ID number typed, as the spec decides for now), or scan an ID card or ID book, or a passport (photographed and typed). An ID book's barcode holds only the number, so the guard types the name.
+  3. **The visit:** passengers, the kind of visitor, and the unit they are here to see (or "the office" where the site has a client). Then **Request approval**.
+  - **On foot:** a photo of the visitor's face first, then the ID; no vehicle and no passengers.
+- **A returning visitor** is recognised by ID number or number plate, at that site only.
+- **Barred list:** a barred ID number or number plate is caught as soon as it is scanned. The guard is told not to let the visitor in, the attempt is saved as Denied, and the people responsible for the site get a "Barred visitor" alert that names no one.
+- **Expired licence or disc:** ignored while "Expired licence acceptable" is on. When it is off, the guard is warned, decides, and his choice is recorded.
+- **What is kept:** only the fields the spec lists. A photo of a document is kept only when its details were typed by hand; the server drops one sent with a scanned document. A face photo is kept only for a visitor on foot. The audit trail records every scan check and every visit without copying ID numbers, number plates or names into it.
+- **On the website,** the site's page shows "Visitors at the gate": the last 50 visitors, with ID numbers showing their last four characters only. Supervisors and managers of the site can see it.
+- **The scanner** reads the barcode types on licence discs and ID cards (PDF417) and ID books (Code 39) with the open ZXing library already in the app, at a higher camera resolution than QR codes need, trying the picture both upright and on its side.
+- Migration `0031_visits.sql`: `visitor_people`, `visitor_vehicles`, `visits`, `visit_documents`, and `devices.gate_id`.
+- Tests: 12 new server tests, 12 new phone-logic tests (including reading a generated licence disc barcode upright and turned), 1 new rules test.
+- Also: GitHub's build now shows failed tests and phone app build errors on the run's summary page; and a test that sometimes failed by racing the alert service's own timer now waits for it.
+
+**Stops at "Awaiting approval".** Asking the customer on their phone, the two-minute wait and the phone call are step 3. Until then the gate phone says so after each visitor.
+
+**Needs signal.** Saving a visitor without signal is step 7.
+
+**Not yet proven, and it cannot be proven here:** scanning a real licence disc and a real ID card with a real phone's camera. The barcode layouts are written from how these documents are known to be laid out, and tested only against barcodes generated to that layout. If a real disc or card does not read, "type it in" still works, and the layout is corrected from what the owner reports.
+
+**Not built yet:** viewing the kept photos (face, typed documents) on the website; that comes with the approval screen (the customer sees the face photo) and the supervisor's screens.

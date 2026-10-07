@@ -100,4 +100,4 @@ First move into the On Par folder: `cd /opt/onpar`. On the TSF test server the f
 
 ## Connecting the phones
 
-On the website, **Devices**, then **Register a device** shows a QR code. Open the On Par app on the phone and scan it. The phone then talks to your server's address. The app file for the phone is on GitHub: **Actions**, then the latest successful run, then **onpar-phone-app**.
+On the website, **Devices**, then **Register a device** shows a QR code. Open the On Par app on the phone and scan it. The phone then talks to your server's address. The app file for the phone is on GitHub: **Actions**, then the latest successful run, then **onpar-phone-app**. A phone that stands at a gate is given its gate on the site's own page, under **Visitors**, then **Gate phones**; it then shows a **Visitors** button.
