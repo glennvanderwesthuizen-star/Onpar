@@ -12,7 +12,7 @@ const ContactBody = z.object({
   secondContactName: z.string().trim().max(120).default(''),
   secondContactPhone: z.string().trim().max(30).default(''),
 });
-const VisitorAlertsBody = z.object({ muteExit: z.boolean() });
+const VisitorAlertsBody = z.object({ muteExit: z.boolean().optional(), muteArrival: z.boolean().optional() });
 const PasswordBody = z.object({ currentPassword: z.string().min(1, 'Enter your current password.'), newPassword: z.string() });
 
 /**
@@ -35,7 +35,7 @@ export class CustomerAppController {
       const c = (
         await tx.query(
           `SELECT c.id, c.kind, c.full_name AS "fullName", c.email, c.phone, c.second_contact_name AS "secondContactName",
-                  c.second_contact_phone AS "secondContactPhone", c.must_change_password AS "mustChangePassword", c.mute_exit_alerts AS "muteExitAlerts",
+                  c.second_contact_phone AS "secondContactPhone", c.must_change_password AS "mustChangePassword", c.mute_exit_alerts AS "muteExitAlerts", c.mute_arrival_alerts AS "muteArrivalAlerts",
                   s.name AS "siteName", s.address AS "siteAddress", u.name AS "unitName", co.name AS "companyName"
              FROM customers c JOIN sites s ON s.id = c.site_id JOIN companies co ON co.id = c.company_id
              LEFT JOIN site_units u ON u.id = c.unit_id WHERE c.id = $1`,
@@ -59,13 +59,13 @@ export class CustomerAppController {
     });
   }
 
-  /** A customer may switch off "your visitor has left" for themselves. Exceptions are always sent. */
+  /** A customer may switch off "your visitor has arrived" and "has left" for themselves. Requests and exceptions are always sent. */
   @Put('visitor-alerts')
   visitorAlerts(@CurrentCustomer() me: CustomerPrincipal, @Body() body: unknown) {
     const b = parseBody(VisitorAlertsBody, body);
     return this.db.withTenant(me.companyId, async (tx) => {
-      const before = (await tx.query('SELECT mute_exit_alerts AS "muteExit" FROM customers WHERE id = $1 FOR UPDATE', [me.customerId])).rows[0];
-      await tx.query('UPDATE customers SET mute_exit_alerts = $2 WHERE id = $1', [me.customerId, b.muteExit]);
+      const before = (await tx.query('SELECT mute_exit_alerts AS "muteExit", mute_arrival_alerts AS "muteArrival" FROM customers WHERE id = $1 FOR UPDATE', [me.customerId])).rows[0];
+      await tx.query('UPDATE customers SET mute_exit_alerts = COALESCE($2, mute_exit_alerts), mute_arrival_alerts = COALESCE($3, mute_arrival_alerts) WHERE id = $1', [me.customerId, b.muteExit ?? null, b.muteArrival ?? null]);
       await this.audit.byAccount(tx, me, { action: 'customer.visitor_alerts_update', entityType: 'customer', entityId: me.customerId, before, after: b });
       return { ok: true };
     });

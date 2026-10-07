@@ -14,6 +14,7 @@ export interface Customer {
   secondContactName: string;
   secondContactPhone: string;
   muteExitAlerts: boolean;
+  muteArrivalAlerts: boolean;
   mustChangePassword: boolean;
   siteName: string;
   siteAddress: string;

@@ -79,6 +79,9 @@ label.f > span { display: block; font-size: 13px; font-weight: 600; margin-botto
 input, select, textarea { width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 input[type=checkbox], input[type=radio] { width: auto; }
+/* iPhones draw date and time boxes wider than their column unless told otherwise. */
+input[type=date], input[type=time] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 42px; text-align: left; }
+input[type=date]::-webkit-date-and-time-value, input[type=time]::-webkit-date-and-time-value { text-align: left; }
 .err { color: var(--red); font-size: 13px; margin-top: 3px; }
 .invalid { border-color: var(--red); }
 

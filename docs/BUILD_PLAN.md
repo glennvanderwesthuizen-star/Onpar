@@ -864,3 +864,17 @@ Decided by the owner the same evening, replacing the Visitor/Contractor choice a
 **Not built:** an SMS to the contractor himself (needs an SMS provider). A one-visit registration whose contractor arrived with too many workers and was then accepted is not marked as used.
 
 **Not yet proven:** by the owner on real phones.
+
+**Decided 7 Oct 2026 (owner):** nobody phones or messages a contractor. The tenant approved him, so the tenant is asked; nothing further is to be built for this.
+
+### 7 Oct 2026: a simpler "Tell the gate who is coming", and quieter alerts (owner)
+
+The owner found the tenant's form complicated ("One visit / A regular", then "A visitor / A contractor").
+
+- **The form now reads top to bottom:** **A visitor** or **A contractor**; **who is coming**; **when are they coming** (today is already filled in); **That day only** (already chosen) or **More than one day**. The quick case is a name, one way for the gate to know them, and Tell the gate.
+- **More than one day** opens the last day (empty: until removed from the list), which days, and optional hours.
+- **A contractor** adds his cell number, the workers with him and the time to be gone by. A visitor has none of these: passengers are not registered in advance.
+- The optional "about what time" is off the form; an announced visitor is let in any time that day.
+- **Alerts that are only for information** ("your visitor has arrived", "has left", "a request was answered") still reach the phone but no longer add to the red count on Alerts. Under My account, Visitor alerts, the customer can switch **arrived** and **left** off. Anything that needs an answer is always sent and always counts: a visitor at the gate, a contractor still on site, something that did not match. An arrival where the plate or ID did not match what was announced is always told.
+- Date and time boxes no longer run past the right-hand edge on an iPhone.
+- Migration `0038_customer_arrival_alerts.sql`. One new server test. The form was walked through in a phone-sized browser for a quick visitor and a two-week contractor.

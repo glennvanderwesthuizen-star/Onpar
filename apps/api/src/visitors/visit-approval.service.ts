@@ -128,7 +128,9 @@ export class VisitApprovalService {
   async arrivedOnPass(tx: Tx, visitId: string, _passId: string, mismatch: string[]): Promise<void> {
     const v = (await this.load(tx, visitId))!;
     await tx.query(`INSERT INTO visit_approvals (company_id, visit_id, method, outcome) VALUES (app_company_id(), $1, 'pass', 'approved')`, [visitId]);
-    const people = await this.customers(tx, v.siteId, v.unitId);
+    // "Your visitor has arrived" is for information: a customer may have switched it off. A mismatch is always told.
+    const quiet = new Set(mismatch.length ? [] : (await tx.query('SELECT id FROM customers WHERE site_id = $1 AND mute_arrival_alerts', [v.siteId])).rows.map((r) => r.id as string));
+    const people = (await this.customers(tx, v.siteId, v.unitId)).filter((p) => !quiet.has(p.id));
     if (!people.length) return;
     const who = visitorName(v.surname, v.names);
     const how = v.type === 'pedestrian' ? 'on foot' : `in ${vehicleLine({ registration: v.registration ?? '', colour: v.colour, make: v.make, model: v.model })}`;

@@ -60,12 +60,13 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
         idNumber: f.idNumber,
         cell: f.cell,
         registration: f.registration,
-        visitDate: f.visitDate || null,
-        time: f.time || null,
+        // One day: that day. More than one: from that day on, to the last day if one was given.
+        visitDate: kind === 'once' ? f.visitDate || null : null,
+        time: null,
         days: f.days,
         hoursFrom: f.hoursFrom || null,
         hoursTo: f.hoursTo || null,
-        startDate: f.startDate || null,
+        startDate: kind === 'ongoing' ? f.visitDate || null : null,
         endDate: f.endDate || null,
       };
       await api(fromVisit ? `/customer/visits/${fromVisit}/pass` : '/customer/passes', { method: 'POST', json: body });
@@ -81,15 +82,7 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
     <form className="card" onSubmit={save}>
       <h2>{fromVisit ? 'Let them in next time' : 'Tell the gate who is coming'}</h2>
       <ErrorBanner error={error} />
-      <div className="m-actions" style={{ marginTop: 0, marginBottom: 12 }}>
-        <button type="button" className={`btn ${kind === 'once' ? '' : 'ghost'}`} onClick={() => setKind('once')}>
-          One visit
-        </button>
-        <button type="button" className={`btn ${kind === 'ongoing' ? '' : 'ghost'}`} onClick={() => setKind('ongoing')}>
-          A regular
-        </button>
-      </div>
-      <div className="m-actions" style={{ marginBottom: 4 }}>
+      <div className="m-actions" style={{ marginTop: 0, marginBottom: 4 }}>
         <button type="button" className={`btn ${f.contractor ? 'ghost' : ''}`} onClick={() => set({ contractor: false })}>
           A visitor
         </button>
@@ -98,33 +91,44 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
         </button>
       </div>
       <p className="mute small" style={{ marginTop: 0 }}>
-        {f.contractor ? 'Someone coming to do work. You say how many workers may come with them and when they must be gone.' : 'Someone coming to see you or to deliver.'}
+        {f.contractor ? 'Someone coming to do work, with workers the gate counts in and out.' : 'Someone coming to see you or to deliver.'}
       </p>
-      <Field label={f.contractor ? 'Contractor’s name or company' : 'Visitor’s name'} error={errors.visitorName}>
+
+      <Field label={f.contractor ? 'Who is coming: contractor’s name or company' : 'Who is coming'} error={errors.visitorName}>
         <input value={f.visitorName} onChange={(e) => set({ visitorName: e.target.value })} required />
       </Field>
       {f.contractor && (
-        <div className="grid g2">
-          <Field label="Workers with them" error={errors.maxWorkers} hint="Not counting the contractor. The gate counts them in and out; more than this and you are asked.">
-            <input inputMode="numeric" value={f.maxWorkers} onChange={(e) => set({ maxWorkers: e.target.value.replace(/\D/g, '').slice(0, 2) })} required />
+        <>
+          <Field label="Contractor’s cell number" error={errors.cell}>
+            <input type="tel" value={f.cell} onChange={(e) => set({ cell: e.target.value })} required />
           </Field>
-          <Field label="Must be gone by" error={errors.leaveBy} hint="If they are still on site then, you are asked whether they are still busy.">
-            <input type="time" value={f.leaveBy} onChange={(e) => set({ leaveBy: e.target.value })} required />
-          </Field>
-        </div>
+          <div className="grid g2">
+            <Field label="Workers with them" error={errors.maxWorkers} hint="Not counting the contractor. More than this and you are asked.">
+              <input inputMode="numeric" value={f.maxWorkers} onChange={(e) => set({ maxWorkers: e.target.value.replace(/\D/g, '').slice(0, 2) })} required />
+            </Field>
+            <Field label="Must be gone by" error={errors.leaveBy} hint="If they are still on site then, you are asked whether they are still busy.">
+              <input type="time" value={f.leaveBy} onChange={(e) => set({ leaveBy: e.target.value })} required />
+            </Field>
+          </div>
+        </>
       )}
 
-      {kind === 'once' ? (
-        <div className="grid g2">
-          <Field label="Day" error={errors.visitDate}>
-            <input type="date" min={options.today} value={f.visitDate} onChange={(e) => set({ visitDate: e.target.value })} required />
-          </Field>
-          <Field label="About what time (optional)" error={errors.time} hint="With a time, they are let in from an hour before to an hour after.">
-            <input type="time" value={f.time} onChange={(e) => set({ time: e.target.value })} />
-          </Field>
-        </div>
-      ) : (
+      <Field label={kind === 'once' ? 'When are they coming' : 'First day'} error={errors.visitDate ?? errors.startDate}>
+        <input type="date" min={options.today} value={f.visitDate} onChange={(e) => set({ visitDate: e.target.value })} required />
+      </Field>
+      <div className="m-actions" style={{ marginBottom: 12 }}>
+        <button type="button" className={`btn ${kind === 'once' ? '' : 'ghost'}`} onClick={() => setKind('once')}>
+          That day only
+        </button>
+        <button type="button" className={`btn ${kind === 'ongoing' ? '' : 'ghost'}`} onClick={() => setKind('ongoing')}>
+          More than one day
+        </button>
+      </div>
+      {kind === 'ongoing' && (
         <>
+          <Field label="Last day" error={errors.endDate} hint="Leave empty to let them in until you remove them from your list.">
+            <input type="date" min={f.visitDate || options.today} value={f.endDate} onChange={(e) => set({ endDate: e.target.value })} />
+          </Field>
           <Field label="Which days" error={errors.days} hint="Leave all unticked for every day.">
             <div className="chips">
               {WEEKDAYS.map((d, i) => {
@@ -142,14 +146,8 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
             <Field label="From what time (optional)" error={errors.hoursFrom}>
               <input type="time" value={f.hoursFrom} onChange={(e) => set({ hoursFrom: e.target.value })} />
             </Field>
-            <Field label="Until what time" error={errors.hoursTo}>
+            <Field label="Until what time (optional)" error={errors.hoursTo}>
               <input type="time" value={f.hoursTo} onChange={(e) => set({ hoursTo: e.target.value })} />
-            </Field>
-            <Field label="First day (optional)" error={errors.startDate}>
-              <input type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} />
-            </Field>
-            <Field label="Last day (optional)" error={errors.endDate}>
-              <input type="date" min={options.today} value={f.endDate} onChange={(e) => set({ endDate: e.target.value })} />
             </Field>
           </div>
         </>
@@ -173,7 +171,7 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
       ) : (
         <>
           <h3 style={{ marginTop: 14 }}>How the gate will know them</h3>
-          <p className="mute small">Give at least one. It must match exactly what is scanned at the gate.</p>
+          <p className="mute small">{f.contractor ? 'The gate can find them by the cell number above. A number plate or ID number as well makes it quicker.' : 'Give at least one. It must match exactly what is scanned at the gate.'}</p>
           {errors.identifier && <div className="err">{errors.identifier}</div>}
           <Field label="Number plate" error={errors.registration}>
             <input value={f.registration} onChange={(e) => set({ registration: e.target.value })} autoCapitalize="characters" />
@@ -183,9 +181,11 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
           </Field>
         </>
       )}
-      <Field label={fromVisit ? 'Cell number (optional)' : 'Cell number'} error={errors.cell} hint="The guard asks the visitor for it and types it in.">
-        <input type="tel" value={f.cell} onChange={(e) => set({ cell: e.target.value })} />
-      </Field>
+      {!f.contractor && (
+        <Field label={fromVisit ? 'Cell number (optional)' : 'Cell number'} error={errors.cell} hint="The guard asks the visitor for it and types it in.">
+          <input type="tel" value={f.cell} onChange={(e) => set({ cell: e.target.value })} />
+        </Field>
+      )}
 
       <div className="m-actions">
         <button className="btn" disabled={busy}>

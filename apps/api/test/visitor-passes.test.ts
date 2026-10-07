@@ -247,4 +247,26 @@ describe('visitor management: announced visitors', () => {
     expect(out.body.status).toBe('exited');
     expect((await arrive({ passId: made.body.id, vehicle: car })).body.status).toBe('on_site');
   });
+
+  it('keeps "your visitor has arrived" off the red count, and lets a customer switch it off (owner, 7 Oct 2026)', async () => {
+    const car = { registration: 'FS 9', make: '', model: '', colour: '', vin: '', discExpiry: null, method: 'scan' };
+    const first = await pass(thabo, { visitorName: 'Quiet arrival', registration: 'FS 9' });
+    const unreadBefore = (await w.http().get('/api/notifications').set(auth(thabo.token))).body.unread;
+    expect((await arrive({ passId: first.body.id, vehicle: car })).body.status).toBe('on_site');
+    const after = (await w.http().get('/api/notifications').set(auth(thabo.token))).body;
+    expect(after.alerts[0]).toMatchObject({ kind: 'visitor_arrived' });
+    // It reaches the phone, but there is nothing to answer, so the count does not go up.
+    expect(after.unread).toBe(unreadBefore);
+    // A request that needs an answer still counts.
+    await arrive({ unitId: unit14 });
+    expect((await w.http().get('/api/notifications').set(auth(thabo.token))).body.unread).toBe(unreadBefore + 1);
+    // Switched off: no alert at all for the next arrival.
+    expect((await w.http().put('/api/customer/visitor-alerts').set(auth(thabo.token)).send({ muteArrival: true })).status).toBe(200);
+    expect((await w.http().get('/api/customer/me').set(auth(thabo.token))).body).toMatchObject({ muteArrivalAlerts: true, muteExitAlerts: false });
+    const second = await pass(thabo, { visitorName: 'Silent arrival', registration: 'FS 10' });
+    const count = (await myAlerts(thabo)).filter((a) => a.kind === 'visitor_arrived').length;
+    expect((await arrive({ passId: second.body.id, vehicle: { ...car, registration: 'FS 10' } })).body.status).toBe('on_site');
+    expect((await myAlerts(thabo)).filter((a) => a.kind === 'visitor_arrived')).toHaveLength(count);
+    await w.http().put('/api/customer/visitor-alerts').set(auth(thabo.token)).send({ muteArrival: false });
+  });
 });

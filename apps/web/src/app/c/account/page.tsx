@@ -35,11 +35,11 @@ export default function CustomerAccount() {
     }
   }
 
-  async function setMute(muteExit: boolean) {
+  async function setMute(change: { muteExit?: boolean; muteArrival?: boolean }) {
     setMuteBusy(true);
     setMuteError(null);
     try {
-      await api('/customer/visitor-alerts', { method: 'PUT', json: { muteExit } });
+      await api('/customer/visitor-alerts', { method: 'PUT', json: change });
       await refresh();
     } catch (err) {
       setMuteError(err);
@@ -59,14 +59,14 @@ export default function CustomerAccount() {
       <div className="card">
         <h2>Visitor alerts</h2>
         <ErrorBanner error={muteError} />
+        <p className="mute small">These two are only for your information. Anything that needs your answer is always sent: a visitor waiting at the gate, a contractor still on site, or something that did not match.</p>
         <label style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, alignItems: 'flex-start', minHeight: 44 }}>
-          <input type="checkbox" style={{ width: 22, height: 22, marginTop: 2, flex: '0 0 22px' }} checked={!me.muteExitAlerts} disabled={muteBusy} onChange={(e) => setMute(!e.target.checked)} />
-          <span style={{ flex: 1 }}>
-            Tell me when my visitor has left
-            <span className="mute small" style={{ display: 'block' }}>
-              You are always told when a visitor is at the gate, and when something did not match as they left.
-            </span>
-          </span>
+          <input type="checkbox" style={{ width: 22, height: 22, marginTop: 2, flex: '0 0 22px' }} checked={!me.muteArrivalAlerts} disabled={muteBusy} onChange={(e) => setMute({ muteArrival: !e.target.checked })} />
+          <span style={{ flex: 1 }}>Tell me when a visitor or contractor I announced has arrived</span>
+        </label>
+        <label style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, alignItems: 'flex-start', minHeight: 44 }}>
+          <input type="checkbox" style={{ width: 22, height: 22, marginTop: 2, flex: '0 0 22px' }} checked={!me.muteExitAlerts} disabled={muteBusy} onChange={(e) => setMute({ muteExit: !e.target.checked })} />
+          <span style={{ flex: 1 }}>Tell me when my visitor has left</span>
         </label>
       </div>
 

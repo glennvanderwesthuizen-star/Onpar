@@ -17,6 +17,8 @@ export interface AlertInfo {
   optional: boolean;
   /** Sent to customers (the client and tenants of a site), never to staff. */
   customer?: boolean;
+  /** For information only: there is nothing to answer, so it does not add to the red count of unread alerts. */
+  info?: boolean;
 }
 
 export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
@@ -31,10 +33,10 @@ export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   visitor_overstay: { label: 'Visitor overstay', about: 'A visitor is still on site past their time and the gate guard has not dealt with it.', permission: 'visitors.view', optional: true },
   visitor_handover: { label: 'Visitor handover', about: 'A gate guard handed over his shift with an overstay still unresolved.', permission: 'visitors.view', optional: true },
   visitor_request: { label: 'Visitor at the gate', about: 'A visitor is at the gate asking for you.', permission: null, optional: false, customer: true },
-  visitor_answered: { label: 'Visitor answered', about: 'A visitor request for your unit was answered.', permission: null, optional: false, customer: true },
-  visitor_arrived: { label: 'Visitor arrived', about: 'A visitor you told the gate about has arrived.', permission: null, optional: false, customer: true },
+  visitor_answered: { label: 'Visitor answered', about: 'A visitor request for your unit was answered.', permission: null, optional: false, customer: true, info: true },
+  visitor_arrived: { label: 'Visitor arrived', about: 'A visitor you told the gate about has arrived.', permission: null, optional: true, customer: true, info: true },
   visitor_pass_ending: { label: 'Regular visitor ending', about: 'A contractor you set up for a fixed period has three days left.', permission: null, optional: false, customer: true },
-  visitor_left: { label: 'Visitor left', about: 'A visitor to your unit was scanned out at the gate.', permission: null, optional: true, customer: true },
+  visitor_left: { label: 'Visitor left', about: 'A visitor to your unit was scanned out at the gate.', permission: null, optional: true, customer: true, info: true },
   visitor_exit_exception: { label: 'Visitor exception', about: 'Something did not match when a visitor to your unit left.', permission: null, optional: false, customer: true },
   visitor_still_on_site: { label: 'Still on site', about: 'A contractor or visitor of yours is still on site past the time they were due to leave.', permission: null, optional: false, customer: true },
 };

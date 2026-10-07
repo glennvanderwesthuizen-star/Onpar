@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as webpush from 'web-push';
-import { AlertKind, Role, SITE_SCOPED_ROLES, wantsAlert } from '@onpar/rules';
+import { ALERT_INFO, AlertKind, Role, SITE_SCOPED_ROLES, wantsAlert } from '@onpar/rules';
 import { CONFIG, Config } from '../config';
 import { decrypt, encrypt } from '../common/crypto';
 import { DbService, Tx } from '../db/db.service';
@@ -136,9 +136,10 @@ export class NotificationsService implements OnModuleDestroy {
       const customers = (await tx.query(`SELECT id FROM customers WHERE id = ANY($1::uuid[]) AND active`, [[...new Set(input.customerIds)]])).rows;
       for (const c of customers) {
         const r = await tx.query(
-          `INSERT INTO notifications (company_id, customer_id, kind, title, body, lock_screen, url, site_id, entity_type, entity_id, dispatched_at)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN NULL ELSE now() END) RETURNING id`,
-          [c.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/c/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null, sendLater],
+          // An alert that is only for information is saved as read: it still reaches the phone, but does not add to the red count.
+          `INSERT INTO notifications (company_id, customer_id, kind, title, body, lock_screen, url, site_id, entity_type, entity_id, dispatched_at, read_at)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN NULL ELSE now() END, CASE WHEN $11 THEN now() END) RETURNING id`,
+          [c.id, input.kind, input.title, input.body ?? '', input.lockScreen, input.url ?? '/c/alerts', input.siteId ?? null, input.entityType ?? null, input.entityId ?? null, sendLater, !!ALERT_INFO[input.kind].info],
         );
         out.push(r.rows[0].id);
       }
