@@ -94,6 +94,9 @@ function shape(r: Record<string, any>) {
     status === 'on_site' ? (r.answeredHow === 'pass' ? 'Expected: let in without asking' : r.answeredHow === 'phone' ? 'Approved by phone at the gate' : `Accepted by ${r.answeredBy ?? 'your unit'}`)
     : status === 'denied' ? (r.answeredHow === 'phone' ? 'Refused by phone at the gate' : `Refused by ${r.answeredBy ?? 'your unit'}`)
     : status === 'denied_no_response' ? 'Nobody answered, so the visitor was turned away'
+    : status === 'exited' ? 'Left the site'
+    : status === 'exited_exception' ? 'Left the site. Something did not match at the gate'
+    : status === 'left_no_scan_out' ? 'Left without being scanned out'
     : null;
   return {
     id: r.id as string,

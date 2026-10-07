@@ -13,6 +13,7 @@ export interface Customer {
   phone: string;
   secondContactName: string;
   secondContactPhone: string;
+  muteExitAlerts: boolean;
   mustChangePassword: boolean;
   siteName: string;
   siteAddress: string;

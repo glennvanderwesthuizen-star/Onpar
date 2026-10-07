@@ -54,6 +54,68 @@ data class ScanCheck(
     val barred: List<BarredHit> = emptyList(),
     /** The customer told the gate this visitor is coming (or they are a regular): let in without asking. */
     val expected: ExpectedMatch? = null,
+    /** Still recorded as on site from an earlier visit: the guard is warned and must give a reason to let them in again. */
+    val onSite: List<OnSiteHit> = emptyList(),
+    val reasons: List<ReasonOption> = emptyList(),
+)
+
+/** An earlier visit of this person or vehicle that was never scanned out. */
+@Serializable
+data class OnSiteHit(val what: String = "person", val visitor: String = "", val vehicle: String? = null, val visiting: String = "", val since: String? = null, val gateName: String = "")
+
+/** A reason the guard can pick for an exception. */
+@Serializable
+data class ReasonOption(val id: String, val label: String = "")
+
+/** The entry record of a visitor who is leaving, to compare against. */
+@Serializable
+data class ExitVisit(
+    val id: String,
+    val type: String = "vehicle",
+    val visitor: String = "",
+    val vehicle: String? = null,
+    val visiting: String = "",
+    val category: String = "",
+    val gateName: String = "",
+    val enteredAt: String? = null,
+    val paxIn: Int? = null,
+    val hasFace: Boolean = false,
+)
+
+/** Something that does not match as a visitor leaves. */
+@Serializable
+data class ExitException(val type: String, val label: String = "", val text: String = "")
+
+/** What the exit scan found. `visit` is null when nobody recorded as on site matches. */
+@Serializable
+data class ExitFound(
+    val visit: ExitVisit? = null,
+    /** The guard must say whether it is the same driver who came in. */
+    val askDriver: Boolean = false,
+    /** The guard must count the passengers leaving. */
+    val askPax: Boolean = false,
+    val exceptions: List<ExitException> = emptyList(),
+    val reasons: List<ReasonOption> = emptyList(),
+)
+
+/** How a scan-out ended: "exited", "exited_exception", "held" (not let go) or "logged" (nobody on site matched). */
+@Serializable
+data class ExitReply(val status: String, val message: String = "") {
+    val gone: Boolean get() = status == "exited" || status == "exited_exception"
+}
+
+/** A visitor leaving, ready to be recorded. `allowed` is null until an exception makes the guard decide. */
+data class ExitDraft(
+    val eventId: String,
+    val visitId: String?,
+    val idNumber: String?,
+    val registration: String?,
+    val sameDriver: Boolean?,
+    val paxOut: Int?,
+    val reason: String? = null,
+    val note: String = "",
+    val allowed: Boolean? = null,
+    val photo: File? = null,
 )
 
 /** An announced visitor or a regular, found from what was scanned. */
@@ -179,6 +241,10 @@ data class VisitDraft(
     val passId: String? = null,
     /** The cell number the visitor gave, when that is how the pass was found. */
     val cell: String? = null,
+    /** The visitor is still recorded as on site: the guard's reason for letting them in again. */
+    val stillOnSite: Boolean = false,
+    val onSiteReason: String? = null,
+    val onSiteNote: String = "",
 )
 
 /** The gate's own rules, the same as the server's, so the guard is told before anything is sent. */
@@ -225,6 +291,20 @@ object VisitorRules {
         )
     }
 
+    /** An exception needs a reason picked or a note typed; "Other" needs the note. Null when it is fine. */
+    fun handlingProblem(reason: String?, note: String): String? = when {
+        reason == "other" && note.trim().length < 3 -> "Type a note to say what happened."
+        reason == null && note.trim().length < 3 -> "Choose a reason or type a note before you continue."
+        else -> null
+    }
+
+    /** What is still missing before a visitor can be scanned out; null when it can be sent. */
+    fun exitProblem(found: ExitFound, d: ExitDraft): String? = when {
+        found.visit != null && found.askDriver && d.sameDriver == null -> "Say whether this is the same driver who came in."
+        found.visit != null && found.askPax && d.paxOut == null -> "Enter the number of passengers leaving (0 if the driver is alone)."
+        else -> null
+    }
+
     /** What is still missing from a visit, in the guard's words; null when it can be sent. */
     fun problem(setup: GateSetup, d: VisitDraft): String? = when {
         d.person.surname.isBlank() -> "Enter the visitor's surname."
@@ -239,6 +319,7 @@ object VisitorRules {
         d.passId == null && setup.categories.none { it.id == d.categoryId } -> "Choose the kind of visitor."
         d.passId == null && d.unitId == null && !(d.office && setup.hasClient) -> "Choose who the visitor is here to see."
         !d.acknowledged.containsAll(warnings(setup, d.licenceExpiry, d.vehicle?.discExpiry)) -> "Confirm that you have seen the warning."
+        d.stillOnSite && handlingProblem(d.onSiteReason, d.onSiteNote) != null -> "Say why this visitor is still recorded as on site."
         else -> null
     }
 
@@ -311,6 +392,10 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
             if (d.passId != null) put("passId", d.passId)
             if (d.passId != null && !d.cell.isNullOrBlank()) put("cell", d.cell)
             put("acknowledged", JsonArray(d.acknowledged.map { JsonPrimitive(it) }))
+            if (d.stillOnSite) putJsonObject("onSite") {
+                put("reason", d.onSiteReason?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("note", d.onSiteNote.trim())
+            }
             put("trustedAt", device.clock.now().toString())
             put("deviceClock", device.clock.deviceClock().toString())
         }
@@ -349,6 +434,48 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
         val body = buildJsonObject { put("eventId", java.util.UUID.randomUUID().toString()) }
         return OnParJson.decodeFromJsonElement(VisitState.serializer(), device.client().post("/device/visitors/$id/no-response", body, device.requireGuard()))
     }
+
+    /**
+     * The exit scan: finds the visitor's open visit. With the guard's answers it also says what
+     * the exit would raise, before anything is recorded.
+     */
+    fun exitFind(idNumber: String?, registration: String?, sameDriver: Boolean? = null, paxOut: Int? = null): ExitFound {
+        val body = buildJsonObject {
+            idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", VisitorScan.idNumber(it)) }
+            registration?.takeIf { it.isNotBlank() }?.let { put("registration", VisitorScan.plate(it)) }
+            if (sameDriver != null) put("sameDriver", sameDriver)
+            if (paxOut != null) put("paxOut", paxOut)
+        }
+        return OnParJson.decodeFromJsonElement(ExitFound.serializer(), device.client().post("/device/visitors/exit/find", body, device.requireGuard()))
+    }
+
+    /** Records the visitor leaving. With an exception, `allowed` carries the guard's decision and a reason or note is needed. */
+    fun exit(d: ExitDraft): ExitReply {
+        val body = buildJsonObject {
+            put("eventId", d.eventId)
+            put("visitId", d.visitId?.let { JsonPrimitive(it) } ?: JsonNull)
+            d.idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", VisitorScan.idNumber(it)) }
+            d.registration?.takeIf { it.isNotBlank() }?.let { put("registration", VisitorScan.plate(it)) }
+            put("sameDriver", d.sameDriver?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("paxOut", d.paxOut?.let { JsonPrimitive(it) } ?: JsonNull)
+            if (d.allowed != null) {
+                VisitorRules.handlingProblem(d.reason, d.note)?.let { throw IllegalArgumentException(it) }
+                putJsonObject("handling") {
+                    put("reason", d.reason?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("note", d.note.trim())
+                    put("allowed", d.allowed)
+                }
+            }
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        val photo = d.photo?.takeIf { d.allowed != null && it.isFile && it.length() > 0 }
+        val files = listOfNotNull(photo?.let { Upload("photo", it, "image/jpeg") })
+        return OnParJson.decodeFromJsonElement(ExitReply.serializer(), device.client().postMultipart("/device/visitors/exit", body, files, device.requireGuard()))
+    }
+
+    /** The face photo taken when a visitor on foot came in, for the guard to compare. */
+    fun face(visitId: String): ByteArray = device.client().getBytes("/device/visitors/$visitId/face", device.requireGuard())
 
     fun clear() {
         cache.delete()

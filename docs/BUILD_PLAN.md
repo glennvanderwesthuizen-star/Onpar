@@ -771,3 +771,32 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 
 **Changed 7 Oct 2026 (owner):** the gate asks "Are you expected?" first. The Visitors screen has an **EXPECTED VISITOR** button next to NEW VISITOR: the guard types the visitor's cell number, ID number or number plate (or taps the name under Expected today) and sees the announcement at once. The visitor is then still scanned in full, licence disc and driver's licence, and is let in on the announcement only if the scan (or the cell number) matches it; otherwise the customer is asked as for any unannounced visitor. The owner chose this over looking up without scanning. The Expected today list moved onto that screen.
 
+
+**Proven 7 Oct 2026 (owner):** announcing a visitor and the EXPECTED VISITOR button, on the real phones ("Brilliant. Works very well").
+
+**Decided 7 Oct 2026 (owner):** a visitor scanned in while still recorded as on site is **not stopped**. The guard is warned and decides, and must give a reason (option B).
+
+### 7 Oct 2026: visitor management, step 5 of 7, leaving and exceptions (D-40)
+
+- **VISITOR LEAVING** on the gate phone's Visitors screen, with the number on site now.
+  - The guard scans the licence disc, or the ID of a visitor on foot (either can be typed if it will not scan). The entry record comes up: who, what vehicle, how many passengers, who they came to see, when. For a visitor on foot, the face photo taken on the way in is shown; each look is in the audit trail.
+  - The guard answers "Is <name> driving?" and counts the passengers leaving, then taps SCAN OUT. Everything matching closes the visit as **Exited** with the time, the guard and the gate.
+- **Exceptions (the spec's four):** different driver, different vehicle (or left on foot, or a walker leaving in a vehicle), passenger count differs, not recorded as on site.
+  - The guard must pick a reason or type a note; a photo is optional. He then chooses **LET THEM GO** or **DO NOT LET THEM GO**. His decision is recorded against him. Nothing stops a visitor by itself.
+  - Let go: the visit closes as **Exited with exception**. Not let go: the visit stays **On site**, and can be scanned out properly later.
+  - The supervisor and the people of the unit are alerted at once. The lock-screen text names nobody.
+  - "Exit match" off: a different driver or vehicle is not an exception. "Pax count" off: passengers are not asked or compared.
+- **Already on site (owner's option B):** at scan-in the phone shows **ALREADY ON SITE**, with when and where the person or vehicle came in. The guard gives a reason; the earlier visit is closed as **Left without scan-out** with an exception for the supervisor, and the new visit carries on as usual. A barred visitor is still turned away and the earlier visit left alone.
+  - The same person scanned again for the same unit while still waiting for an answer: the phone goes back to the waiting visit; no second visit is made.
+- **On the website,** a site's page has **Visitor exceptions**: open ones first, with the guard's reason and decision. A supervisor or manager clears one with a note of what was found; cleared ones stay visible for 30 days. What was raised cannot be changed or deleted. The visitor list shows when each visitor left.
+- **In the customer app:** "Your visitor has left" (can be switched off under My account, Visitor alerts) and "something did not match" (always sent).
+- Migration `0034_visit_exit.sql`: exit columns on `visits`, `visit_exceptions`, `customers.mute_exit_alerts`.
+- Tests: 14 new server tests, 4 new rules tests, 3 new phone-logic tests. The exceptions card and the tenant's switch were run in a browser.
+
+**Differs from the spec, for the owner to know:**
+- The spec has the guard scan the driver's licence again on the way out. The phone cannot read a driver's licence (answer 6 of the plan), so the guard compares the driver with the entry record and answers Yes or No. The record says the driver was "confirmed by the guard", not "scanned".
+- For "not recorded as on site", an unknown ID number is not kept (only the guard's note); an unknown number plate is kept, so the supervisor can see which vehicle it was.
+
+**Not built yet:** staff cannot yet open an exception's photo on the website (it shows "photo kept"). Overstays and the handover are step 6. Scanning out without signal is step 7.
+
+**Not yet proven:** by the owner on real phones.

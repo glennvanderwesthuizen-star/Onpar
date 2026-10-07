@@ -15,6 +15,8 @@ export default function CustomerAccount() {
   const [error, setError] = useState<unknown>(null);
   const [saved, setSaved] = useState(false);
   const [changed, setChanged] = useState(false);
+  const [muteBusy, setMuteBusy] = useState(false);
+  const [muteError, setMuteError] = useState<unknown>(null);
   const errors = error instanceof ApiError ? error.errors : {};
 
   async function save(e: React.FormEvent) {
@@ -33,6 +35,19 @@ export default function CustomerAccount() {
     }
   }
 
+  async function setMute(muteExit: boolean) {
+    setMuteBusy(true);
+    setMuteError(null);
+    try {
+      await api('/customer/visitor-alerts', { method: 'PUT', json: { muteExit } });
+      await refresh();
+    } catch (err) {
+      setMuteError(err);
+    } finally {
+      setMuteBusy(false);
+    }
+  }
+
   return (
     <>
       <h1 className="m-h1">My account</h1>
@@ -40,6 +55,20 @@ export default function CustomerAccount() {
         {me.fullName} · {me.email}
       </p>
       <AlertSettings accountId={me.id} />
+
+      <div className="card">
+        <h2>Visitor alerts</h2>
+        <ErrorBanner error={muteError} />
+        <label style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, alignItems: 'flex-start', minHeight: 44 }}>
+          <input type="checkbox" style={{ width: 22, height: 22, marginTop: 2, flex: '0 0 22px' }} checked={!me.muteExitAlerts} disabled={muteBusy} onChange={(e) => setMute(!e.target.checked)} />
+          <span style={{ flex: 1 }}>
+            Tell me when my visitor has left
+            <span className="mute small" style={{ display: 'block' }}>
+              You are always told when a visitor is at the gate, and when something did not match as they left.
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="card">
         <h2>How the gate reaches you</h2>

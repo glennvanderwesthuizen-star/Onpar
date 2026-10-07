@@ -110,11 +110,11 @@ export class VisitExitService {
   }
 
   /** What the gate phone shows after the exit scan: the entry record, and what the guard still has to say. */
-  async find(tx: Tx, gate: Gate, keys: { idNumber?: string; registration?: string }) {
+  async find(tx: Tx, gate: Gate, keys: { idNumber?: string; registration?: string; sameDriver?: boolean | null; paxOut?: number | null }) {
     const { checks } = await this.setup.settings(tx, gate.siteId);
     const v = (await this.onSite(tx, gate.siteId, keys))[0] ?? null;
     if (!v) return { visit: null, askDriver: false, askPax: false, exceptions: [exceptionView('no_open_visit')], reasons: REASON_LIST };
-    const facts = this.facts(v, keys, null, null);
+    const facts = this.facts(v, keys, keys.sameDriver ?? null, keys.paxOut ?? null);
     return {
       visit: {
         id: v.id,

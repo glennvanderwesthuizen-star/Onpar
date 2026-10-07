@@ -34,6 +34,22 @@ class ApiClient(
     fun post(path: String, body: JsonElement, guardToken: String? = null): JsonElement =
         send(request(path, guardToken).post(body.toString().toRequestBody(JSON)).build())
 
+    /** A file from the server, for example a photo. */
+    fun getBytes(path: String, guardToken: String? = null): ByteArray {
+        val res = try {
+            http.newCall(request(path, guardToken).get().build()).execute()
+        } catch (e: IOException) {
+            throw OfflineException(e)
+        }
+        res.use {
+            if (!it.isSuccessful) {
+                val text = it.body?.string().orEmpty()
+                throw toError(it.code, runCatching { OnParJson.parseToJsonElement(text) }.getOrElse { JsonPrimitive(text) })
+            }
+            return it.body?.bytes() ?: ByteArray(0)
+        }
+    }
+
     /** Multipart: the fields as JSON in `data`, plus files. */
     fun postMultipart(path: String, data: JsonElement, files: List<Upload>, guardToken: String? = null): JsonElement {
         val body = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("data", data.toString())

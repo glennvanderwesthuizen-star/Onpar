@@ -256,4 +256,68 @@ class VisitorTest {
         assertEquals(LookupKeys(null, "CA1", null), VisitorRules.lookupKeys("CA 1"))
         assertFalse(VisitorRules.lookupKeys(" ").any)
     }
+
+    @Test
+    fun `a visitor still recorded as on site needs the guard's reason before they are let in again`() {
+        server.enqueue(MockResponse().setBody("""{"person":null,"vehicle":null,"barred":[],"expected":null,"onSite":[{"what":"vehicle","visitor":"Dlamini, T J","vehicle":"CA123456 White Toyota Corolla","visiting":"Unit 14","since":"2026-10-07T06:10:00.000Z","gateName":"Main gate"}],"reasons":[{"id":"not_scanned_out","label":"Left earlier without being scanned out"},{"id":"other","label":"Other (type a note)"}]}"""))
+        val c = device.visitors.check("9001015009086", "CA123456", null)
+        assertEquals("Dlamini, T J", c.onSite.single().visitor)
+        assertEquals(listOf("not_scanned_out", "other"), c.reasons.map { it.id })
+        server.takeRequest()
+        val again = draft().copy(stillOnSite = true)
+        assertEquals("Say why this visitor is still recorded as on site.", VisitorRules.problem(setup, again))
+        assertEquals("Say why this visitor is still recorded as on site.", VisitorRules.problem(setup, again.copy(onSiteReason = "other", onSiteNote = " ")))
+        val ready = again.copy(onSiteReason = "not_scanned_out")
+        assertNull(VisitorRules.problem(setup, ready))
+        server.enqueue(MockResponse().setBody("""{"id":"v3","status":"awaiting_approval","statusLabel":"Awaiting approval","blocked":null}"""))
+        device.visitors.create(setup, ready)
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"onSite\":{\"reason\":\"not_scanned_out\",\"note\":\"\"}"))
+    }
+
+    @Test
+    fun `the exit scan finds the entry record, and the guard answers before the visitor is scanned out`() {
+        server.enqueue(MockResponse().setBody("""{"visit":{"id":"v1","type":"vehicle","visitor":"Dlamini, T J","vehicle":"CA123456 White Toyota Corolla","visiting":"Unit 14","category":"Once-off visitor","gateName":"Main gate","enteredAt":"2026-10-07T06:10:00.000Z","paxIn":2,"hasFace":false},"askDriver":true,"askPax":true,"exceptions":[],"reasons":[]}"""))
+        val found = device.visitors.exitFind(null, "ca 123-456")
+        assertEquals(2, found.visit?.paxIn)
+        assertTrue(found.askDriver && found.askPax)
+        val find = server.takeRequest()
+        assertEquals("/api/device/visitors/exit/find", find.path)
+        assertEquals("""{"registration":"CA123456"}""", find.body.readUtf8())
+        val d = ExitDraft("22222222-2222-4222-8222-222222222222", "v1", null, "ca 123-456", null, null)
+        assertEquals("Say whether this is the same driver who came in.", VisitorRules.exitProblem(found, d))
+        assertEquals("Enter the number of passengers leaving (0 if the driver is alone).", VisitorRules.exitProblem(found, d.copy(sameDriver = true)))
+        val ready = d.copy(sameDriver = true, paxOut = 2)
+        assertNull(VisitorRules.exitProblem(found, ready))
+        server.enqueue(MockResponse().setBody("""{"status":"exited","message":"Scanned out. The visit is closed."}"""))
+        val done = device.visitors.exit(ready)
+        assertTrue(done.gone)
+        val req = server.takeRequest()
+        assertEquals("/api/device/visitors/exit", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"visitId\":\"v1\"") && body.contains("\"registration\":\"CA123456\"") && body.contains("\"sameDriver\":true") && body.contains("\"paxOut\":2"))
+        assertFalse(body.contains("handling"))
+    }
+
+    @Test
+    fun `an exit exception needs a reason or a note and the guard's decision, with an optional photo`() {
+        server.enqueue(MockResponse().setBody("""{"visit":null,"askDriver":false,"askPax":false,"exceptions":[{"type":"no_open_visit","label":"Not recorded as on site","text":"Nobody with this ID or number plate is recorded as on site."}],"reasons":[{"id":"not_scanned_in","label":"Was not scanned in"}]}"""))
+        val found = device.visitors.exitFind("X99999999", null, sameDriver = false, paxOut = 1)
+        assertEquals("no_open_visit", found.exceptions.single().type)
+        val sent = server.takeRequest().body.readUtf8()
+        assertTrue(sent.contains("\"sameDriver\":false") && sent.contains("\"paxOut\":1"))
+        assertEquals("Choose a reason or type a note before you continue.", VisitorRules.handlingProblem(null, ""))
+        assertEquals("Type a note to say what happened.", VisitorRules.handlingProblem("other", " "))
+        assertNull(VisitorRules.handlingProblem("not_scanned_in", ""))
+        assertNull(VisitorRules.handlingProblem(null, "Says he came in on foot."))
+        val d = ExitDraft("33333333-3333-4333-8333-333333333333", null, "X99999999", null, null, null, allowed = true)
+        assertThrows<IllegalArgumentException> { device.visitors.exit(d) }
+        server.enqueue(MockResponse().setBody("""{"status":"logged","message":"Exception recorded. Your supervisor has been told."}"""))
+        val done = device.visitors.exit(d.copy(reason = "not_scanned_in", photo = photo("exception.jpg")))
+        assertFalse(done.gone)
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"handling\":{\"reason\":\"not_scanned_in\",\"note\":\"\",\"allowed\":true}") && body.contains("name=\"photo\""))
+        server.enqueue(MockResponse().setBody("jpeg-bytes"))
+        assertEquals("jpeg-bytes", String(device.visitors.face("v1")))
+        assertEquals("/api/device/visitors/v1/face", server.takeRequest().path)
+    }
 }

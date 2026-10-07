@@ -61,6 +61,8 @@ sealed interface Page {
     data object ExpectedVisitor : Page
     /** One visitor: waiting for the customer's answer, the phone call, and how it ended. */
     data class Visit(val id: String) : Page
+    /** A visitor leaving: the exit scan, the entry record, and any exception. */
+    data object VisitorExit : Page
     data object Uniform : Page
     data object Call : Page
     /** ID card (TSF number) and PIN, from the front screen. */
@@ -119,6 +121,14 @@ data class UiState(
     val visit: za.onpar.core.VisitState? = null,
     /** The number just phoned for that visitor ("primary" or "second"): the guard must say how the call went. */
     val calledContact: String? = null,
+    /** What the exit scan found for the visitor who is leaving. */
+    val exitFound: za.onpar.core.ExitFound? = null,
+    /** The guard has answered (same driver, passengers) and the server has said what the exit raises. */
+    val exitChecked: Boolean = false,
+    /** The entry face photo of a visitor on foot who is leaving. */
+    val exitFace: PhotoBytes? = null,
+    /** How the scan-out ended. */
+    val exitDone: za.onpar.core.ExitReply? = null,
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
     val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
@@ -304,6 +314,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             loadVisitors()
         }
         if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null) }
+        if (page == Page.VisitorExit) _state.update { it.copy(exitFound = null, exitChecked = false, exitFace = null, exitDone = null) }
         if (page is Page.Visit) {
             _state.update { it.copy(visit = it.visit?.takeIf { v -> v.id == page.id }, calledContact = null) }
             watchVisit(page.id)
@@ -378,6 +389,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun noResponse(id: String) = run {
         val s = device.visitors.noResponse(id)
         _state.update { it.copy(visit = s, calledContact = null) }
+    }
+
+    /** The exit scan: finds the visitor's open visit, and the entry face photo of a visitor on foot. */
+    fun findExit(idNumber: String?, registration: String?) = run {
+        val found = device.visitors.exitFind(idNumber, registration)
+        val face = found.visit?.takeIf { it.hasFace }?.let { v -> runCatching { PhotoBytes(device.visitors.face(v.id)) }.getOrNull() }
+        _state.update { it.copy(exitFound = found, exitChecked = false, exitFace = face, exitDone = null) }
+    }
+
+    /**
+     * Scans the visitor out. Before the guard has decided anything, the server is first asked what
+     * the exit would raise: if something does not match, the guard is shown it and must give a
+     * reason and decide.
+     */
+    fun leave(draft: za.onpar.core.ExitDraft) = run {
+        try {
+            val raised = if (draft.allowed == null) device.visitors.exitFind(draft.idNumber, draft.registration, draft.sameDriver, draft.paxOut) else null
+            if (raised != null && raised.exceptions.isNotEmpty()) {
+                _state.update { it.copy(exitFound = raised, exitChecked = true) }
+            } else {
+                val done = device.visitors.exit(draft)
+                draft.photo?.delete()
+                _state.update { it.copy(exitDone = done) }
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     fun saveVisit(draft: za.onpar.core.VisitDraft) = run {
@@ -762,3 +800,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+/** A photo fetched from the server, held only while its screen is open. */
+class PhotoBytes(val bytes: ByteArray)

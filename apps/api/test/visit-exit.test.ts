@@ -146,6 +146,9 @@ describe('visitor management: leaving and exceptions', () => {
     const first = await leave({ visitId: v.id, registration: v.registration, sameDriver: true, paxOut: 1 });
     expect(first.status).toBe(422);
     expect(first.body.exceptions).toEqual([{ type: 'pax_mismatch', label: 'Passenger count differs', text: 'The number of passengers leaving is not the number that came in.' }]);
+    // The phone asks first what the exit would raise, with the guard's answers.
+    expect((await find({ registration: v.registration, sameDriver: true, paxOut: 1 })).body.exceptions.map((x: { type: string }) => x.type)).toEqual(['pax_mismatch']);
+    expect((await find({ registration: v.registration, sameDriver: false, paxOut: 2 })).body.exceptions.map((x: { type: string }) => x.type)).toEqual(['driver_mismatch']);
     expect(first.body.reasons.map((x: { id: string }) => x.id)).toContain('passengers_stayed');
     expect((await visitRow(v.id)).status).toBe('on_site');
     const noReason = await leave({ visitId: v.id, registration: v.registration, sameDriver: true, paxOut: 1, handling: { reason: null, note: '', allowed: true } });

@@ -88,7 +88,15 @@ const VisitBody = z.object({
   deviceClock: isoTime,
 });
 
-const ExitFindBody = z.object({ idNumber: idNumber.optional(), registration: registration.optional() }).refine((b) => b.idNumber || b.registration, 'Scan the licence disc or the visitor’s ID.');
+const ExitFindBody = z
+  .object({
+    idNumber: idNumber.optional(),
+    registration: registration.optional(),
+    // Sent once the guard has answered, to see what the exit would raise before it is recorded.
+    sameDriver: z.boolean().nullable().default(null),
+    paxOut: z.number().int().min(0).max(99).nullable().default(null),
+  })
+ .refine((b) => b.idNumber || b.registration, 'Scan the licence disc or the visitor’s ID.');
 const ExitBody = z.object({
   eventId: z.string().uuid(),
   // The open visit the phone was shown. Null: nobody recorded as on site matched.
@@ -265,22 +273,22 @@ export class GateController {
       }
       if (Object.keys(errors).length) throw new BadRequestException({ message: Object.values(errors)[0], errors });
 
-      // The same person already waiting for an answer: the guard is taken back to that visit, not given a second one.
+      const today = await this.today(tx);
+      const warnings = visitWarnings(settings.checks, today, b.licenceExpiry, b.vehicle?.discExpiry ?? null);
+      const unseen = warnings.filter((w) => !b.acknowledged.includes(w));
+      if (unseen.length) throw new UnprocessableEntityException({ message: unseen.map((w) => VISIT_WARNING_TEXT[w]).join(' '), warnings: unseen });
+
+      // The same person already waiting for an answer from the same unit: the guard is taken back to that visit, not given a second one.
       const waiting = (
         await tx.query(
-          `SELECT v.id FROM visits v JOIN visitor_people p ON p.id = v.person_id WHERE v.site_id = $1 AND v.status = 'awaiting_approval' AND p.id_number = $2 ORDER BY v.captured_at DESC LIMIT 1`,
-          [gate.siteId, b.person.idNumber],
+          `SELECT v.id FROM visits v JOIN visitor_people p ON p.id = v.person_id WHERE v.site_id = $1 AND v.status = 'awaiting_approval' AND p.id_number = $2 AND v.unit_id IS NOT DISTINCT FROM $3 ORDER BY v.captured_at DESC LIMIT 1`,
+          [gate.siteId, b.person.idNumber, b.unitId],
         )
       ).rows[0];
       if (waiting) return this.reply(waiting.id, 'awaiting_approval', null);
       // Still recorded as on site: the guard was warned and must give a reason before letting them in again.
       const earlier = await this.exits.onSite(tx, gate.siteId, { idNumber: b.person.idNumber, registration: b.vehicle?.registration }, true);
       if (earlier.length && !b.onSite) throw new UnprocessableEntityException({ message: `${EXCEPTION_TEXT.no_scan_out} Give a reason before you continue.`, onSite: true, reasons: REASON_LIST });
-
-      const today = await this.today(tx);
-      const warnings = visitWarnings(settings.checks, today, b.licenceExpiry, b.vehicle?.discExpiry ?? null);
-      const unseen = warnings.filter((w) => !b.acknowledged.includes(w));
-      if (unseen.length) throw new UnprocessableEntityException({ message: unseen.map((w) => VISIT_WARNING_TEXT[w]).join(' '), warnings: unseen });
 
       const at = time.officialAt;
       const personId = (
@@ -411,7 +419,7 @@ export class GateController {
         action: 'visitor.exit_scan',
         entityType: found.visit ? 'visit' : 'site_gate',
         entityId: found.visit?.id ?? gate.id,
-        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), found: !!found.visit },
+        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), found: !!found.visit, exceptions: found.exceptions.map((x) => x.type) },
       });
       return found;
     });

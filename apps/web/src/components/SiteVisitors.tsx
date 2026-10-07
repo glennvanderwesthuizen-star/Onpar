@@ -55,6 +55,8 @@ interface Visit {
   unitName: string | null;
   category: string;
   pax: number | null;
+  paxOut: number | null;
+  exitAt: string | null;
   gateName: string;
   guard: string;
   captureMethod: 'scan' | 'manual';
@@ -577,6 +579,12 @@ export function SiteVisits({ siteId }: { siteId: string }) {
                       {v.warnings.length > 0 && <Pill tone="amber">Expired document</Pill>}
                     </div>
                     {v.answered && <div className="mute small">{v.answered}</div>}
+                    {v.exitAt && (
+                      <div className="mute small">
+                        Left {formatDateTime(v.exitAt)}
+                        {v.paxOut !== null ? `, ${v.paxOut} passenger${v.paxOut === 1 ? '' : 's'}` : ''}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -584,6 +592,174 @@ export function SiteVisits({ siteId }: { siteId: string }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+interface VisitException {
+  id: string;
+  type: string;
+  typeLabel: string;
+  raisedAt: string;
+  gateName: string | null;
+  guard: string;
+  visit: { visitor: string; vehicle: string | null; visiting: string; paxIn: number | null } | null;
+  atGate: string | null;
+  paxOut: number | null;
+  reason: string | null;
+  note: string;
+  allowed: boolean;
+  hasPhoto: boolean;
+  clearedAt: string | null;
+  clearedBy: string | null;
+  clearNote: string;
+}
+
+/**
+ * Visitor exceptions at a site (visitor management, step 5): something did not match when a
+ * visitor left, a scan matched nobody on site, or a visitor was scanned in while still
+ * recorded as on site. Each stays here until someone who has looked into it clears it.
+ */
+export function SiteVisitExceptions({ siteId }: { siteId: string }) {
+  const { can } = useSession();
+  const allowed = can('visitors.view');
+  const empty = { open: [] as VisitException[], cleared: [] as VisitException[] };
+  const { data, error, reload } = useLoad(() => (allowed ? api<typeof empty>(`/sites/${siteId}/visit-exceptions`) : Promise.resolve(empty)), [siteId, allowed]);
+  const [clearing, setClearing] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<unknown>(null);
+  const [showCleared, setShowCleared] = useState(false);
+  if (!allowed) return null;
+
+  async function clear(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api(`/sites/${siteId}/visit-exceptions/${clearing}/clear`, { method: 'POST', json: { note } });
+      setClearing(null);
+      setNote('');
+      reload();
+    } catch (err) {
+      setProblem(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const row = (x: VisitException) => (
+    <tr key={x.id}>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {formatDateTime(x.raisedAt)}
+        <div className="mute small">{x.gateName}</div>
+      </td>
+      <td>
+        <Pill tone={x.clearedAt ? 'grey' : 'red'}>{x.typeLabel}</Pill>
+        <div className="mute small">{x.allowed ? (x.type === 'no_scan_out' ? 'Let in again by the guard' : 'Let go by the guard') : 'Not let go by the guard'}</div>
+      </td>
+      <td>
+        {x.visit ? (
+          <>
+            <b>{x.visit.visitor}</b>
+            <div className="mute small">
+              {x.visit.vehicle ?? 'On foot'} · {x.visit.visiting}
+            </div>
+            {x.type === 'pax_mismatch' && (
+              <div className="mute small">
+                Passengers in {x.visit.paxIn ?? '?'}, out {x.paxOut ?? '?'}
+              </div>
+            )}
+          </>
+        ) : (
+          <span className="mute">No visit on record</span>
+        )}
+        {x.atGate && x.type !== 'pax_mismatch' && x.type !== 'no_scan_out' && <div className="mute small">At the gate: {x.atGate}</div>}
+      </td>
+      <td>
+        {x.reason && <div>{x.reason}</div>}
+        {x.note && <div>“{x.note}”</div>}
+        <div className="mute small">
+          {x.guard}
+          {x.hasPhoto ? ' · photo kept' : ''}
+        </div>
+      </td>
+      <td>
+        {x.clearedAt ? (
+          <>
+            <div>“{x.clearNote}”</div>
+            <div className="mute small">
+              {x.clearedBy}, {formatDateTime(x.clearedAt)}
+            </div>
+          </>
+        ) : !can('visitors.exceptions') ? null : clearing === x.id ? (
+          <form onSubmit={clear}>
+            <ErrorBanner error={problem} />
+            <Field label="What did you find?">
+              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} required autoFocus />
+            </Field>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" disabled={busy}>
+                {busy ? 'Clearing…' : 'Clear'}
+              </button>
+              <button type="button" className="btn ghost sm" onClick={() => setClearing(null)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            className="btn ghost sm"
+            onClick={() => {
+              setClearing(x.id);
+              setNote('');
+              setProblem(null);
+            }}
+          >
+            Clear…
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+  const table = (rows: VisitException[]) => (
+    <div className="cust-wrap">
+      <table className="cust-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Exception</th>
+            <th>Visitor</th>
+            <th>Guard’s reason</th>
+            <th>Cleared</th>
+          </tr>
+        </thead>
+        <tbody>{rows.map(row)}</tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>Visitor exceptions{data && data.open.length > 0 ? ` (${data.open.length} open)` : ''}</h2>
+        <button className="btn ghost sm" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+      <p className="mute small">Something did not match at the gate. Each one stays here until it has been looked into and cleared.</p>
+      <ErrorBanner error={error} />
+      {!data && !error && <p className="mute">Loading…</p>}
+      {data && data.open.length === 0 && <p className="mute">No open exceptions.</p>}
+      {data && data.open.length > 0 && table(data.open)}
+      {data && data.cleared.length > 0 && (
+        <p>
+          <button className="btn ghost sm" onClick={() => setShowCleared(!showCleared)}>
+            {showCleared ? 'Hide' : 'Show'} cleared in the last 30 days ({data.cleared.length})
+          </button>
+        </p>
+      )}
+      {data && showCleared && data.cleared.length > 0 && table(data.cleared)}
     </div>
   );
 }

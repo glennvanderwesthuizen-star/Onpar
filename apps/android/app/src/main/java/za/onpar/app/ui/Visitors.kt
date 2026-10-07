@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -53,9 +54,11 @@ import za.onpar.app.AppViewModel
 import za.onpar.app.Page
 import za.onpar.app.UiState
 import za.onpar.core.BarcodeReader
+import za.onpar.core.ExitDraft
 import za.onpar.core.ExpectedHint
 import za.onpar.core.ExpectedRow
 import za.onpar.core.GateSetup
+import za.onpar.core.ReasonOption
 import za.onpar.core.Scanned
 import za.onpar.core.VisitDraft
 import za.onpar.core.VisitPerson
@@ -166,6 +169,12 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B7A4E))) {
         Text("EXPECTED VISITOR" + if (state.expected.isEmpty()) "" else " (${state.expected.size} today)", fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
+    Button(onClick = { vm.go(Page.VisitorExit) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F))) {
+        Text("VISITOR LEAVING", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    }
+    val onSite = state.visits.count { it.status == "on_site" }
+    Text(if (onSite == 1) "1 visitor on site now" else "$onSite visitors on site now", fontWeight = FontWeight.Bold)
     Text("Today", style = MaterialTheme.typography.titleMedium)
     if (state.visits.isEmpty()) Text(if (state.busy) "Loading…" else "No visitors yet today.", color = Color.Gray)
     state.visits.forEach { v -> VisitCard(v) { vm.go(Page.Visit(v.id)) } }
@@ -300,6 +309,9 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     var office by remember { mutableStateOf(false) }
     var unitSearch by remember { mutableStateOf("") }
     var seenWarnings by remember { mutableStateOf(false) }
+    // Still recorded as on site from an earlier visit: the guard's reason for letting them in again.
+    var onSiteReason by remember { mutableStateOf<String?>(null) }
+    var onSiteNote by remember { mutableStateOf("") }
     // Pulled up before scanning ("Are you expected?"): shown all the way through, and confirmed by the scan.
     val hint = state.expectedHint
     var expectedCell by remember { mutableStateOf(hint?.cell.orEmpty()) }
@@ -503,6 +515,23 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 }
             }
 
+            // Owner, 7 Oct 2026: a visitor still recorded as on site is not stopped. The guard is warned and decides, with a reason.
+            val stillOnSite = state.scanCheck?.onSite.orEmpty()
+            if (stillOnSite.isNotEmpty() && barred.isEmpty()) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("ALREADY ON SITE", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        stillOnSite.forEach { o ->
+                            Text((if (o.what == "vehicle") "This vehicle" else "This person") + " came in at ${time(o.since)} at ${o.gateName} and was never scanned out: " +
+                                listOfNotNull(o.visitor, o.vehicle).joinToString(", ") + ", to see " + (if (o.visiting == "The office") "the office" else o.visiting) + ".")
+                        }
+                        Text("You decide whether to carry on. Say why first. The earlier visit is closed and your supervisor is told.")
+                        val options = state.scanCheck?.reasons.orEmpty().filter { it.id == "not_scanned_out" || it.id == "other" }
+                        ReasonPicker(options, onSiteReason, onSiteNote, { onSiteReason = it }, { onSiteNote = it })
+                    }
+                }
+            }
+
             if (type == "vehicle" && setup.on("paxCount")) {
                 OutlinedTextField(pax, { v -> pax = v.filter { it.isDigit() }.take(2) }, label = { Text("Passengers, not counting the driver") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
@@ -606,6 +635,9 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 discPhoto = if (type == "vehicle" && discMethod == "manual") discPhoto else null,
                 passId = pass?.passId,
                 cell = cellKey,
+                stillOnSite = stillOnSite.isNotEmpty() && barred.isEmpty(),
+                onSiteReason = onSiteReason,
+                onSiteNote = onSiteNote,
             )
             val problem = VisitorRules.problem(setup, draft)
             if (problem != null) Text("Still needed: $problem", color = Amber, fontWeight = FontWeight.Bold)
@@ -729,4 +761,192 @@ fun VisitScreen(vm: AppViewModel, state: UiState, id: String) {
 
     if (!v.waiting) BigButton("NEXT VISITOR") { vm.go(Page.Visitors) }
     OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Back to visitors") }
+}
+
+/** The reasons a guard can pick for an exception, and a note. Tapping a chosen reason again clears it. */
+@Composable
+private fun ReasonPicker(options: List<ReasonOption>, reason: String?, note: String, onReason: (String?) -> Unit, onNote: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        options.forEach { r -> FilterChip(selected = reason == r.id, onClick = { onReason(if (reason == r.id) null else r.id) }, label = { Text(r.label) }) }
+    }
+    OutlinedTextField(note, { onNote(it.take(300)) }, label = { Text(if (reason == "other") "What happened?" else "Note (optional with a reason)") }, modifier = Modifier.fillMaxWidth())
+}
+
+/**
+ * A visitor leaving (visitor management, step 5). The guard scans the licence disc, or the ID of
+ * a visitor on foot. The entry record comes up to compare against: the same driver, the same
+ * number of passengers. If something does not match, the guard gives a reason and decides
+ * whether the visitor may go; the customer and the supervisor are told either way.
+ */
+@Composable
+fun VisitorExitScreen(vm: AppViewModel, state: UiState) {
+    val context = LocalContext.current
+    VisitorHeader("Visitor leaving") { vm.go(Page.Visitors) }
+    val setup = state.gate
+    if (setup == null || setup.gate == null) {
+        Text(setup?.message ?: if (state.busy) "Loading…" else "This phone is not set up as a gate phone.", color = Color.DarkGray)
+        return
+    }
+
+    val done = state.exitDone
+    if (done != null) {
+        when (done.status) {
+            "exited" -> Verdict("SCANNED OUT", done.message, good = true)
+            "exited_exception" -> Verdict("SCANNED OUT, WITH AN EXCEPTION", done.message, good = true)
+            "held" -> Verdict("NOT LET GO", done.message, good = false)
+            else -> Verdict("EXCEPTION RECORDED", done.message, good = false)
+        }
+        BigButton("NEXT VISITOR") { vm.go(Page.Visitors) }
+        return
+    }
+
+    val eventId = remember { UUID.randomUUID().toString() }
+    val photoFile = remember { File(File(context.filesDir, "visitor-photos").also { it.mkdirs() }, "exception.jpg").also { it.delete() } }
+    var onFoot by remember { mutableStateOf(false) }
+    var typeIt by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf<String?>(null) }
+    // What was scanned or typed: the number plate of a vehicle, or the ID number of a visitor on foot.
+    var registration by remember { mutableStateOf<String?>(null) }
+    var idNumber by remember { mutableStateOf<String?>(null) }
+    var sameDriver by remember { mutableStateOf<Boolean?>(null) }
+    var pax by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf<String?>(null) }
+    var why by remember { mutableStateOf("") }
+    var addPhoto by remember { mutableStateOf(false) }
+    var photo by remember { mutableStateOf<File?>(null) }
+
+    val found = state.exitFound
+    if (found == null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !onFoot, onClick = { onFoot = false; typeIt = false; typed = ""; note = null }, label = { Text("Vehicle") })
+            FilterChip(selected = onFoot, onClick = { onFoot = true; typeIt = false; typed = ""; note = null }, label = { Text("On foot") })
+        }
+        note?.let { Text(it, color = Red, fontWeight = FontWeight.Bold) }
+        if (state.busy) {
+            Text("Looking for the visit…", color = Color.DarkGray)
+        } else if (!typeIt) {
+            Text(if (onFoot) "Hold the phone over the barcode on the visitor's ID." else "Hold the phone over the licence disc on the windscreen until it reads.")
+            DocumentScanner { code ->
+                val s = VisitorScan.read(code)
+                if (!onFoot && s is Scanned.Disc) {
+                    note = null
+                    registration = s.registration
+                    idNumber = null
+                    vm.findExit(null, s.registration)
+                } else if (onFoot && s is Scanned.Identity) {
+                    note = null
+                    idNumber = s.idNumber
+                    registration = null
+                    vm.findExit(s.idNumber, null)
+                } else {
+                    note = if (onFoot) "That barcode is not an ID. Try again, or type the ID number." else "That is not a licence disc. Scan the round disc on the windscreen."
+                }
+            }
+            OutlinedButton(onClick = { typeIt = true; note = null }, modifier = Modifier.fillMaxWidth()) { Text("It will not scan: type it in") }
+        } else {
+            OutlinedTextField(typed, { typed = it.take(20).uppercase() }, label = { Text(if (onFoot) "ID or passport number" else "Number plate") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters), modifier = Modifier.fillMaxWidth())
+            val ready = if (onFoot) VisitorScan.idNumber(typed).length >= 5 else VisitorScan.plate(typed).length >= 2
+            BigButton("FIND", enabled = ready) {
+                if (onFoot) {
+                    idNumber = VisitorScan.idNumber(typed)
+                    registration = null
+                } else {
+                    registration = VisitorScan.plate(typed)
+                    idNumber = null
+                }
+                vm.findExit(idNumber, registration)
+            }
+            OutlinedButton(onClick = { typeIt = false }, modifier = Modifier.fillMaxWidth()) { Text("Try scanning again") }
+        }
+        return
+    }
+
+    // The entry record, to compare against who and what is at the gate now.
+    val visit = found.visit
+    if (visit != null) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("CAME IN AT ${time(visit.enteredAt)}, ${visit.gateName}", color = Color.DarkGray, fontSize = 13.sp)
+                Text(visit.visitor, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(visit.vehicle ?: "On foot")
+                visit.paxIn?.let { Text("$it passenger" + (if (it == 1) "" else "s") + " came in with the driver", fontWeight = FontWeight.Bold) }
+                Text("To see " + (if (visit.visiting == "The office") "the office" else visit.visiting) + " · ${visit.category}", color = Color.DarkGray)
+            }
+        }
+        val face = state.exitFace
+        if (face != null) {
+            val bitmap = remember(face) { android.graphics.BitmapFactory.decodeByteArray(face.bytes, 0, face.bytes.size)?.asImageBitmap() }
+            if (bitmap != null) {
+                Text("The photo taken when they came in. Is this the same person?", fontWeight = FontWeight.Bold)
+                androidx.compose.foundation.Image(bitmap, contentDescription = "The visitor when they came in", modifier = Modifier.fillMaxWidth().height(260.dp))
+            }
+        }
+    }
+
+    val needsDecision = found.exceptions.isNotEmpty() && (visit == null || state.exitChecked || (!found.askDriver && !found.askPax))
+    val draft = ExitDraft(
+        eventId = eventId,
+        visitId = visit?.id,
+        idNumber = idNumber,
+        registration = registration,
+        sameDriver = sameDriver,
+        paxOut = pax.toIntOrNull(),
+        reason = reason,
+        note = why,
+        photo = photo,
+    )
+
+    if (!needsDecision && visit != null) {
+        if (found.askDriver) {
+            Text("Is ${visit.visitor} driving?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("Ask for the driver's licence or ID and compare the name.", color = Color.DarkGray)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = sameDriver == true, onClick = { sameDriver = true }, label = { Text("Yes, the same driver") })
+                FilterChip(selected = sameDriver == false, onClick = { sameDriver = false }, label = { Text("No, someone else") })
+            }
+        }
+        if (found.askPax) {
+            OutlinedTextField(pax, { v -> pax = v.filter { it.isDigit() }.take(2) }, label = { Text("Passengers leaving, not counting the driver") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        }
+        val problem = VisitorRules.exitProblem(found, draft)
+        if (problem != null) Text("Still needed: $problem", color = Amber, fontWeight = FontWeight.Bold)
+        BigButton(if (state.busy) "Checking…" else "SCAN OUT", enabled = !state.busy && problem == null) { vm.leave(draft) }
+    }
+
+    if (needsDecision) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFFBE3E0)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("EXCEPTION", color = Red, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                found.exceptions.forEach { e -> Text(e.text, fontWeight = FontWeight.Bold) }
+                if (visit != null && found.exceptions.any { it.type == "pax_mismatch" }) Text("Came in: ${visit.paxIn ?: "?"}. Leaving: ${pax.ifBlank { "?" }}.")
+                Text("Say why, then decide. Your supervisor" + (if (visit != null) " and the customer are" else " is") + " told either way.")
+            }
+        }
+        Text("Why?", fontWeight = FontWeight.Bold)
+        // Only the reasons that fit what was raised.
+        val types = found.exceptions.map { it.type }
+        val fits = buildList {
+            if ("driver_mismatch" in types) add("passenger_driving")
+            if ("pax_mismatch" in types) { add("passengers_stayed"); add("passengers_added") }
+            if ("vehicle_mismatch" in types) add("vehicle_stayed")
+            if ("no_open_visit" in types) add("not_scanned_in")
+            add("other")
+        }
+        ReasonPicker(found.reasons.filter { it.id in fits }, reason, why, { reason = it }, { why = it })
+        if (!addPhoto) {
+            OutlinedButton(onClick = { addPhoto = true }, modifier = Modifier.fillMaxWidth()) { Text("Add a photo (optional)") }
+        } else {
+            PhotoTaker(photoFile, front = false) { photo = it }
+        }
+        val problem = VisitorRules.handlingProblem(reason, why)
+        if (problem != null) Text("Still needed: $problem", color = Amber, fontWeight = FontWeight.Bold)
+        val go = if (visit == null) "RECORD: LET THEM GO" else "LET THEM GO"
+        BigButton(if (state.busy) "Sending…" else go, enabled = !state.busy && problem == null) { vm.leave(draft.copy(allowed = true)) }
+        Button(onClick = { vm.leave(draft.copy(allowed = false)) }, enabled = !state.busy && problem == null, modifier = Modifier.fillMaxWidth().height(64.dp),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("DO NOT LET THEM GO", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+    }
+    OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel: back to visitors") }
 }

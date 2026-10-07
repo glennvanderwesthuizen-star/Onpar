@@ -152,7 +152,8 @@ describe('visitor management: announced visitors', () => {
     const made = await pass(thabo, { kind: 'ongoing', visitorName: 'Grace the cleaner', categoryId: cats['Regular contractor'], idNumber: 'P77778888', visitDate: null, days: [1, 2, 3, 4, 5, 6, 7], hoursFrom: '00:00', hoursTo: '23:59' });
     expect(made.status).toBe(201);
     const person = { idNumber: 'P77778888', surname: 'Mokoena', names: 'Grace', document: 'passport', method: 'manual' };
-    for (let i = 0; i < 2; i++) expect((await arrive({ passId: made.body.id, person, type: 'pedestrian', vehicle: null, pax: null }).attach('face', PNG, { filename: 'f.png', contentType: 'image/png' })).body.status).toBe('on_site');
+    // Never scanned out after the first visit: the guard is warned, gives a reason, and she is let in again.
+    for (let i = 0; i < 2; i++) expect((await arrive({ passId: made.body.id, person, type: 'pedestrian', vehicle: null, pax: null, onSite: i ? { reason: 'not_scanned_out' } : null }).attach('face', PNG, { filename: 'f.png', contentType: 'image/png' })).body.status).toBe('on_site');
     expect((await myAlerts(thabo))[0].body).toBe('Mokoena, Grace was let in, on foot.');
     expect((await w.http().get('/api/customer/passes').set(auth(thabo.token))).body.current.find((p: { visitorName: string }) => p.visitorName === 'Grace the cleaner')).toMatchObject({ stateLabel: 'Regular', idNumber: '•••••8888', when: 'Every day, 00:00 to 23:59' });
     // Not on a day that is not hers.
@@ -240,7 +241,11 @@ describe('visitor management: announced visitors', () => {
     await w.http().put(`${site()}/visitor-settings`).set(auth(admin)).send({ ...DEFAULT_VISITOR_SETTINGS, checks: { ...DEFAULT_VISITOR_SETTINGS.checks, entryLimit: false } });
     const made = await pass(thabo, { visitorName: 'In and out', registration: 'MP 8' });
     const car = { registration: 'MP 8', make: '', model: '', colour: '', vin: '', discExpiry: null, method: 'scan' };
-    expect((await arrive({ passId: made.body.id, vehicle: car })).body.status).toBe('on_site');
+    const first = await arrive({ passId: made.body.id, vehicle: car });
+    expect(first.body.status).toBe('on_site');
+    // Scanned out, then back in on the same announcement.
+    const out = await w.http().post('/api/device/visitors/exit').set(g()).field('data', JSON.stringify({ eventId: randomUUID(), visitId: first.body.id, registration: 'MP 8', sameDriver: true, paxOut: 0, trustedAt: now(), deviceClock: now() }));
+    expect(out.body.status).toBe('exited');
     expect((await arrive({ passId: made.body.id, vehicle: car })).body.status).toBe('on_site');
   });
 });
