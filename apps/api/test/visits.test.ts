@@ -148,7 +148,7 @@ describe('visitor management: scanning a visitor in at the gate', () => {
     expect(r.body.person).toMatchObject({ surname: 'Dlamini', names: 'T J' });
     expect(r.body.vehicle).toMatchObject({ make: 'Toyota', model: 'Corolla', colour: 'White' });
     expect(r.body.barred).toEqual([]);
-    expect((await check({ idNumber: '7001015009085' })).body).toEqual({ person: null, vehicle: null, barred: [] });
+    expect((await check({ idNumber: '7001015009085' })).body).toEqual({ person: null, vehicle: null, barred: [], expected: null });
     const [a] = await ownerQuery(`SELECT actor_type, after FROM audit_log WHERE action = 'visitor.scan_check' ORDER BY id LIMIT 1`);
     expect(a.actor_type).toBe('employee');
     expect(a.after).toMatchObject({ checked: ['id_number', 'registration'], knownPerson: true, knownVehicle: true, barred: [] });

@@ -745,3 +745,27 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 
 **Raised by the owner, 7 Oct 2026, for step 5:** the same ID was scanned in twice and both visits were accepted; the phone only said the person had been here before. A person (or vehicle) who is already on site, or still waiting for an answer, must not simply be scanned in again. Proposed for step 5, where scanning out is built: the gate phone says "Already on site since <time>" and the guard must first deal with the open visit (scan it out, or close it as "Left without scan-out" with a note). Owner to confirm: stop outright, or warn and let the guard decide.
 
+### 7 Oct 2026: visitor management, step 4 of 7, announced visitors (D-40)
+
+- **In the customer app,** a new **Visitors** tab: "Tell the gate who is coming".
+  - **One visit:** the visitor's name, kind of visitor, the day, an optional time, and optionally which gate.
+  - **A regular:** days of the week, optional hours, and optional first and last days. A fixed-period contractor must have a first and a last day.
+  - **How the gate will know them:** at least one of number plate, ID or passport number, or cell number. It will not save without one.
+  - The list shows who is expected and who is a regular, and each can be removed. A unit sees only its own list; ID numbers show their last four characters.
+  - **"Let them in next time without asking"** on a visitor the unit has let in: the pass takes the ID number and number plate from that visit, so the customer never types or sees the ID number.
+- **At the gate,** the phone checks what was scanned against today's list. On a match it shows **EXPECTED by Unit 14**, who announced them, and a **Let them in** button; no approval is asked. The kind of visitor and the unit come from the announcement.
+  - **By cell number:** on the last screen the guard can type the cell number of a visitor who says they are expected.
+  - **Timing:** a day only means any time that day; with a time, from an hour before to an hour after. A regular only on their days, within their hours and dates. Outside that, the visitor is treated as unannounced and the customer is asked.
+  - **Partial match** (the ID matches but the number plate does not, or the other way round): let in, and the customer is told what did not match.
+  - **A different gate** from the one named: still let in; the guard sees which gate was named (owner's answer 1).
+  - **One entry:** a one-visit announcement is used up by one entry, unless the site switches that check off.
+  - **A barred visitor is never let in on an announcement.**
+- **Expected today** on the gate phone's Visitors screen: who is due, for which unit, when, and what they are known by (never an ID number in full).
+- **The customer is told** when their visitor arrives, and, three days before it ends, that a fixed-period contractor's time is nearly up.
+- Migration `0033_visitor_passes.sql`: `visitor_passes`, `visits.pass_id`.
+- Tests: 13 new server tests, 3 new rules tests, 2 new phone-logic tests. Announcing, a regular, removing, and "let them in next time" were run in a phone-sized browser.
+
+**Not built:** the website does not yet show staff the list of announced visitors (it shows each visit as "Expected: announced by the customer"). The one-time PIN to a visitor's cell number stays off (needs SMS).
+
+**Not yet proven:** by the owner on real phones.
+
