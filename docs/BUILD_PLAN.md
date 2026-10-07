@@ -740,3 +740,8 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 **Not yet proven:** the alert arriving on a real tenant's phone, and the call from a real gate phone.
 
 **Still to come:** announcing visitors (step 4), so the tenant is not asked each time.
+
+**Proven 7 Oct 2026 (owner, build 0.1.119):** after freeing the install problem (the gate phone was 97% full), the owner reported visitor scanning and approval "working well now". Not yet reported one by one: the alert on a second phone, and the phone call.
+
+**Raised by the owner, 7 Oct 2026, for step 5:** the same ID was scanned in twice and both visits were accepted; the phone only said the person had been here before. A person (or vehicle) who is already on site, or still waiting for an answer, must not simply be scanned in again. Proposed for step 5, where scanning out is built: the gate phone says "Already on site since <time>" and the guard must first deal with the open visit (scan it out, or close it as "Left without scan-out" with a note). Owner to confirm: stop outright, or warn and let the guard decide.
+
