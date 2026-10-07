@@ -44,6 +44,8 @@ import { CustomersController } from './customers/customers.controller';
 import { CustomerAppController } from './customers/customer-app.controller';
 import { VisitorSetupController } from './visitors/visitor-setup.controller';
 import { GateController } from './visitors/gate.controller';
+import { CustomerVisitsController } from './visitors/customer-visits.controller';
+import { VisitApprovalService } from './visitors/visit-approval.service';
 import { VisitorSetupService } from './visitors/visitor-setup.service';
 
 @Controller('health')
@@ -96,6 +98,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       CustomerAppController,
       VisitorSetupController,
       GateController,
+      CustomerVisitsController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
@@ -114,6 +117,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       FaceMatchService,
       NotificationsService,
       VisitorSetupService,
+      VisitApprovalService,
     ],
   })
   class AppModule {}

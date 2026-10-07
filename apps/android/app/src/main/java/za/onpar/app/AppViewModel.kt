@@ -57,7 +57,8 @@ sealed interface Page {
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
     data object Visitors : Page
     data object NewVisitor : Page
-    data object VisitSaved : Page
+    /** One visitor: waiting for the customer's answer, the phone call, and how it ended. */
+    data class Visit(val id: String) : Page
     data object Uniform : Page
     data object Call : Page
     /** ID card (TSF number) and PIN, from the front screen. */
@@ -106,7 +107,10 @@ data class UiState(
     val visits: List<za.onpar.core.VisitRow> = emptyList(),
     /** What the site already knows about the visitor being scanned in. */
     val scanCheck: za.onpar.core.ScanCheck? = null,
-    val visitDone: za.onpar.core.VisitReply? = null,
+    /** The visitor on the waiting screen, as the server last reported it. */
+    val visit: za.onpar.core.VisitState? = null,
+    /** The number just phoned for that visitor ("primary" or "second"): the guard must say how the call went. */
+    val calledContact: String? = null,
     val panic: PanicStatus? = null,
     /** Guards on duty on this phone but locked (D-33): shown on the front screen, unlocked with their PIN. */
     val lockedGuards: List<za.onpar.core.GuardSession> = emptyList(),
@@ -284,7 +288,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Uniform) loadUniform()
         if (page == Page.Call) loadContacts()
         if (page == Page.Visitors) loadVisitors()
-        if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null, visitDone = null) }
+        if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null) }
+        if (page is Page.Visit) {
+            _state.update { it.copy(visit = it.visit?.takeIf { v -> v.id == page.id }, calledContact = null) }
+            watchVisit(page.id)
+        }
     }
 
     // --- Visitors at the gate ------------------------------------------------
@@ -303,12 +311,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    @Volatile private var visitWatch: kotlinx.coroutines.Job? = null
+
+    /** Keeps the waiting screen up to date: asks every three seconds until the visit is decided or the guard leaves the screen. */
+    private fun watchVisit(id: String) {
+        visitWatch?.cancel()
+        visitWatch = viewModelScope.launch {
+            while (isActive && (_state.value.page as? Page.Visit)?.id == id) {
+                val s = withContext(Dispatchers.IO) { runCatching { device.visitors.state(id) }.getOrNull() }
+                if (s != null) _state.update { if ((it.page as? Page.Visit)?.id == id) it.copy(visit = s) else it }
+                if (s != null && !s.waiting) break
+                delay(3000)
+            }
+        }
+    }
+
+    /** "No response. Dial the customer?" The number comes from the server and is never shown. */
+    fun dialCustomer(id: String, contact: String) = run {
+        val d = device.visitors.dial(id, contact)
+        if (Calls.placeHidden(getApplication(), d.number, d.label)) _state.update { it.copy(calledContact = contact) }
+        else _state.update { it.copy(error = "The phone could not start the call.") }
+    }
+
+    fun callOutcome(id: String, contact: String, outcome: String) = run {
+        val s = device.visitors.callOutcome(id, contact, outcome)
+        _state.update { it.copy(visit = s, calledContact = null) }
+    }
+
+    /** Nobody could be reached: the visitor is turned away. */
+    fun noResponse(id: String) = run {
+        val s = device.visitors.noResponse(id)
+        _state.update { it.copy(visit = s, calledContact = null) }
+    }
+
     fun saveVisit(draft: za.onpar.core.VisitDraft) = run {
         try {
             val setup = _state.value.gate ?: device.visitors.setup()
             val reply = device.visitors.create(setup, draft)
             listOfNotNull(draft.face, draft.identityPhoto, draft.discPhoto).forEach { it.delete() }
-            _state.update { it.copy(visitDone = reply, scanCheck = null, page = Page.VisitSaved) }
+            _state.update { it.copy(scanCheck = null) }
+            go(Page.Visit(reply.id))
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }
         }

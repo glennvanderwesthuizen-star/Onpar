@@ -236,3 +236,28 @@ export function visitWarnings(checks: Pick<VisitorChecks, 'expiredLicenceOk'>, t
   if (discExpiry && discExpiry < today) out.push('disc_expired');
   return out;
 }
+
+// --- Step 3: approval -------------------------------------------------------------------------
+
+/** How a visit was approved or refused: in the customer app, or by phone at the gate. */
+export const APPROVAL_METHODS = ['push', 'phone'] as const;
+export type ApprovalMethod = (typeof APPROVAL_METHODS)[number];
+
+/** What the guard records after phoning the customer. */
+export const CALL_OUTCOMES = ['approved', 'denied', 'no_answer'] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = { approved: 'Approved by phone', denied: 'Denied by phone', no_answer: 'No answer' };
+
+/** Which of the customer's numbers the gate phoned. */
+export const CALL_CONTACTS = ['primary', 'second'] as const;
+export type CallContact = (typeof CALL_CONTACTS)[number];
+
+/** A visitor's name for lists and alerts: "Dlamini, T J". */
+export function visitorName(surname: string, names: string): string {
+  return [surname.trim(), names.trim()].filter(Boolean).join(', ');
+}
+
+/** A vehicle in one line: "CA123456 White Toyota Corolla". */
+export function vehicleLine(v: { registration: string; colour?: string | null; make?: string | null; model?: string | null }): string {
+  return [v.registration, v.colour, v.make, v.model].filter(Boolean).join(' ');
+}

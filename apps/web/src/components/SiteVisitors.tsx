@@ -60,6 +60,7 @@ interface Visit {
   captureMethod: 'scan' | 'manual';
   documentLabel: string;
   warnings: string[];
+  answered: string | null;
 }
 interface Setup {
   gates: Gate[];
@@ -575,6 +576,7 @@ export function SiteVisits({ siteId }: { siteId: string }) {
                       {v.captureMethod === 'manual' && <Pill tone="grey">Manual capture</Pill>}
                       {v.warnings.length > 0 && <Pill tone="amber">Expired document</Pill>}
                     </div>
+                    {v.answered && <div className="mute small">{v.answered}</div>}
                   </td>
                 </tr>
               ))}

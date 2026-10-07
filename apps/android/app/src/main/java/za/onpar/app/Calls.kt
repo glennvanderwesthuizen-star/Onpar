@@ -60,6 +60,19 @@ object Calls {
         return runCatching { context.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", number, null), Bundle()) }.isSuccess
     }
 
+    /** Numbers the guard may phone but not see (a customer's number, phoned from a waiting visitor): by their last digits, with what to show. */
+    private val hidden = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun digits(number: String) = number.filter { it.isDigit() }.takeLast(9)
+
+    /** Starts a call whose number stays out of sight: the call screen shows the label. */
+    fun placeHidden(context: Context, number: String, label: String): Boolean {
+        hidden[digits(number)] = label
+        return place(context, number)
+    }
+
+    /** What to show in place of a hidden number, if this is one. */
+    fun labelFor(number: String): String? = hidden[digits(number)]
+
     fun answer() = call?.answer(VideoProfile.STATE_AUDIO_ONLY)
     fun decline() = call?.reject(false, null)
     fun end() = call?.disconnect()

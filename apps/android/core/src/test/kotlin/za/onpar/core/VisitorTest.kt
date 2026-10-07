@@ -195,4 +195,34 @@ class VisitorTest {
         assertEquals("POST", req.method)
         assertEquals("/api/device/visitors/check", req.path)
     }
+
+    @Test
+    fun `the waiting screen reads where a visit stands and which numbers are left to phone`() {
+        server.enqueue(MockResponse().setBody("""{"id":"v1","status":"awaiting_approval","statusLabel":"Awaiting approval","visitor":"Dlamini, T J","vehicle":"CA123456 White Toyota Corolla","visiting":"Unit 14","asked":2,"secondsLeft":0,"canDial":true,"dial":{"primary":{"label":"Unit 14","tried":true},"second":{"label":"Unit 14, second contact","tried":false}},"decided":null,"blocked":null}"""))
+        val s = device.visitors.state("v1")
+        assertTrue(s.waiting && s.canDial && !s.letIn)
+        assertFalse(s.dial.allTried)
+        assertEquals("Unit 14, second contact", s.dial.second?.label)
+        assertEquals("/api/device/visitors/v1", server.takeRequest().path)
+        assertTrue(DialOptions().allTried)
+        assertTrue(DialOptions(DialOption("Unit 9", true), null).allTried)
+    }
+
+    @Test
+    fun `the gate dials through the server and records how the call went`() {
+        server.enqueue(MockResponse().setBody("""{"number":"082 555 0140","label":"Unit 14"}"""))
+        assertEquals(DialReply("082 555 0140", "Unit 14"), device.visitors.dial("v1", "primary"))
+        assertEquals("/api/device/visitors/v1/dial", server.takeRequest().path)
+        assertThrows<IllegalArgumentException> { device.visitors.callOutcome("v1", "primary", "busy") }
+        server.enqueue(MockResponse().setBody("""{"id":"v1","status":"on_site","statusLabel":"On site","decided":"Approved by phone"}"""))
+        val done = device.visitors.callOutcome("v1", "primary", "approved")
+        assertTrue(done.letIn && !done.waiting)
+        val req = server.takeRequest()
+        assertEquals("/api/device/visitors/v1/call-outcome", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"outcome\":\"approved\"") && body.contains("\"contact\":\"primary\"") && body.contains("eventId"))
+        server.enqueue(MockResponse().setBody("""{"id":"v2","status":"denied_no_response","statusLabel":"Denied, no response","decided":"Nobody answered"}"""))
+        assertEquals("Nobody answered", device.visitors.noResponse("v2").decided)
+        assertEquals("/api/device/visitors/v2/no-response", server.takeRequest().path)
+    }
 }

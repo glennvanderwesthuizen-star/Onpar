@@ -4,7 +4,7 @@ import { can, Permission, Role } from './roles';
  * Alerts sent to a person's own phone (plan of 6 Oct 2026, decision D-38). One list for every
  * app, so the alerts page, the settings and the server always agree.
  */
-export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred'] as const;
+export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred', 'visitor_request', 'visitor_answered'] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export interface AlertInfo {
@@ -15,6 +15,8 @@ export interface AlertInfo {
   permission: Permission | null;
   /** Whether a person may switch it off for themselves. A panic can never be switched off. */
   optional: boolean;
+  /** Sent to customers (the client and tenants of a site), never to staff. */
+  customer?: boolean;
 }
 
 export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
@@ -25,11 +27,13 @@ export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   post_uncovered: { label: 'Post uncovered', about: 'A relief guard has not arrived and the post is uncovered.', permission: 'attendance.view', optional: true },
   red_report: { label: 'Red report', about: 'A report with Red priority was raised.', permission: 'reports.view', optional: true },
   visitor_barred: { label: 'Barred visitor', about: 'Someone on the barred list tried to come in at one of your gates.', permission: 'visitors.view', optional: true },
+  visitor_request: { label: 'Visitor at the gate', about: 'A visitor is at the gate asking for you.', permission: null, optional: false, customer: true },
+  visitor_answered: { label: 'Visitor answered', about: 'A visitor request for your unit was answered.', permission: null, optional: false, customer: true },
 };
 
 /** The alerts a role can receive, in display order. The test alert is not a setting, so it is left out. */
 export function alertKindsFor(role: Role): AlertKind[] {
-  return ALERT_KINDS.filter((k) => k !== 'test' && (ALERT_INFO[k].permission === null || can(role, ALERT_INFO[k].permission as Permission)));
+  return ALERT_KINDS.filter((k) => k !== 'test' && !ALERT_INFO[k].customer && (ALERT_INFO[k].permission === null || can(role, ALERT_INFO[k].permission as Permission)));
 }
 
 /**
@@ -38,6 +42,7 @@ export function alertKindsFor(role: Role): AlertKind[] {
  */
 export function wantsAlert(role: Role, kind: AlertKind, switchedOff: ReadonlySet<string>): boolean {
   const info = ALERT_INFO[kind];
+  if (info.customer) return false;
   if (info.permission !== null && !can(role, info.permission)) return false;
   return !info.optional || !switchedOff.has(kind);
 }

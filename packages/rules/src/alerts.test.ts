@@ -15,6 +15,9 @@ describe('alerts', () => {
     expect(wantsAlert('site_supervisor', 'red_report', off)).toBe(true);
     expect(wantsAlert('client_manager', 'panic', new Set())).toBe(false);
     expect(wantsAlert('client_manager', 'test', new Set())).toBe(true);
+    // Alerts for customers never go to staff, and are not among a member of staff's settings.
+    expect(wantsAlert('system_admin', 'visitor_request', new Set())).toBe(false);
+    expect(alertKindsFor('system_admin')).not.toContain('visitor_request');
   });
 
   it('sends alerts only to the real delivery services, over HTTPS', () => {

@@ -1,9 +1,11 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Post, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
 import {
   BARRED_KIND_LABELS,
   BarredKind,
+  CALL_CONTACTS,
+  CALL_OUTCOMES,
   CAPTURE_METHODS,
   IDENTITY_DOCUMENTS,
   normaliseIdNumber,
@@ -22,6 +24,7 @@ import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
+import { VisitApprovalService } from './visit-approval.service';
 import { VisitorSetupService } from './visitor-setup.service';
 
 interface Upload {
@@ -68,6 +71,10 @@ const VisitBody = z.object({
   deviceClock: isoTime,
 });
 
+const DialBody = z.object({ contact: z.enum(CALL_CONTACTS) });
+const OutcomeBody = z.object({ eventId: z.string().uuid(), contact: z.enum(CALL_CONTACTS), outcome: z.enum(CALL_OUTCOMES, { message: 'Choose how the call went.' }) });
+const EventBody = z.object({ eventId: z.string().uuid() });
+
 function jsonField(body: Record<string, unknown>): unknown {
   if (typeof body?.data !== 'string') return body;
   try {
@@ -93,6 +100,7 @@ export class GateController {
     private readonly storage: StorageService,
     private readonly setup: VisitorSetupService,
     private readonly notifications: NotificationsService,
+    private readonly approval: VisitApprovalService,
   ) {}
 
   /** Everything the gate phone needs before a visitor arrives: its gate, the site's checks, categories and units. */
@@ -292,6 +300,8 @@ export class GateController {
           entityId: id,
         });
       }
+      // Not barred: the customers of the unit are asked, and the gate waits for the answer.
+      if (status === 'awaiting_approval') await this.approval.request(tx, id);
       return this.reply(id, status, deniedReason);
     });
   }
@@ -313,6 +323,47 @@ export class GateController {
           [gate.siteId],
         )
       ).rows.map((r) => ({ ...r, statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus] }));
+    });
+  }
+
+  /** Where a visit stands: the countdown, the answer, and whether the guard may phone. The waiting screen asks every few seconds. */
+  @Get(':id')
+  state(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(guard.companyId, async (tx) => this.approval.gateState(tx, id, (await this.requireGate(tx, guard)).siteId));
+  }
+
+  /**
+   * "No response. Dial the customer?" Returns the number for the phone to dial; the guard is
+   * shown only whose it is. Allowed once the customer's time to answer in the app is over.
+   */
+  @Post(':id/dial')
+  @HttpCode(200)
+  dial(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(DialBody, body);
+    return this.db.withTenant(guard.companyId, async (tx) => this.approval.dial(tx, await this.actor(tx, guard), id, (await this.requireGate(tx, guard)).siteId, b.contact));
+  }
+
+  /** After the call: Approved by phone, Denied by phone or No answer. Safe to retry. */
+  @Post(':id/call-outcome')
+  @HttpCode(200)
+  callOutcome(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(OutcomeBody, body);
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const siteId = (await this.requireGate(tx, guard)).siteId;
+      await this.approval.callOutcome(tx, await this.actor(tx, guard), id, siteId, b);
+      return this.approval.gateState(tx, id, siteId);
+    });
+  }
+
+  /** Nobody could be reached: the visitor is turned away. Safe to retry. */
+  @Post(':id/no-response')
+  @HttpCode(200)
+  noResponse(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(EventBody, body);
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const siteId = (await this.requireGate(tx, guard)).siteId;
+      await this.approval.noResponse(tx, await this.actor(tx, guard), id, siteId, b.eventId);
+      return this.approval.gateState(tx, id, siteId);
     });
   }
 
@@ -363,6 +414,10 @@ export class GateController {
   /** Today's date in South Africa. */
   private async today(tx: Tx): Promise<string> {
     return (await tx.query(`SELECT to_char(now() AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD') AS d`)).rows[0].d;
+  }
+
+  private async actor(tx: Tx, guard: GuardPrincipal) {
+    return { actorType: 'employee' as const, actorId: guard.employeeId, actorLabel: await this.guardName(tx, guard), employeeId: guard.employeeId, deviceId: guard.deviceId };
   }
 
   private async guardName(tx: Tx, guard: GuardPrincipal): Promise<string> {

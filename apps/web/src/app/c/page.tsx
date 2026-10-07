@@ -5,11 +5,12 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Device, pushState, PushState } from '@/lib/push';
 import { useCustomer } from '@/lib/customer';
+import { CustomerVisits } from '@/components/CustomerVisits';
 
 /**
- * Customer app, Home (phase 3, D-39). The foundation only: who you are, where, how the gate
- * reaches you, and whether alerts are on for this phone. Approving visitors and telling the gate
- * who is coming are added here later (D-40).
+ * Customer app, Home (phase 3, D-39): who is at the gate for you, with Accept and Refuse
+ * (visitor management, step 3), then who you are, where, how the gate reaches you, and whether
+ * alerts are on for this phone. Telling the gate who is coming is added later (D-40).
  */
 export default function CustomerHome() {
   const { me } = useCustomer();
@@ -38,7 +39,9 @@ export default function CustomerHome() {
         </div>
       )}
 
-      <section className="card" style={{ marginTop: 12 }}>
+      <CustomerVisits />
+
+      <section className="card">
         <h2>{me.siteName}</h2>
         <div className="line">
           <span>{me.kind === 'tenant' ? 'Your unit' : 'You are'}</span>
@@ -70,10 +73,6 @@ export default function CustomerHome() {
         </Link>
       </section>
 
-      <section className="card">
-        <h2>Visitors</h2>
-        <p className="mute">Coming soon: approve or refuse a visitor at the gate from here, and tell the gate in advance who is coming and at which gate.</p>
-      </section>
     </>
   );
 }

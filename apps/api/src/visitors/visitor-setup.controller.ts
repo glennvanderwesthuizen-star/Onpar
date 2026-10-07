@@ -152,14 +152,18 @@ export class VisitorSetupController {
         await tx.query(
           `SELECT v.id, v.type, v.status, v.denied_reason AS "deniedReason", v.captured_at AS "at", v.late_synced AS "lateSynced", p.surname, p.names, p.id_number,
                   ve.registration, ve.make, ve.model, ve.colour, u.name AS "unitName", c.name AS "category", v.pax_in AS "pax", g.name AS "gateName",
-                  e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks
+                  e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks,
+                  (SELECT cu.full_name FROM visit_approvals a JOIN customers cu ON cu.id = a.customer_id WHERE a.visit_id = v.id AND a.method = 'push' ORDER BY a.at DESC LIMIT 1) AS "answeredBy",
+                  (SELECT a.method FROM visit_approvals a WHERE a.visit_id = v.id AND a.outcome <> 'no_answer' ORDER BY a.at DESC LIMIT 1) AS "answeredHow"
              FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id
              JOIN visitor_categories c ON c.id = v.category_id JOIN site_gates g ON g.id = v.gate_id JOIN employees e ON e.id = v.entry_guard
             WHERE v.site_id = $1 ORDER BY v.captured_at DESC LIMIT 50`,
           [siteId],
         )
-      ).rows.map(({ id_number, document, checks, ...r }) => ({
+      ).rows.map(({ id_number, document, checks, answeredBy, answeredHow, ...r }) => ({
         ...r,
+        // Who answered, for a visit that was approved or refused.
+        answered: answeredHow === 'push' ? `${answeredBy ?? 'The customer'}, in the app` : answeredHow === 'phone' ? (r.status === 'denied_no_response' ? 'Nobody answered' : 'By phone at the gate') : null,
         idNumber: maskIdNumber(id_number),
         documentLabel: IDENTITY_DOCUMENT_LABELS[document as keyof typeof IDENTITY_DOCUMENT_LABELS],
         statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],

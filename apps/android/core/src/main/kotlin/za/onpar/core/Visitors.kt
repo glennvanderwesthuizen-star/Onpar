@@ -72,6 +72,42 @@ data class VisitRow(
     val gateName: String = "",
 )
 
+/** One of the numbers the gate may phone. The guard sees whose it is, never the number. */
+@Serializable
+data class DialOption(val label: String = "", val tried: Boolean = false)
+
+@Serializable
+data class DialOptions(val primary: DialOption? = null, val second: DialOption? = null) {
+    /** Every number there is has been phoned (or there are none). */
+    val allTried: Boolean get() = (primary == null || primary.tried) && (second == null || second.tried)
+}
+
+/** Where a visit stands, for the gate's waiting screen: the countdown, the answer, and whether the guard may phone. */
+@Serializable
+data class VisitState(
+    val id: String,
+    val status: String,
+    val statusLabel: String = "",
+    val visitor: String = "",
+    val vehicle: String = "",
+    val visiting: String = "",
+    /** How many people were asked on their phones. */
+    val asked: Int = 0,
+    val secondsLeft: Int = 0,
+    val canDial: Boolean = false,
+    val dial: DialOptions = DialOptions(),
+    /** How it ended, in the guard's words. */
+    val decided: String? = null,
+    val blocked: String? = null,
+) {
+    val waiting: Boolean get() = status == "awaiting_approval"
+    val letIn: Boolean get() = status == "on_site"
+}
+
+/** The number for the phone to dial. Kept out of sight: the screen shows the label. */
+@Serializable
+data class DialReply(val number: String, val label: String = "")
+
 data class VisitPerson(val idNumber: String, val surname: String, val names: String, val document: String, val method: String)
 
 data class VisitVehicle(val registration: String, val make: String, val model: String, val colour: String, val vin: String, val discExpiry: String?, val method: String)
@@ -218,7 +254,37 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
         return OnParJson.decodeFromJsonElement(VisitReply.serializer(), reply)
     }
 
+    /** Where a visit stands. The waiting screen asks every few seconds. */
+    fun state(id: String): VisitState = OnParJson.decodeFromJsonElement(VisitState.serializer(), device.client().get("/device/visitors/$id", device.requireGuard()))
+
+    /** "No response. Dial the customer?" The server hands over the number only once the customer's time is up. */
+    fun dial(id: String, contact: String): DialReply {
+        val body = buildJsonObject { put("contact", contact) }
+        return OnParJson.decodeFromJsonElement(DialReply.serializer(), device.client().post("/device/visitors/$id/dial", body, device.requireGuard()))
+    }
+
+    /** After the call: "approved", "denied" or "no_answer". */
+    fun callOutcome(id: String, contact: String, outcome: String): VisitState {
+        require(outcome in CALL_OUTCOMES) { "Choose how the call went." }
+        val body = buildJsonObject {
+            put("eventId", java.util.UUID.randomUUID().toString())
+            put("contact", contact)
+            put("outcome", outcome)
+        }
+        return OnParJson.decodeFromJsonElement(VisitState.serializer(), device.client().post("/device/visitors/$id/call-outcome", body, device.requireGuard()))
+    }
+
+    /** Nobody could be reached: the visitor is turned away. */
+    fun noResponse(id: String): VisitState {
+        val body = buildJsonObject { put("eventId", java.util.UUID.randomUUID().toString()) }
+        return OnParJson.decodeFromJsonElement(VisitState.serializer(), device.client().post("/device/visitors/$id/no-response", body, device.requireGuard()))
+    }
+
     fun clear() {
         cache.delete()
+    }
+
+    companion object {
+        val CALL_OUTCOMES = linkedMapOf("approved" to "Approved by phone", "denied" to "Denied by phone", "no_answer" to "No answer")
     }
 }

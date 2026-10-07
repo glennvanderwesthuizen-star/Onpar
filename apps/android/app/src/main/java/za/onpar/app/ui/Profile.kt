@@ -209,7 +209,8 @@ fun InCallScreen(call: CallInfo, contacts: List<Contact>) {
             },
             color = Color.Gray,
         )
-        Text(who?.label ?: call.number.ifBlank { "Unknown number" }, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        // A customer phoned about a waiting visitor is shown by unit, never by number.
+        Text(Calls.labelFor(call.number) ?: who?.label ?: call.number.ifBlank { "Unknown number" }, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         who?.name?.takeIf { it.isNotBlank() }?.let { Text(it) }
         if (call.ringing) {
             Button(onClick = { Calls.answer() }, modifier = Modifier.fillMaxWidth().height(64.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {

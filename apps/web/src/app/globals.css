@@ -453,3 +453,4 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .vis-check.off { cursor: default; }
 .vis-check.off b { color: var(--mute); }
 .vis-form { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+

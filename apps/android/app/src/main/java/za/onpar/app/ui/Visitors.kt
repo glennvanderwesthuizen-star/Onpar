@@ -13,6 +13,7 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -62,6 +64,7 @@ import za.onpar.core.VisitorScan
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
+import kotlinx.coroutines.delay
 
 private val Red = Color(0xFFB3261E)
 private val Amber = Color(0xFFB86E00)
@@ -159,13 +162,13 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
     BigButton("NEW VISITOR", enabled = !state.busy) { vm.go(Page.NewVisitor) }
     Text("Today", style = MaterialTheme.typography.titleMedium)
     if (state.visits.isEmpty()) Text(if (state.busy) "Loading…" else "No visitors yet today.", color = Color.Gray)
-    state.visits.forEach { VisitCard(it) }
+    state.visits.forEach { v -> VisitCard(v) { vm.go(Page.Visit(v.id)) } }
     OutlinedButton(onClick = { vm.loadVisitors() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
 }
 
 @Composable
-private fun VisitCard(v: VisitRow) {
-    Card(Modifier.fillMaxWidth()) {
+private fun VisitCard(v: VisitRow, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(time(v.at), fontWeight = FontWeight.Bold)
@@ -472,28 +475,110 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     }
 }
 
-/** What happened to the visitor just sent. */
+/** The big answer at the end of a visit: let them in, or turn them away. */
 @Composable
-fun VisitSavedScreen(vm: AppViewModel, state: UiState) {
+private fun Verdict(title: String, detail: String, good: Boolean) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.background(if (good) Color(0xFFDFF3E7) else Color(0xFFFBE3E0)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, color = if (good) Green else Red, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+            if (detail.isNotBlank()) Text(detail)
+        }
+    }
+}
+
+/**
+ * One visitor after "Request approval": the wait while the customer answers on their phone;
+ * then, with no answer, the phone call and how it went; and the answer in large letters.
+ */
+@Composable
+fun VisitScreen(vm: AppViewModel, state: UiState, id: String) {
+    val context = LocalContext.current
+    var pendingDial by remember { mutableStateOf<String?>(null) }
+    val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val contact = pendingDial
+        pendingDial = null
+        if (ok && contact != null) vm.dialCustomer(id, contact)
+    }
+    fun dial(contact: String) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) vm.dialCustomer(id, contact)
+        else {
+            pendingDial = contact
+            askCall.launch(Manifest.permission.CALL_PHONE)
+        }
+    }
+
     VisitorHeader("Visitor") { vm.go(Page.Visitors) }
-    val done = state.visitDone
-    if (done == null) {
-        Text("Nothing to show.", color = Color.Gray)
-    } else if (done.blocked != null) {
+    val v = state.visit?.takeIf { it.id == id }
+    if (v == null) {
+        Text("Loading…", color = Color.Gray)
+        return
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(v.visitor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(v.vehicle)
+            Text("To see " + (if (v.visiting == "The office") "the office" else v.visiting), color = Color.DarkGray)
+        }
+    }
+
+    val blocked = v.blocked
+    if (blocked != null) {
+        Verdict("DO NOT LET THEM IN", blocked, good = false)
+    } else if (v.letIn) {
+        Verdict("LET THEM IN", v.decided ?: "Approved.", good = true)
+    } else if (!v.waiting) {
+        Verdict("TURN THE VISITOR AWAY", v.decided ?: v.statusLabel, good = false)
+    } else if (!v.canDial) {
+        // The customer's time to answer on their phone.
+        var left by remember(v.secondsLeft) { mutableIntStateOf(v.secondsLeft) }
+        LaunchedEffect(v.secondsLeft) {
+            while (left > 0) {
+                delay(1000)
+                left -= 1
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.background(Color(0xFFFBE3E0)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("DO NOT LET THEM IN", color = Red, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                Text(done.blocked.orEmpty())
+            Column(Modifier.background(Color(0xFFFDF0DC)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Waiting for the answer", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(if (left > 0) "%d:%02d".format(left / 60, left % 60) else "Checking…", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                Text((if (v.asked == 1) "1 person was" else "${v.asked} people were") + " asked on their phone. Keep the visitor at the gate.")
             }
         }
     } else {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.background(Color(0xFFDFF3E7)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Saved: ${done.statusLabel}", fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                Text("The visitor is recorded. Asking the customer to approve from their phone comes with the next update of On Par; until then, follow your site's usual rule before letting the visitor in.")
+        val called = state.calledContact
+        val primary = v.dial.primary
+        val second = v.dial.second
+        Text(if (v.asked == 0) "Nobody at ${v.visiting} uses the app." else "No response.", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        if (called != null) {
+            Text("How did the call go?", fontWeight = FontWeight.Bold)
+            BigButton("Approved by phone", enabled = !state.busy) { vm.callOutcome(id, called, "approved") }
+            Button(onClick = { vm.callOutcome(id, called, "denied") }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("Denied by phone", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+            OutlinedButton(onClick = { vm.callOutcome(id, called, "no_answer") }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("No answer", fontSize = 18.sp) }
+        } else {
+            if (primary == null && second == null) Text("No phone number is set for ${v.visiting}. The visitor cannot be let in.")
+            if (primary != null && !primary.tried) {
+                Text("Dial the customer?")
+                BigButton("Dial ${primary.label}", enabled = !state.busy) { dial("primary") }
+            }
+            if (primary != null && primary.tried) {
+                Text("${primary.label} did not answer.", color = Color.DarkGray)
+                if (second != null && !second.tried) BigButton("Dial the second contact", enabled = !state.busy) { dial("second") }
+                OutlinedButton(onClick = { dial("primary") }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Dial ${primary.label} again") }
+            }
+            if (primary == null && second != null && !second.tried) BigButton("Dial the second contact", enabled = !state.busy) { dial("second") }
+            if (second != null && second.tried) {
+                Text("The second contact did not answer.", color = Color.DarkGray)
+                OutlinedButton(onClick = { dial("second") }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Dial the second contact again") }
+            }
+            if (v.dial.allTried) {
+                Button(onClick = { vm.noResponse(id) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("Nobody answers: turn away", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
             }
         }
+        Text("The customer can still answer on their phone while you are dialling.", color = Color.Gray, fontSize = 13.sp)
     }
-    BigButton("NEXT VISITOR") { vm.go(Page.NewVisitor) }
+
+    if (!v.waiting) BigButton("NEXT VISITOR") { vm.go(Page.NewVisitor) }
     OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Back to visitors") }
 }
