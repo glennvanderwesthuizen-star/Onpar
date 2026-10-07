@@ -96,7 +96,15 @@ fun DocumentScanner(onCode: (String) -> Unit) {
     val owner = LocalLifecycleOwner.current
     val latest by rememberUpdatedState(onCode)
     val executor = remember { Executors.newSingleThreadExecutor() }
-    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
+    // Once the scanner has left the screen it must not report another barcode, and the camera is let go.
+    val open = remember { java.util.concurrent.atomic.AtomicBoolean(true) }
+    DisposableEffect(Unit) {
+        onDispose {
+            open.set(false)
+            executor.shutdown()
+            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
+        }
+    }
 
     AndroidView(factory = { ctx ->
         val view = PreviewView(ctx)
@@ -127,7 +135,7 @@ fun DocumentScanner(onCode: (String) -> Unit) {
                 if (text != null && (text != lastText || now - lastAt > 2000)) {
                     lastText = text
                     lastAt = now
-                    ContextCompat.getMainExecutor(ctx).execute { latest(text) }
+                    ContextCompat.getMainExecutor(ctx).execute { if (open.get()) latest(text) }
                 }
             }
             provider.unbindAll()
