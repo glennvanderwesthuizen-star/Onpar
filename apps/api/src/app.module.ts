@@ -6,6 +6,7 @@ import { AuditService } from './audit/audit.service';
 import { AuditController } from './audit/audit.controller';
 import { AuthController } from './auth/auth.controller';
 import { SitesController } from './sites/sites.controller';
+import { TestSiteController } from './sites/test-site.controller';
 import { OfficersController } from './officers/officers.controller';
 import { BadgesController } from './officers/badges';
 import { SelfieChecksController } from './attendance/selfie-checks.controller';
@@ -70,6 +71,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       HealthController,
       AuthController,
       SitesController,
+      TestSiteController,
       OfficersController,
       BadgesController,
       SelfieChecksController,

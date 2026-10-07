@@ -932,3 +932,17 @@ The owner found Duty On clumsy: a PIN to sign in, then everything open while not
 - The sign-in list shows names and shift times to anyone who picks up the post phone. It shows no numbers; the PIN is still needed.
 
 **Not yet proven:** by the owner on real phones. This changes how every guard comes on duty, so it should be tried on one phone before it goes to a site.
+
+## Test-site maker (owner's request, 7 Oct 2026)
+
+For testing with more sites, phones and visitors. On **Sites**, the administrator sees **+ Test site**. One tap makes "Test site N":
+
+- two gates (Main gate, Back gate), Day and Night shifts of two guards;
+- units 1 to 12, each with one tenant sign-in (`unitN@xxxx.onpar.test`), all with one password shown once on screen, no forced change at first sign-in;
+- four announced visitors from the owner's test sheet (units 1 to 4: two visitors for two weeks, one contractor with 3 workers, one today-only visitor) and two staff of a unit (unit 5 on foot, code 111111; unit 6 by vehicle TEST09GP, code 222222); units 7 to 12 are left empty for unannounced visitors.
+
+Everything is made up: ID numbers have month 13, plates start with TEST, cell numbers start with 0000. Passes and staff are made through the same services tenants use, so the same rules and audit entries apply; the maker itself writes one audit entry (`site.create_test`, no password in it).
+
+**Not made:** guards and phones. A guard is a real enrolment (photos, ID, PSIRA), so the owner moves a guard to the test site and registers a phone there as usual.
+
+**For the owner to know:** a test site cannot be deleted (nothing in On Par is), and it shows in the site list and dashboards like any other site. Server endpoint `POST /api/test-sites`, administrator only. Tests: 3 new server tests.
