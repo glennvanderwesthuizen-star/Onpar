@@ -670,7 +670,9 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 - **One home-screen icon for everyone:** the icon now opens a start page that sends a supervisor to the phone view, other staff to the website, a customer to the customer app, and anyone not signed in to the sign-in page.
 - Tests: 12 new server tests. The whole journey was run in a browser: the administrator adds a unit, a tenant and an import on a computer; the tenant signs in on an iPhone-sized screen, chooses a password, changes the second contact, and the administrator sees it.
 
-**Not yet proven:** a real tenant on a real phone, including switching alerts on in the customer app.
+**Proven 7 Oct 2026:** the owner added a tenant, signed in as that tenant on his phone, chose a password and received a test alert in the customer app.
+
+**Next:** the visitor management plan (D-40) was sent to the owner for approval on 7 Oct 2026, with eight questions. Nothing is built until he approves it.
 
 **Flagged (POPIA, P-3 and P-5):** tenants' names, email addresses and phone numbers are new personal information about people who are not employees. Before real tenants are loaded: a notice telling tenants what is kept and why, and a retention period for tenants who leave. Neither is built; deactivating a tenant keeps the record.
 
