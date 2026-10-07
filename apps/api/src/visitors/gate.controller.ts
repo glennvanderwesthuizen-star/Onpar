@@ -1,5 +1,6 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Res, UnprocessableEntityException, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { z } from 'zod';
 import {
   BARRED_KIND_LABELS,
@@ -7,6 +8,8 @@ import {
   CALL_CONTACTS,
   CALL_OUTCOMES,
   CAPTURE_METHODS,
+  EXCEPTION_REASONS,
+  EXCEPTION_TEXT,
   IDENTITY_DOCUMENTS,
   normaliseCell,
   normaliseIdNumber,
@@ -17,6 +20,8 @@ import {
   VISIT_WARNING_TEXT,
   VISIT_WARNINGS,
   VisitStatus,
+  vehicleLine,
+  visitorName,
   visitWarnings,
 } from '@onpar/rules';
 import { CurrentGuard, GuardAuthGuard, GuardPrincipal } from '../common/auth';
@@ -26,6 +31,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES, StorageService } from '../storage/storage.service';
 import { VisitApprovalService } from './visit-approval.service';
+import { REASON_LIST, VisitExitService } from './visit-exit.service';
 import { VisitPassService } from './visit-pass.service';
 import { VisitorSetupService } from './visitor-setup.service';
 
@@ -34,7 +40,7 @@ interface Upload {
   size: number;
   buffer: Buffer;
 }
-type Files = Partial<Record<'face' | 'identity' | 'disc', Upload[]>>;
+type Files = Partial<Record<'face' | 'identity' | 'disc' | 'photo', Upload[]>>;
 
 const isoTime = z.string().datetime({ offset: true }).transform((s) => new Date(s));
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter the date as year-month-day.').nullable().default(null);
@@ -75,7 +81,23 @@ const VisitBody = z.object({
   cell: cell.optional(),
   // The warnings the guard saw and chose to continue past.
   acknowledged: z.array(z.enum(VISIT_WARNINGS)).default([]),
+  // The visitor is still recorded as on site: the guard's reason for letting them in again.
+  onSite: z.object({ reason: z.enum(EXCEPTION_REASONS).nullable().default(null), note: short(300) }).nullable().default(null),
   capturedOffline: z.boolean().default(false),
+  trustedAt: isoTime,
+  deviceClock: isoTime,
+});
+
+const ExitFindBody = z.object({ idNumber: idNumber.optional(), registration: registration.optional() }).refine((b) => b.idNumber || b.registration, 'Scan the licence disc or the visitor’s ID.');
+const ExitBody = z.object({
+  eventId: z.string().uuid(),
+  // The open visit the phone was shown. Null: nobody recorded as on site matched.
+  visitId: z.string().uuid().nullable().default(null),
+  idNumber: idNumber.optional(),
+  registration: registration.optional(),
+  sameDriver: z.boolean().nullable().default(null),
+  paxOut: z.number().int().min(0).max(99).nullable().default(null),
+  handling: z.object({ reason: z.enum(EXCEPTION_REASONS).nullable().default(null), note: short(300), allowed: z.boolean({ message: 'Choose whether to let the visitor go.' }) }).nullable().default(null),
   trustedAt: isoTime,
   deviceClock: isoTime,
 });
@@ -111,6 +133,7 @@ export class GateController {
     private readonly notifications: NotificationsService,
     private readonly approval: VisitApprovalService,
     private readonly passes: VisitPassService,
+    private readonly exits: VisitExitService,
   ) {}
 
   /** Everything the gate phone needs before a visitor arrives: its gate, the site's checks, categories and units. */
@@ -153,6 +176,8 @@ export class GateController {
       // An announced visitor or a regular: let in without asking the customer again.
       const pass = await this.passes.match(tx, gate.siteId, gate.id, b);
       const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, pass ? pass.unitId : b.unitId, b.idNumber, b.registration) : [];
+      // Still recorded as on site from an earlier visit: the guard is warned and decides (owner, 7 Oct 2026).
+      const onSite = await this.exits.onSite(tx, gate.siteId, b);
       // The audit trail says a scan was checked and what came of it, without copying the numbers into it.
       await this.audit.record(tx, {
         actorType: 'employee',
@@ -161,9 +186,18 @@ export class GateController {
         action: 'visitor.scan_check',
         entityType: 'site_gate',
         entityId: gate.id,
-        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), knownPerson: !!person, knownVehicle: !!vehicle, barred: barred.map((x) => x.entryId), passId: pass?.passId ?? null },
+        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), knownPerson: !!person, knownVehicle: !!vehicle, barred: barred.map((x) => x.entryId), passId: pass?.passId ?? null, onSite: onSite.map((v) => v.id) },
       });
       return {
+        onSite: onSite.map((v) => ({
+          what: v.by,
+          visitor: visitorName(v.surname, v.names),
+          vehicle: v.type === 'vehicle' ? vehicleLine({ registration: v.registration ?? '', colour: v.colour, make: v.make, model: v.model }) : null,
+          visiting: v.unitName ? `Unit ${v.unitName}` : 'The office',
+          since: v.enteredAt,
+          gateName: v.gateName,
+        })),
+        reasons: REASON_LIST,
         person: person ? { surname: person.surname, names: person.names, lastSeen: person.lastSeen } : null,
         vehicle: vehicle ? { make: vehicle.make, model: vehicle.model, colour: vehicle.colour, lastSeen: vehicle.lastSeen } : null,
         barred: barred.map((x) => ({ kind: x.kind, kindLabel: BARRED_KIND_LABELS[x.kind], from: x.unitId ? 'unit' : 'site' })),
@@ -231,6 +265,18 @@ export class GateController {
       }
       if (Object.keys(errors).length) throw new BadRequestException({ message: Object.values(errors)[0], errors });
 
+      // The same person already waiting for an answer: the guard is taken back to that visit, not given a second one.
+      const waiting = (
+        await tx.query(
+          `SELECT v.id FROM visits v JOIN visitor_people p ON p.id = v.person_id WHERE v.site_id = $1 AND v.status = 'awaiting_approval' AND p.id_number = $2 ORDER BY v.captured_at DESC LIMIT 1`,
+          [gate.siteId, b.person.idNumber],
+        )
+      ).rows[0];
+      if (waiting) return this.reply(waiting.id, 'awaiting_approval', null);
+      // Still recorded as on site: the guard was warned and must give a reason before letting them in again.
+      const earlier = await this.exits.onSite(tx, gate.siteId, { idNumber: b.person.idNumber, registration: b.vehicle?.registration }, true);
+      if (earlier.length && !b.onSite) throw new UnprocessableEntityException({ message: `${EXCEPTION_TEXT.no_scan_out} Give a reason before you continue.`, onSite: true, reasons: REASON_LIST });
+
       const today = await this.today(tx);
       const warnings = visitWarnings(settings.checks, today, b.licenceExpiry, b.vehicle?.discExpiry ?? null);
       const unseen = warnings.filter((w) => !b.acknowledged.includes(w));
@@ -260,10 +306,12 @@ export class GateController {
         : null;
 
       const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, b.unitId, b.person.idNumber, v?.registration) : [];
+      // A barred visitor is turned away, so the earlier visit is left as it is.
+      if (earlier.length && !barred.length) await this.exits.closeUnscanned(tx, gate, await this.exitActor(tx, guard), earlier, b.onSite!, b.eventId);
       // Barred comes first; then a pass lets the visitor straight in; anyone else waits for the customer.
       const status: VisitStatus = barred.length ? 'denied' : pass ? 'on_site' : 'awaiting_approval';
       const deniedReason = barred.length ? 'barred' : null;
-      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}) };
+      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(earlier.length && !barred.length ? { alreadyOnSite: earlier.map((x) => x.id) } : {}), ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}) };
       const faceKey = b.type === 'pedestrian' && face ? await this.storage.put(guard.companyId, 'visitors', face.buffer, IMAGE_TYPES[face.mimetype]) : null;
       const manual = b.person.method === 'manual' || v?.method === 'manual';
       const id = (
@@ -348,6 +396,44 @@ export class GateController {
     });
   }
 
+  /** The exit scan: finds the visitor's open visit and returns the entry record to compare against. */
+  @Post('exit/find')
+  @HttpCode(200)
+  exitFind(@CurrentGuard() guard: GuardPrincipal, @Body() body: unknown) {
+    const b = parseBody(ExitFindBody, body);
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const gate = await this.requireGate(tx, guard);
+      const found = await this.exits.find(tx, gate, b);
+      await this.audit.record(tx, {
+        actorType: 'employee',
+        actorId: guard.employeeId,
+        actorLabel: await this.guardName(tx, guard),
+        action: 'visitor.exit_scan',
+        entityType: found.visit ? 'visit' : 'site_gate',
+        entityId: found.visit?.id ?? gate.id,
+        after: { deviceId: guard.deviceId, checked: [b.idNumber ? 'id_number' : null, b.registration ? 'registration' : null].filter(Boolean), found: !!found.visit },
+      });
+      return found;
+    });
+  }
+
+  /**
+   * Scans a visitor out. Multipart: `data` (JSON) and an optional `photo` for an exception.
+   * When something does not match, the first send comes back with the exceptions; the guard
+   * gives a reason and his decision, and it is sent again. Safe to retry.
+   */
+  @Post('exit')
+  @HttpCode(200)
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'photo', maxCount: 1 }], { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  exit(@CurrentGuard() guard: GuardPrincipal, @Body() body: Record<string, unknown>, @UploadedFiles() files: Files = {}) {
+    const b = parseBody(ExitBody, jsonField(body));
+    const time = reconcileTime(b.trustedAt, b.deviceClock, new Date());
+    if (!time.ok) throw new UnprocessableEntityException(time.reason);
+    const photo = files.photo?.[0];
+    if (photo && !IMAGE_TYPES[photo.mimetype]) throw new BadRequestException('Photos must be JPEG, PNG or WebP images.');
+    return this.db.withTenant(guard.companyId, async (tx) => this.exits.exit(tx, await this.requireGate(tx, guard), await this.exitActor(tx, guard), b, time.officialAt, photo));
+  }
+
   /** The gate's "Expected today" list: announced visitors and regulars due today. */
   @Get('expected')
   expected(@CurrentGuard() guard: GuardPrincipal) {
@@ -381,6 +467,21 @@ export class GateController {
   @Get(':id')
   state(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
     return this.db.withTenant(guard.companyId, async (tx) => this.approval.gateState(tx, id, (await this.requireGate(tx, guard)).siteId));
+  }
+
+  /** The face photo taken when a visitor on foot came in, for the guard to compare when they leave. Each look is recorded. */
+  @Get(':id/face')
+  async face(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const photo = await this.db.withTenant(guard.companyId, async (tx) => {
+      const gate = await this.requireGate(tx, guard);
+      const r = (await tx.query(`SELECT face_photo_key AS key, face_photo_type AS type FROM visits WHERE id = $1 AND site_id = $2 AND status IN ('awaiting_approval','on_site')`, [id, gate.siteId])).rows[0];
+      if (!r?.key) throw new NotFoundException('There is no photo for this visitor.');
+      await this.audit.record(tx, { actorType: 'employee', actorId: guard.employeeId, actorLabel: await this.guardName(tx, guard), action: 'visit.face_view', entityType: 'visit', entityId: id, after: { deviceId: guard.deviceId } });
+      return r as { key: string; type: string };
+    });
+    res.setHeader('Content-Type', photo.type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await this.storage.get(photo.key));
   }
 
   /**
@@ -469,6 +570,10 @@ export class GateController {
 
   private async actor(tx: Tx, guard: GuardPrincipal) {
     return { actorType: 'employee' as const, actorId: guard.employeeId, actorLabel: await this.guardName(tx, guard), employeeId: guard.employeeId, deviceId: guard.deviceId };
+  }
+
+  private async exitActor(tx: Tx, guard: GuardPrincipal) {
+    return { employeeId: guard.employeeId, deviceId: guard.deviceId, companyId: guard.companyId, name: await this.guardName(tx, guard) };
   }
 
   private async guardName(tx: Tx, guard: GuardPrincipal): Promise<string> {

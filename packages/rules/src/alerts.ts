@@ -4,7 +4,7 @@ import { can, Permission, Role } from './roles';
  * Alerts sent to a person's own phone (plan of 6 Oct 2026, decision D-38). One list for every
  * app, so the alerts page, the settings and the server always agree.
  */
-export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending'] as const;
+export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending', 'visitor_left', 'visitor_exit_exception'] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export interface AlertInfo {
@@ -27,10 +27,13 @@ export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   post_uncovered: { label: 'Post uncovered', about: 'A relief guard has not arrived and the post is uncovered.', permission: 'attendance.view', optional: true },
   red_report: { label: 'Red report', about: 'A report with Red priority was raised.', permission: 'reports.view', optional: true },
   visitor_barred: { label: 'Barred visitor', about: 'Someone on the barred list tried to come in at one of your gates.', permission: 'visitors.view', optional: true },
+  visitor_exception: { label: 'Visitor exception', about: 'Something did not match when a visitor left, or a visitor was scanned in while still recorded as on site.', permission: 'visitors.view', optional: true },
   visitor_request: { label: 'Visitor at the gate', about: 'A visitor is at the gate asking for you.', permission: null, optional: false, customer: true },
   visitor_answered: { label: 'Visitor answered', about: 'A visitor request for your unit was answered.', permission: null, optional: false, customer: true },
   visitor_arrived: { label: 'Visitor arrived', about: 'A visitor you told the gate about has arrived.', permission: null, optional: false, customer: true },
   visitor_pass_ending: { label: 'Regular visitor ending', about: 'A contractor you set up for a fixed period has three days left.', permission: null, optional: false, customer: true },
+  visitor_left: { label: 'Visitor left', about: 'A visitor to your unit was scanned out at the gate.', permission: null, optional: true, customer: true },
+  visitor_exit_exception: { label: 'Visitor exception', about: 'Something did not match when a visitor to your unit left.', permission: null, optional: false, customer: true },
 };
 
 /** The alerts a role can receive, in display order. The test alert is not a setting, so it is left out. */

@@ -85,6 +85,8 @@ export const PERMISSIONS = {
   'visitors.setup.manage': ['system_admin'],
   // The visitors recorded at a site's gates.
   'visitors.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  // Clear a visitor exception once it has been looked into (spec: the supervisor clears exceptions).
+  'visitors.exceptions': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   // Customers (phase 3, D-39): units, the client and tenants of a site. Only the administrator creates them.
   'customers.view': ['system_admin', 'company_manager'],
   'customers.manage': ['system_admin'],

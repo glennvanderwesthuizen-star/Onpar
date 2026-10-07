@@ -9,6 +9,12 @@ import {
   BARRED_KINDS,
   barredValue,
   CATEGORY_KINDS,
+  EXCEPTION_LABELS,
+  EXCEPTION_REASON_LABELS,
+  ExceptionReason,
+  ExceptionType,
+  vehicleLine,
+  visitorName,
   VISITOR_CHECK_INFO,
   VISITOR_CHECKS,
   VISITOR_LIMITS,
@@ -45,6 +51,7 @@ const BarredBody = z.object({
   reason: z.string().trim().min(3, 'Say why this is barred.').max(300),
 });
 const GatePhoneBody = z.object({ gateId: z.string().uuid().nullable() });
+const ClearBody = z.object({ note: z.string().trim().min(3, 'Say what you found.').max(300) });
 const RemoveBody = z.object({ reason: z.string().trim().min(3, 'Say why this is being taken off the list.').max(300) });
 
 /**
@@ -151,7 +158,7 @@ export class VisitorSetupController {
       return (
         await tx.query(
           `SELECT v.id, v.type, v.status, v.denied_reason AS "deniedReason", v.captured_at AS "at", v.late_synced AS "lateSynced", p.surname, p.names, p.id_number,
-                  ve.registration, ve.make, ve.model, ve.colour, u.name AS "unitName", c.name AS "category", v.pax_in AS "pax", g.name AS "gateName",
+                  ve.registration, ve.make, ve.model, ve.colour, u.name AS "unitName", c.name AS "category", v.pax_in AS "pax", v.pax_out AS "paxOut", v.exit_at AS "exitAt", g.name AS "gateName",
                   e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks,
                   (SELECT cu.full_name FROM visit_approvals a JOIN customers cu ON cu.id = a.customer_id WHERE a.visit_id = v.id AND a.method = 'push' ORDER BY a.at DESC LIMIT 1) AS "answeredBy",
                   (SELECT a.method FROM visit_approvals a WHERE a.visit_id = v.id AND a.outcome <> 'no_answer' ORDER BY a.at DESC LIMIT 1) AS "answeredHow"
@@ -169,6 +176,70 @@ export class VisitorSetupController {
         statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],
         warnings: (checks?.warnings ?? []) as string[],
       }));
+    });
+  }
+
+  /**
+   * The site's visitor exceptions: open ones first, then the last cleared ones. An exception
+   * stays on the list until someone who has looked into it clears it.
+   */
+  @Get('visit-exceptions')
+  @RequirePermission('visitors.view')
+  exceptions(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      const rows = (
+        await tx.query(
+          `SELECT x.id, x.type, x.reason, x.note, x.allowed, x.raised_at AS "raisedAt", x.pax_out AS "paxOut", x.photo_key IS NOT NULL AS "hasPhoto", x.cleared_at AS "clearedAt", x.clear_note AS "clearNote",
+                  cu.full_name AS "clearedBy", e.full_name AS guard, g.name AS "gateName", x.visit_id AS "visitId", v.pax_in AS "paxIn", u.name AS "unitName", v.unit_id IS NULL AND v.id IS NOT NULL AS office,
+                  vp.surname AS "entrySurname", vp.names AS "entryNames", vv.registration AS "entryRegistration",
+                  p.surname, p.names, ve.registration, ve.colour, ve.make, ve.model
+             FROM visit_exceptions x JOIN employees e ON e.id = x.raised_by LEFT JOIN site_gates g ON g.id = x.gate_id LEFT JOIN users cu ON cu.id = x.cleared_by
+             LEFT JOIN visits v ON v.id = x.visit_id LEFT JOIN site_units u ON u.id = v.unit_id LEFT JOIN visitor_people vp ON vp.id = v.person_id LEFT JOIN visitor_vehicles vv ON vv.id = v.vehicle_id
+             LEFT JOIN visitor_people p ON p.id = x.person_id LEFT JOIN visitor_vehicles ve ON ve.id = x.vehicle_id
+            WHERE x.site_id = $1 AND (x.cleared_at IS NULL OR x.cleared_at > now() - interval '30 days')
+            ORDER BY (x.cleared_at IS NULL) DESC, x.raised_at DESC LIMIT 100`,
+          [siteId],
+        )
+      ).rows.map((r) => ({
+        id: r.id as string,
+        type: r.type as ExceptionType,
+        typeLabel: EXCEPTION_LABELS[r.type as ExceptionType],
+        raisedAt: r.raisedAt as Date,
+        gateName: r.gateName as string | null,
+        guard: r.guard as string,
+        // The visit it belongs to, as it came in.
+        visit: r.visitId ? { visitor: visitorName(r.entrySurname, r.entryNames), vehicle: r.entryRegistration as string | null, visiting: r.office ? 'The office' : `Unit ${r.unitName}`, paxIn: r.paxIn as number | null } : null,
+        // Who and what was at the gate when it was raised, where the site knows them.
+        atGate: [r.surname ? visitorName(r.surname, r.names) : null, r.registration ? vehicleLine(r) : null].filter(Boolean).join(' · ') || null,
+        paxOut: r.paxOut as number | null,
+        reason: r.reason ? EXCEPTION_REASON_LABELS[r.reason as ExceptionReason] : null,
+        note: r.note as string,
+        allowed: r.allowed as boolean,
+        hasPhoto: r.hasPhoto as boolean,
+        clearedAt: r.clearedAt as Date | null,
+        clearedBy: r.clearedBy as string | null,
+        clearNote: r.clearNote as string,
+      }));
+      return { open: rows.filter((r) => !r.clearedAt), cleared: rows.filter((r) => r.clearedAt) };
+    });
+  }
+
+  /** Clears an exception once it has been looked into, with a note of what was found. */
+  @Post('visit-exceptions/:id/clear')
+  @RequirePermission('visitors.exceptions')
+  @HttpCode(200)
+  clearException(@CurrentUser() user: UserPrincipal, @Param('siteId', ParseUUIDPipe) siteId: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(ClearBody, body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.site(tx, user, siteId);
+      const r = await tx.query('UPDATE visit_exceptions SET cleared_by = $3, cleared_at = now(), clear_note = $4 WHERE id = $1 AND site_id = $2 AND cleared_at IS NULL RETURNING type, visit_id AS "visitId"', [id, siteId, user.userId, b.note]);
+      if (!r.rowCount) {
+        if ((await tx.query('SELECT 1 FROM visit_exceptions WHERE id = $1 AND site_id = $2', [id, siteId])).rowCount) throw new ConflictException('This exception has already been cleared.');
+        throw new NotFoundException('Exception not found.');
+      }
+      await this.audit.byUser(tx, user, { action: 'visit_exception.clear', entityType: 'visit_exception', entityId: id, before: r.rows[0], after: { note: b.note } });
+      return { ok: true };
     });
   }
 

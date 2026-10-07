@@ -3,6 +3,8 @@ import {
   categoryLimitText,
   DEFAULT_VISITOR_CATEGORIES,
   DEFAULT_VISITOR_SETTINGS,
+  exceptionHandlingError,
+  exitExceptions,
   normaliseCell,
   normalisePlate,
   passErrors,
@@ -117,6 +119,40 @@ describe('visitor management: the groundwork', () => {
       expect(passErrors({ ...regular, categoryKind: 'fixed_period', startDate: '2026-10-10', endDate: '2026-10-09' }, '2026-10-07')).toEqual({ endDate: 'The last day must be on or after the first day.' });
       expect(passWhen(regular)).toBe('Mon, Wed, Fri, 08:00 to 17:00');
       expect(passWhen({ ...regular, days: [], hoursFrom: null, hoursTo: null, startDate: '2026-10-10', endDate: '2026-11-20' })).toBe('Every day, any time, 2026-10-10 to 2026-11-20');
+    });
+  });
+
+  describe('a visitor leaving', () => {
+    const on = { exitMatch: true, paxCount: true };
+    const car = { type: 'vehicle' as const, paxIn: 2 };
+    const walker = { type: 'pedestrian' as const, paxIn: null };
+
+    it('closes the visit cleanly when the person, vehicle and passengers match', () => {
+      expect(exitExceptions(on, { visit: car, samePerson: true, sameVehicle: true, paxOut: 2 })).toEqual([]);
+      expect(exitExceptions(on, { visit: walker, samePerson: true, sameVehicle: true, paxOut: null })).toEqual([]);
+    });
+
+    it('raises each of the spec\u2019s four exceptions', () => {
+      expect(exitExceptions(on, { visit: car, samePerson: false, sameVehicle: true, paxOut: 2 })).toEqual(['driver_mismatch']);
+      expect(exitExceptions(on, { visit: car, samePerson: true, sameVehicle: false, paxOut: null })).toEqual(['vehicle_mismatch']);
+      expect(exitExceptions(on, { visit: walker, samePerson: true, sameVehicle: false, paxOut: 0 })).toEqual(['vehicle_mismatch']);
+      expect(exitExceptions(on, { visit: car, samePerson: true, sameVehicle: true, paxOut: 1 })).toEqual(['pax_mismatch']);
+      expect(exitExceptions(on, { visit: null, samePerson: null, sameVehicle: false, paxOut: null })).toEqual(['no_open_visit']);
+      expect(exitExceptions(on, { visit: car, samePerson: false, sameVehicle: true, paxOut: 5 })).toEqual(['driver_mismatch', 'pax_mismatch']);
+    });
+
+    it('leaves out a difference whose check the site has switched off', () => {
+      expect(exitExceptions({ exitMatch: false, paxCount: true }, { visit: car, samePerson: false, sameVehicle: false, paxOut: 2 })).toEqual([]);
+      expect(exitExceptions({ exitMatch: true, paxCount: false }, { visit: car, samePerson: true, sameVehicle: true, paxOut: 0 })).toEqual([]);
+      expect(exitExceptions({ exitMatch: false, paxCount: false }, { visit: null, samePerson: null, sameVehicle: false, paxOut: null })).toEqual(['no_open_visit']);
+    });
+
+    it('makes the guard pick a reason or type a note', () => {
+      expect(exceptionHandlingError(null, '')).toBe('Choose a reason or type a note before you continue.');
+      expect(exceptionHandlingError('other', ' ')).toBe('Type a note to say what happened.');
+      expect(exceptionHandlingError('made_up', 'x')).toBe('Choose a reason from the list.');
+      expect(exceptionHandlingError('passenger_driving', '')).toBeNull();
+      expect(exceptionHandlingError(null, 'His wife is driving.')).toBeNull();
     });
   });
 });

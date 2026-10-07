@@ -338,3 +338,69 @@ export function passWhen(p: { kind: PassKind; visitDate: string | null; time: st
   const dates = p.startDate && p.endDate ? `${p.startDate} to ${p.endDate}` : p.endDate ? `until ${p.endDate}` : p.startDate ? `from ${p.startDate}` : '';
   return [days, hours, dates].filter(Boolean).join(', ');
 }
+
+// --- Step 5: leaving and exceptions -----------------------------------------------------------
+
+/** What can go wrong when a visitor leaves (the spec's four), and a visitor found to have left without being scanned out. */
+export const EXCEPTION_TYPES = ['driver_mismatch', 'vehicle_mismatch', 'pax_mismatch', 'no_open_visit', 'no_scan_out'] as const;
+export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
+export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
+  driver_mismatch: 'Different driver',
+  vehicle_mismatch: 'Different vehicle',
+  pax_mismatch: 'Passenger count differs',
+  no_open_visit: 'Not recorded as on site',
+  no_scan_out: 'Left without scan-out',
+};
+/** What the guard is told, in a sentence. */
+export const EXCEPTION_TEXT: Record<ExceptionType, string> = {
+  driver_mismatch: 'The vehicle is leaving with a different driver from the one who came in.',
+  vehicle_mismatch: 'The visitor is not leaving in the vehicle they came in with.',
+  pax_mismatch: 'The number of passengers leaving is not the number that came in.',
+  no_open_visit: 'Nobody with this ID or number plate is recorded as on site.',
+  no_scan_out: 'This visitor is still recorded as on site from an earlier visit.',
+};
+
+/** The reasons a guard can pick. "Other" needs a note. */
+export const EXCEPTION_REASONS = ['passenger_driving', 'passengers_stayed', 'passengers_added', 'vehicle_stayed', 'not_scanned_in', 'not_scanned_out', 'other'] as const;
+export type ExceptionReason = (typeof EXCEPTION_REASONS)[number];
+export const EXCEPTION_REASON_LABELS: Record<ExceptionReason, string> = {
+  passenger_driving: 'A passenger is driving',
+  passengers_stayed: 'Passengers stayed behind',
+  passengers_added: 'Extra passengers leaving',
+  vehicle_stayed: 'Vehicle left on site',
+  not_scanned_in: 'Was not scanned in',
+  not_scanned_out: 'Left earlier without being scanned out',
+  other: 'Other (type a note)',
+};
+
+/** What the gate knows at the moment a visitor leaves. */
+export interface ExitFacts {
+  /** The open visit the scan found. Null: nobody recorded as on site matches. */
+  visit: { type: VisitType; paxIn: number | null } | null;
+  /** The person leaving is the one on the visit: by a scanned ID, or because the guard confirmed it. Null: not checked. */
+  samePerson: boolean | null;
+  /** The vehicle leaving is the one on the visit. For a visitor who came on foot: they are leaving on foot. */
+  sameVehicle: boolean;
+  paxOut: number | null;
+}
+
+/**
+ * The exceptions an exit raises. "Exit match" covers the person and the vehicle; "Pax count"
+ * covers the passengers. With a check off, that difference is not an exception.
+ */
+export function exitExceptions(checks: Pick<VisitorChecks, 'exitMatch' | 'paxCount'>, f: ExitFacts): ExceptionType[] {
+  if (!f.visit) return ['no_open_visit'];
+  const out: ExceptionType[] = [];
+  if (checks.exitMatch && f.samePerson === false) out.push('driver_mismatch');
+  if (checks.exitMatch && !f.sameVehicle) out.push('vehicle_mismatch');
+  if (checks.paxCount && f.visit.type === 'vehicle' && f.sameVehicle && f.visit.paxIn !== null && f.paxOut !== null && f.paxOut !== f.visit.paxIn) out.push('pax_mismatch');
+  return out;
+}
+
+/** What is wrong with the guard's handling of an exception; null when it is fine. A reason must be picked or a note typed. */
+export function exceptionHandlingError(reason: string | null, note: string): string | null {
+  if (reason !== null && !(EXCEPTION_REASONS as readonly string[]).includes(reason)) return 'Choose a reason from the list.';
+  if (reason === 'other' && note.trim().length < 3) return 'Type a note to say what happened.';
+  if (reason === null && note.trim().length < 3) return 'Choose a reason or type a note before you continue.';
+  return null;
+}
