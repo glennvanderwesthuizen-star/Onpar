@@ -73,6 +73,11 @@ describe('coming on duty: who is due, and lock or roam', () => {
       const mh = await signIn(gate, michael);
       expect((await dutyOn(mh, michael)).status).toBe(200);
       expect((await expected(gate)).map((g) => g.name)).toEqual(['Abram Komapi']);
+      // He goes off duty during the shift (a mistake, or sent home and called back): his name is on the list again.
+      await ownerQuery('UPDATE attendance SET scheduled_end = NULL WHERE employee_id = $1 AND duty_from_at IS NULL', [michael.id]);
+      const off = await w.http().post('/api/device/duty').set(mh).send({ eventId: randomUUID(), kind: 'duty_from', pin: michael.pin, trustedAt: now(), deviceClock: now() });
+      expect(off.status).toBe(200);
+      expect((await expected(gate)).map((g) => g.name)).toEqual(['Abram Komapi', 'Michael Themba']);
     });
   });
 

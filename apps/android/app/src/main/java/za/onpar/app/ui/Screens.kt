@@ -233,6 +233,8 @@ private fun LoginScreen(vm: AppViewModel, state: UiState) {
         }
         TextButton(onClick = { number = ""; picked = null; pin = "" }) { Text("Not you? Back to the list") }
     } else if (number.isEmpty() && !typing) {
+        // The list was empty: say so, so it is clear why the guard is asked for his card.
+        if (due.isEmpty() && !notListed) Text("Nobody is on the roster to come on duty at this site right now, so scan your card.", color = Color.DarkGray)
         Text("Scan your ID card", fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Text("Hold the QR code on your card in front of the camera.")
         QrScanner(onCode = { code ->

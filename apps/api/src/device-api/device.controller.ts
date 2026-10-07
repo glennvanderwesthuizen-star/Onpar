@@ -69,7 +69,7 @@ export class DeviceController {
   /**
    * The guards due on duty at this phone's site about now, for the sign-in screen (owner,
    * 7 Oct 2026): a guard taps his name and types his PIN. Those whose shift starts within the
-   * next three hours or is running, and who are not on duty yet. Names and shift times only.
+   * next three hours or is running, and who are not on duty at this moment. Names and shift times only.
    */
   @Get('expected-guards')
   expectedGuards(@CurrentDevice() device: DevicePrincipal) {
@@ -89,13 +89,11 @@ export class DeviceController {
       ).rows as { id: string; name: string; employeeNumber: string | null; tsfNumber: string | null }[];
       if (!people.length) return [];
       const days = await this.roster.days(tx, people.map((p) => p.id), yesterday, today);
-      const done = new Set(
-        (await tx.query(`SELECT employee_id || '|' || to_char(shift_date, 'YYYY-MM-DD') AS k FROM attendance WHERE employee_id = ANY($1::uuid[]) AND shift_date >= $2::date`, [people.map((p) => p.id), yesterday])).rows.map((r) => r.k as string),
-      );
       const out: { login: string; name: string; shift: string; startsAt: Date }[] = [];
       for (const p of people) {
         for (const d of days.get(p.id) ?? []) {
-          if (d.status !== 'working' || d.siteId !== device.siteId || done.has(`${p.id}|${d.date}`)) continue;
+          // A guard who was on duty earlier in this shift and went off is still listed: he may be coming back.
+          if (d.status !== 'working' || d.siteId !== device.siteId) continue;
           const start = sastInstant(d.date, d.startTime.slice(0, 5));
           let end = sastInstant(d.date, d.endTime.slice(0, 5));
           if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 86_400_000);
