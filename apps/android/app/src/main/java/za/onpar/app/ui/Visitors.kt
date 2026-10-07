@@ -225,6 +225,8 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     var docChoice by remember { mutableStateOf("licence") }
     var typeIdentity by remember { mutableStateOf(false) }
     var scannedIdentity by remember { mutableStateOf(false) }
+    /** An ID number read from a barcode that holds nothing else, while the scanner looks a little longer for one with the name. */
+    var numberOnly by remember { mutableStateOf<String?>(null) }
     var document by remember { mutableStateOf("drivers_licence") }
     var idNumber by remember { mutableStateOf("") }
     var surname by remember { mutableStateOf("") }
@@ -322,17 +324,40 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 }
             }
             if (docChoice == "id" && !typeIdentity && !scannedIdentity) {
-                Text("Hold the phone over the barcode on the back of the ID card, or inside the ID book.")
+                Text("Hold the phone over the large barcode on the back of the ID card, or the barcode inside the ID book.")
+                val numberRead = numberOnly
+                if (numberRead != null) {
+                    val useNumber = {
+                        idNumber = numberRead
+                        surname = ""
+                        names = ""
+                        document = "id_book"
+                        scannedIdentity = true
+                        numberOnly = null
+                    }
+                    Text("The ID number was read. On an ID card, keep the phone over the large barcode to read the name too…", color = Amber, fontWeight = FontWeight.Bold)
+                    LaunchedEffect(numberRead) {
+                        delay(4000)
+                        if (numberOnly == numberRead) useNumber()
+                    }
+                }
                 DocumentScanner { code ->
                     when (val s = VisitorScan.read(code)) {
                         is Scanned.Identity -> {
-                            idNumber = s.idNumber
-                            surname = s.surname
-                            names = s.names
-                            document = s.document
-                            scannedIdentity = true
                             note = null
-                            if (s.surname.isNotBlank()) step = Step.Details
+                            if (s.surname.isBlank()) {
+                                // A barcode with only the number: an ID book, or the thin barcode on an ID card.
+                                // Wait a moment for the card's large barcode, which also holds the name.
+                                if (numberOnly == null) numberOnly = s.idNumber
+                            } else {
+                                numberOnly = null
+                                idNumber = s.idNumber
+                                surname = s.surname
+                                names = s.names
+                                document = s.document
+                                scannedIdentity = true
+                                step = Step.Details
+                            }
                         }
                         is Scanned.DriversLicence -> note = "That is a driver's licence. Choose Driver's licence above, photograph it and type the details."
                         else -> note = "That barcode is not an ID. Try again, or type the details in."
@@ -342,12 +367,13 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
             } else if (scannedIdentity) {
                 // An ID book's barcode holds only the number: the guard types the name from the book.
                 Text("ID number $idNumber", fontWeight = FontWeight.Bold)
+                Text("Only the number could be read. Type the surname and first names from the ID, then tap Next.")
                 OutlinedTextField(surname, { surname = it.take(80) }, label = { Text("Surname") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(names, { names = it.take(120) }, label = { Text("First names") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words), modifier = Modifier.fillMaxWidth())
                 BigButton("Next", enabled = surname.isNotBlank()) { step = Step.Details }
-                OutlinedButton(onClick = { scannedIdentity = false; idNumber = ""; surname = ""; names = "" }, modifier = Modifier.fillMaxWidth()) { Text("Scan a different ID") }
+                OutlinedButton(onClick = { scannedIdentity = false; numberOnly = null; idNumber = ""; surname = ""; names = "" }, modifier = Modifier.fillMaxWidth()) { Text("Scan a different ID") }
             } else {
                 val what = when (docChoice) {
                     "licence" -> "driver's licence"
