@@ -33,6 +33,8 @@ export interface OnSiteRow {
   needsAction: boolean;
   /** Registered by the customer as a contractor. */
   contractor: boolean;
+  /** A staff member of the unit. */
+  staff: boolean;
   /** What the customer answered when asked about the stay: "Still busy until 21:00" or "Should have left". */
   customerSays: string | null;
   /** When the customer was last asked whether the visitor is still busy. */
@@ -82,12 +84,13 @@ export class VisitOnSiteService implements OnModuleDestroy {
                 g.name AS "gateName", COALESCE(v.entry_at, v.captured_at) AS "enteredAt", c.limit_minutes AS "limitMinutes", to_char(c.limit_until, 'HH24:MI') AS "limitUntil",
                 ps.kind AS "passKind", to_char(ps.visit_date, 'YYYY-MM-DD') AS "visitDate", to_char(ps.hours_to, 'HH24:MI') AS "hoursTo", to_char(ps.end_date, 'YYYY-MM-DD') AS "endDate",
                 to_char(ps.leave_by, 'HH24:MI') AS "leaveBy", COALESCE(ps.contractor, false) AS contractor, v.leave_by AS "extendedTo", v.stay_asked_at AS "askedAt",
-                sa.answer AS "stayAnswer", sa.until AS "stayUntil",
+                sa.answer AS "stayAnswer", sa.until AS "stayUntil", st.full_name AS "staffName", to_char(st.hours_to, 'HH24:MI') AS "staffHoursTo",
                 a.action, a.note, a.at AS "actionAt", a.handover_id AS "handoverId", e.full_name AS "actionBy"
            FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id
            JOIN visitor_categories c ON c.id = v.category_id JOIN site_gates g ON g.id = v.gate_id LEFT JOIN visitor_passes ps ON ps.id = v.pass_id
            LEFT JOIN LATERAL (SELECT x.action, x.note, x.at, x.handover_id, x.guard_id FROM visit_overstay_actions x WHERE x.visit_id = v.id ORDER BY x.at DESC, x.id DESC LIMIT 1) a ON true
            LEFT JOIN employees e ON e.id = a.guard_id
+           LEFT JOIN unit_staff st ON st.id = v.staff_id
            LEFT JOIN LATERAL (SELECT s.answer, s.until FROM visit_stay_answers s WHERE s.visit_id = v.id ORDER BY s.at DESC, s.id DESC LIMIT 1) sa ON true
           WHERE v.site_id = $1 AND v.status = 'on_site' AND ($2::boolean IS NOT TRUE OR v.unit_id IS NOT DISTINCT FROM $3::uuid)`,
         [siteId, !!unit, unit?.unitId ?? null],
@@ -96,14 +99,14 @@ export class VisitOnSiteService implements OnModuleDestroy {
     const out = rows.map((r): OnSiteRow => {
       const enteredAt = new Date(r.enteredAt);
       const dueAt = checks.overstayAlert
-        ? visitDueAt({ entryAt: enteredAt, limitMinutes: r.limitMinutes, limitUntil: r.limitUntil, pass: r.passKind ? { kind: r.passKind as PassKind, visitDate: r.visitDate, hoursTo: r.hoursTo, endDate: r.endDate, leaveBy: r.leaveBy } : null, extendedTo: r.extendedTo ? new Date(r.extendedTo) : null })
+        ? visitDueAt({ entryAt: enteredAt, limitMinutes: r.limitMinutes, limitUntil: r.limitUntil, pass: r.passKind ? { kind: r.passKind as PassKind, visitDate: r.visitDate, hoursTo: r.hoursTo, endDate: r.endDate, leaveBy: r.leaveBy } : r.staffHoursTo ? { kind: 'ongoing', visitDate: null, hoursTo: r.staffHoursTo, endDate: null } : null, extendedTo: r.extendedTo ? new Date(r.extendedTo) : null })
         : null;
       const overdue = !!dueAt && dueAt.getTime() <= now.getTime();
       const action = r.action ? { action: r.action as OverstayAction, label: OVERSTAY_ACTION_LABELS[r.action as OverstayAction], note: r.note as string, at: new Date(r.actionAt), by: r.actionBy as string, handoverId: r.handoverId as string | null } : null;
       return {
         id: r.id,
         type: r.type,
-        visitor: visitorName(r.surname, r.names),
+        visitor: r.staffName ?? visitorName(r.surname, r.names),
         vehicle: r.type === 'vehicle' ? vehicleLine(r) : null,
         pax: r.pax,
         visiting: r.unitName ? `Unit ${r.unitName}` : 'The office',
@@ -119,6 +122,7 @@ export class VisitOnSiteService implements OnModuleDestroy {
         action,
         needsAction: overdue && !overstayDealtWith(action, since),
         contractor: r.contractor,
+        staff: !!r.staffName,
         customerSays: r.stayAnswer === 'should_have_left' ? 'Should have left' : r.stayAnswer === 'extended' ? `Still busy until ${sastTime(new Date(r.stayUntil))}` : null,
         askedAt: r.askedAt ? new Date(r.askedAt) : null,
       };
@@ -313,7 +317,7 @@ export class VisitOnSiteService implements OnModuleDestroy {
       await tx.query(`SELECT id FROM customers WHERE site_id = $1 AND active AND (($2::uuid IS NOT NULL AND unit_id = $2::uuid) OR ($2::uuid IS NULL AND kind = 'client'))`, [siteId, v.unitId])
     ).rows.map((r) => r.id as string);
     if (!people.length) return;
-    const what = v.contractor ? 'contractor' : 'visitor';
+    const what = v.staff ? 'staff member' : v.contractor ? 'contractor' : 'visitor';
     await this.notifications.record(tx, {
       userIds: [],
       customerIds: people,

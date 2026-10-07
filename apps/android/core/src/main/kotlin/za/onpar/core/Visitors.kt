@@ -98,6 +98,51 @@ data class OnSiteList(val onSite: Int = 0, val overstays: Int = 0, val visitors:
 @Serializable
 data class HandoverView(val id: String, val onSite: Int = 0, val overstays: Int = 0, val todo: Int = 0, val canSignOff: Boolean = false, val visitors: List<OnSiteVisitor> = emptyList())
 
+/** A staff member of a unit, found at the gate by the last six digits of their cell number. */
+@Serializable
+data class StaffHit(
+    val id: String,
+    val fullName: String = "",
+    val visiting: String = "",
+    @kotlinx.serialization.SerialName("when") val days: String = "",
+    /** False on their first arrival: the ID is scanned and the reference photo taken. */
+    val enrolled: Boolean = false,
+    /** On site now: the next thing is leaving. */
+    val onSite: Boolean = false,
+    /** Due at work at this moment. When not, they come in as a visitor and the customer is asked. */
+    val dueNow: Boolean = true,
+    val notDue: String? = null,
+)
+
+@Serializable
+data class StaffFound(val staff: List<StaffHit> = emptyList())
+
+/** How alike the snapshot and the reference photo are: "match", "uncertain", "no_match", "no_face", or "off" when the guard compares by eye. */
+@Serializable
+data class StaffCompare(val result: String = "off", val text: String = "") {
+    /** The comparison is in doubt: letting them in needs a reason. */
+    val doubtful: Boolean get() = result == "uncertain" || result == "no_match"
+}
+
+/** How a staff entry or exit ended: "on_site", "refused" or "exited". */
+@Serializable
+data class StaffReply(val status: String, val visitId: String? = null, val message: String = "")
+
+/** The ID taken on a staff member's first day. */
+data class StaffEnrol(val idNumber: String, val surname: String, val names: String, val document: String, val method: String)
+
+/** A staff member coming in, ready to be sent. `allowed` is set only when the guard or the comparison is in doubt. */
+data class StaffEntryDraft(
+    val eventId: String,
+    val staffId: String,
+    val enrol: StaffEnrol?,
+    val samePerson: Boolean,
+    val face: File?,
+    val identityPhoto: File? = null,
+    val note: String = "",
+    val allowed: Boolean? = null,
+)
+
 @Serializable
 data class KnownPerson(val surname: String = "", val names: String = "", val lastSeen: String? = null)
 
@@ -578,11 +623,72 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
         device.client().post("/device/visitors/handover/$id/acknowledge", buildJsonObject { }, device.requireGuard())
     }
 
+    // --- Staff of a unit --------------------------------------------------------------------
+
+    /** The staff whose cell number ends in these six digits. */
+    fun staffFind(code: String): List<StaffHit> {
+        val digits = code.filter { it.isDigit() }
+        require(digits.length == STAFF_CODE_DIGITS) { "Enter the last $STAFF_CODE_DIGITS digits of their cell number." }
+        val body = buildJsonObject { put("code", digits) }
+        return OnParJson.decodeFromJsonElement(StaffFound.serializer(), device.client().post("/device/staff/find", body, device.requireGuard())).staff
+    }
+
+    /** The reference photo taken on their first day. */
+    fun staffPhoto(id: String): ByteArray = device.client().getBytes("/device/staff/$id/photo", device.requireGuard())
+
+    /** How alike the snapshot is to the reference photo. It only advises. */
+    fun staffCompare(id: String, face: File): StaffCompare =
+        OnParJson.decodeFromJsonElement(StaffCompare.serializer(), device.client().postMultipart("/device/staff/$id/compare", buildJsonObject { }, listOf(Upload("face", face, "image/jpeg")), device.requireGuard()))
+
+    /** Lets a staff member in. On the first day with their ID and the reference photo; later with a snapshot. */
+    fun staffEnter(d: StaffEntryDraft): StaffReply {
+        val face = d.face?.takeIf { it.isFile && it.length() > 0 } ?: throw IllegalArgumentException("Take a photo of their face.")
+        val e = d.enrol
+        if (e != null) {
+            require(VisitorScan.idNumber(e.idNumber).length >= 5 && e.surname.isNotBlank()) { "Scan the ID, or type the ID number and surname." }
+            if (e.method == "manual") require(d.identityPhoto != null && d.identityPhoto.length() > 0) { "Photograph the ID you typed the details from." }
+        }
+        if (d.allowed != null) require(d.note.trim().length >= 3) { "Type a note to say why." }
+        val body = buildJsonObject {
+            put("eventId", d.eventId)
+            if (e == null) put("enrol", JsonNull) else putJsonObject("enrol") {
+                put("idNumber", VisitorScan.idNumber(e.idNumber))
+                put("surname", e.surname.trim())
+                put("names", e.names.trim())
+                put("document", e.document)
+                put("method", e.method)
+            }
+            put("samePerson", d.samePerson)
+            if (d.allowed == null) put("handling", JsonNull) else putJsonObject("handling") {
+                put("note", d.note.trim())
+                put("allowed", d.allowed)
+            }
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        val files = buildList {
+            add(Upload("face", face, "image/jpeg"))
+            if (e?.method == "manual" && d.identityPhoto != null) add(Upload("identity", d.identityPhoto, "image/jpeg"))
+        }
+        return OnParJson.decodeFromJsonElement(StaffReply.serializer(), device.client().postMultipart("/device/staff/${d.staffId}/enter", body, files, device.requireGuard()))
+    }
+
+    /** A staff member going home. */
+    fun staffLeave(id: String): StaffReply {
+        val body = buildJsonObject {
+            put("eventId", java.util.UUID.randomUUID().toString())
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        return OnParJson.decodeFromJsonElement(StaffReply.serializer(), device.client().post("/device/staff/$id/leave", body, device.requireGuard()))
+    }
+
     fun clear() {
         cache.delete()
     }
 
     companion object {
+        const val STAFF_CODE_DIGITS = 6
         val OVERSTAY_ACTIONS = setOf("dialled", "confirmed", "left")
         val CALL_OUTCOMES = linkedMapOf("approved" to "Approved by phone", "denied" to "Denied by phone", "no_answer" to "No answer")
     }

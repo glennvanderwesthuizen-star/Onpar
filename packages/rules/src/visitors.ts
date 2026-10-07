@@ -17,6 +17,7 @@ export const VISITOR_CHECKS = [
   'entryLimit',
   'overstayAlert',
   'rollCall',
+  'staffFaceMatch',
 ] as const;
 export type VisitorCheck = (typeof VISITOR_CHECKS)[number];
 
@@ -41,6 +42,7 @@ export const VISITOR_CHECK_INFO: Record<VisitorCheck, VisitorCheckInfo> = {
   documents: { label: 'Documents', about: 'Shows site rules or an indemnity for the visitor to accept on the gate phone.', default: false, notYet: 'This follows in a later version.' },
   entryLimit: { label: 'One entry for a once-off announcement', about: 'A once-off announced visitor is let in once only.', default: true },
   overstayAlert: { label: 'Overstay alert', about: 'Flags visitors still on site past the time limit for their category.', default: true },
+  staffFaceMatch: { label: 'Automatic photo matching for staff', about: 'When a unit’s staff member arrives, the photo taken at the gate is compared with their reference photo and the guard is told how alike they are. The guard always decides. When off, the guard compares the two photos by eye.', default: false },
   rollCall: { label: 'Emergency roll-call', about: 'Gives the supervisor a list of everyone on site to tick off at an assembly point.', default: true },
 };
 
@@ -347,7 +349,7 @@ export function passWhen(p: { kind: PassKind; visitDate: string | null; time: st
 // --- Step 5: leaving and exceptions -----------------------------------------------------------
 
 /** What can go wrong when a visitor leaves (the spec's four), and a visitor found to have left without being scanned out. */
-export const EXCEPTION_TYPES = ['driver_mismatch', 'vehicle_mismatch', 'pax_mismatch', 'no_open_visit', 'no_scan_out'] as const;
+export const EXCEPTION_TYPES = ['driver_mismatch', 'vehicle_mismatch', 'pax_mismatch', 'no_open_visit', 'no_scan_out', 'face_mismatch'] as const;
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
 export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
   driver_mismatch: 'Different driver',
@@ -355,6 +357,7 @@ export const EXCEPTION_LABELS: Record<ExceptionType, string> = {
   pax_mismatch: 'Passenger count differs',
   no_open_visit: 'Not recorded as on site',
   no_scan_out: 'Left without scan-out',
+  face_mismatch: 'Staff photo in doubt',
 };
 /** What the guard is told, in a sentence. */
 export const EXCEPTION_TEXT: Record<ExceptionType, string> = {
@@ -363,6 +366,7 @@ export const EXCEPTION_TEXT: Record<ExceptionType, string> = {
   pax_mismatch: 'The number of passengers leaving is not the number that came in.',
   no_open_visit: 'Nobody with this ID or number plate is recorded as on site.',
   no_scan_out: 'This visitor is still recorded as on site from an earlier visit.',
+  face_mismatch: 'The person at the gate may not be the staff member on record.',
 };
 
 /** The reasons a guard can pick. "Other" needs a note. */
@@ -500,4 +504,64 @@ export function stayUntil(now: Date, hhmm: string): Date | null {
   if (!CLOCK.test(hhmm)) return null;
   const today = localInstant(localDay(now), hhmm);
   return today.getTime() > now.getTime() ? today : localInstant(nextDay(localDay(now)), hhmm);
+}
+
+// --- Staff of a unit (owner, 7 Oct 2026; D-47) ------------------------------------------------
+
+/** How many digits of their cell number a staff member gives at the gate. */
+export const STAFF_CODE_DIGITS = 6;
+
+/** The code a staff member gives at the gate: the last six digits of their cell number. Null when the number is too short. */
+export function staffCode(cell: string): string | null {
+  const digits = normaliseCell(cell);
+  return digits.length >= 9 ? digits.slice(-STAFF_CODE_DIGITS) : null;
+}
+
+export interface StaffInput {
+  fullName: string;
+  cell: string;
+  /** Optional: when given, the ID scanned on the first day must be this one. */
+  idNumber: string;
+  /** 1 Monday to 7 Sunday; empty means every day. */
+  days: number[];
+  hoursFrom: string | null;
+  hoursTo: string | null;
+  endDate: string | null;
+}
+
+/** Field-by-field problems with a staff member being registered; empty when fine. `today` is YYYY-MM-DD in South Africa. */
+export function staffErrors(s: StaffInput, today: string): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (s.fullName.trim().length < 2) e.fullName = 'Enter their name.';
+  if (!staffCode(s.cell)) e.cell = 'Enter their full cell number. They give its last six digits at the gate.';
+  const id = normaliseIdNumber(s.idNumber);
+  if (id && (id.length < 5 || id.length > 20)) e.idNumber = 'Enter the full ID or passport number.';
+  if (s.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) e.days = 'Choose the days of the week.';
+  if ((s.hoursFrom === null) !== (s.hoursTo === null)) e.hoursTo = 'Give both the start and the end time, or neither.';
+  else if (s.hoursFrom !== null && s.hoursTo !== null) {
+    if (!CLOCK.test(s.hoursFrom) || !CLOCK.test(s.hoursTo)) e.hoursTo = 'Enter the times, for example 07:00 and 16:00.';
+    else if (s.hoursTo <= s.hoursFrom) e.hoursTo = 'The end time must be after the start time.';
+  }
+  if (s.endDate !== null && !DAY.test(s.endDate)) e.endDate = 'Choose a date.';
+  else if (s.endDate !== null && s.endDate < today) e.endDate = 'That day has passed.';
+  return e;
+}
+
+/** What the gate is told about the two photos. "off": no automatic comparison, the guard looks. */
+export const STAFF_FACE_RESULTS = ['match', 'uncertain', 'no_match', 'no_face', 'off'] as const;
+export type StaffFaceResult = (typeof STAFF_FACE_RESULTS)[number];
+export const STAFF_FACE_TEXT: Record<StaffFaceResult, string> = {
+  match: 'The photos look like the same person.',
+  uncertain: 'Not sure. Look carefully at the two photos.',
+  no_match: 'This may be a different person. Look carefully.',
+  no_face: 'No clear face in the photo. Take it again, or compare by eye.',
+  off: 'Compare the two photos.',
+};
+
+/**
+ * Whether the guard must give a reason to let a staff member in: he says it is not the same
+ * person, or the automatic comparison is in doubt. The match advises; the guard decides.
+ */
+export function staffEntryNeedsReason(guardSaysSame: boolean, result: StaffFaceResult): boolean {
+  return !guardSaysSame || result === 'uncertain' || result === 'no_match';
 }

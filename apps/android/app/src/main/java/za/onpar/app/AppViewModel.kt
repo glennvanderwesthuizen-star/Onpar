@@ -63,6 +63,8 @@ sealed interface Page {
     data class Visit(val id: String) : Page
     /** A visitor leaving: the exit scan, the entry record, and any exception. */
     data object VisitorExit : Page
+    /** Staff of a unit: found by the last six digits of their cell number, let in against their photo, and scanned out. */
+    data object Staff : Page
     /** Everyone on site now, overstays first. */
     data object OnSite : Page
     /** The outgoing gate guard hands the visitors on site over to the next shift. */
@@ -133,6 +135,12 @@ data class UiState(
     val exitFace: PhotoBytes? = null,
     /** How the scan-out ended. */
     val exitDone: za.onpar.core.ExitReply? = null,
+    /** Staff of a unit: who the six digits found (null before a search), the one chosen, their reference photo, how alike the snapshot is, and how it ended. */
+    val staffHits: List<za.onpar.core.StaffHit>? = null,
+    val staff: za.onpar.core.StaffHit? = null,
+    val staffRef: PhotoBytes? = null,
+    val staffCompare: za.onpar.core.StaffCompare? = null,
+    val staffDone: za.onpar.core.StaffReply? = null,
     /** Everyone on site now. */
     val onSite: za.onpar.core.OnSiteList? = null,
     /** The outgoing guard's handover while he works through it, and whether he has signed it off. */
@@ -332,6 +340,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (page == Page.NewVisitor) _state.update { it.copy(scanCheck = null) }
         if (page == Page.VisitorExit) _state.update { it.copy(exitFound = null, exitChecked = false, exitFace = null, exitDone = null) }
+        if (page == Page.Staff) _state.update { it.copy(staffHits = null, staff = null, staffRef = null, staffCompare = null, staffDone = null) }
         if (page == Page.OnSite) loadOnSite()
         if (page == Page.Handover) startHandover()
         if (page is Page.Visit) {
@@ -435,6 +444,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }
         }
+    }
+
+    // --- Staff of a unit ------------------------------------------------------
+
+    /** Looks staff up by the last six digits of their cell number. One match is chosen at once; with more, the guard picks. */
+    fun findStaff(code: String) = run {
+        try {
+            val hits = device.visitors.staffFind(code)
+            _state.update { it.copy(staffHits = hits, staff = null, staffRef = null, staffCompare = null, staffDone = null) }
+            hits.singleOrNull()?.let { pickStaff(it) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    private fun pickStaff(hit: za.onpar.core.StaffHit) {
+        // Their reference photo, for the guard to compare against, once one has been taken.
+        val ref = if (hit.enrolled && !hit.onSite && hit.dueNow) runCatching { PhotoBytes(device.visitors.staffPhoto(hit.id)) }.getOrNull() else null
+        _state.update { it.copy(staff = hit, staffRef = ref, staffCompare = null) }
+    }
+
+    fun chooseStaff(hit: za.onpar.core.StaffHit) = run { pickStaff(hit) }
+
+    /** How alike the snapshot is to the reference photo. Quiet: with no answer the guard compares by eye. */
+    fun compareStaff(id: String, face: java.io.File) {
+        viewModelScope.launch {
+            val c = withContext(Dispatchers.IO) { runCatching { device.visitors.staffCompare(id, face) }.getOrNull() }
+            _state.update { if (it.staff?.id == id) it.copy(staffCompare = c ?: za.onpar.core.StaffCompare()) else it }
+        }
+    }
+
+    fun enterStaff(draft: za.onpar.core.StaffEntryDraft) = run {
+        try {
+            val done = device.visitors.staffEnter(draft)
+            listOfNotNull(draft.face, draft.identityPhoto).forEach { it.delete() }
+            _state.update { it.copy(staffDone = done) }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    fun leaveStaff(id: String) = run {
+        val done = device.visitors.staffLeave(id)
+        _state.update { it.copy(staffDone = done) }
     }
 
     fun loadOnSite() = run {

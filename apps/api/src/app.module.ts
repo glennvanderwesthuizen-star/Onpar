@@ -49,6 +49,8 @@ import { CustomerPassesController } from './visitors/customer-passes.controller'
 import { VisitPassService } from './visitors/visit-pass.service';
 import { VisitExitService } from './visitors/visit-exit.service';
 import { VisitOnSiteService } from './visitors/visit-onsite.service';
+import { UnitStaffService } from './visitors/unit-staff.service';
+import { CustomerStaffController, GateStaffController, SiteStaffController } from './visitors/unit-staff.controller';
 import { VisitApprovalService } from './visitors/visit-approval.service';
 import { VisitorSetupService } from './visitors/visitor-setup.service';
 
@@ -101,6 +103,9 @@ export function buildAppModule(config: Config = loadConfig()) {
       CustomersController,
       CustomerAppController,
       VisitorSetupController,
+      CustomerStaffController,
+      SiteStaffController,
+      GateStaffController,
       GateController,
       CustomerVisitsController,
       CustomerPassesController,
@@ -126,6 +131,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       VisitPassService,
       VisitExitService,
       VisitOnSiteService,
+      UnitStaffService,
     ],
   })
   class AppModule {}

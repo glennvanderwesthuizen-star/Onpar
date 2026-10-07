@@ -61,6 +61,8 @@ import za.onpar.core.GateSetup
 import za.onpar.core.OnSiteVisitor
 import za.onpar.core.ReasonOption
 import za.onpar.core.Scanned
+import za.onpar.core.StaffEnrol
+import za.onpar.core.StaffEntryDraft
 import za.onpar.core.VisitDraft
 import za.onpar.core.VisitPerson
 import za.onpar.core.VisitRow
@@ -183,6 +185,10 @@ fun VisitorsScreen(vm: AppViewModel, state: UiState) {
     Button(onClick = { vm.go(Page.ExpectedVisitor) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B7A4E))) {
         Text("EXPECTED VISITOR" + if (state.expected.isEmpty()) "" else " (${state.expected.size} today)", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    }
+    Button(onClick = { vm.go(Page.Staff) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF00695C))) {
+        Text("STAFF OF A UNIT", fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
     Button(onClick = { vm.go(Page.VisitorExit) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(64.dp),
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F))) {
@@ -1057,4 +1063,178 @@ fun HandoverScreen(vm: AppViewModel, state: UiState) {
     else Text("Check the list below against who is really still on site, then sign off.")
     h.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = true) { action, note -> vm.overstayAction(v.id, action, note, true) } }
     BigButton(if (state.busy) "Sending…" else "SIGN OFF: HAND OVER", enabled = !state.busy && h.canSignOff) { vm.signOffHandover() }
+}
+
+/**
+ * Staff of a unit (owner, 7 Oct 2026): cleaners, gardeners and others who work for a tenant. They
+ * give the last six digits of their cell number. The first time, the guard scans their ID and
+ * takes the reference photo. After that he takes a snapshot and holds it against the reference
+ * photo: the phone may say how alike they are, and the guard decides. Leaving is the same six
+ * digits. No approval is asked on their working days.
+ */
+@Composable
+fun StaffScreen(vm: AppViewModel, state: UiState) {
+    val context = LocalContext.current
+    VisitorHeader("Staff of a unit") { vm.go(Page.Visitors) }
+
+    val done = state.staffDone
+    if (done != null) {
+        when (done.status) {
+            "on_site" -> Verdict("LET THEM IN", done.message, good = true)
+            "exited" -> Verdict("SCANNED OUT", done.message, good = true)
+            else -> Verdict("DO NOT LET THEM IN", done.message, good = false)
+        }
+        BigButton("NEXT") { vm.go(Page.Visitors) }
+        return
+    }
+
+    val photoDir = remember { File(context.filesDir, "visitor-photos").also { it.mkdirs() } }
+    val faceFile = remember { File(photoDir, "staff-face.jpg") }
+    val idFile = remember { File(photoDir, "staff-id.jpg") }
+    var code by remember { mutableStateOf("") }
+
+    val hit = state.staff
+    if (hit == null) {
+        Text("Ask for the last six digits of their cell number.")
+        OutlinedTextField(code, { v -> code = v.filter { it.isDigit() }.take(6) }, label = { Text("Last six digits") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        BigButton(if (state.busy) "Looking…" else "FIND", enabled = !state.busy && code.length == 6) { vm.findStaff(code) }
+        val hits = state.staffHits
+        if (hits != null && hits.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Nobody on the staff list has a number ending in that.", color = Amber, fontWeight = FontWeight.Bold)
+                    Text("Check the digits with them. If they are not registered, scan them in as a visitor and the customer will be asked.")
+                }
+            }
+            OutlinedButton(onClick = { vm.startVisitor(null) }, modifier = Modifier.fillMaxWidth()) { Text("Scan in as a visitor") }
+        }
+        if (hits != null && hits.size > 1) {
+            Text("More than one person has that number. Tap the right one:", fontWeight = FontWeight.Bold)
+            hits.forEach { h ->
+                Card(Modifier.fillMaxWidth().clickable { vm.chooseStaff(h) }) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(h.fullName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(h.visiting, color = Color.DarkGray)
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    // A new person: a new entry, and no photo left over from the one before.
+    val eventId = remember(hit.id) {
+        faceFile.delete()
+        idFile.delete()
+        UUID.randomUUID().toString()
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(hit.fullName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Text("Works for " + (if (hit.visiting == "The office") "the office" else hit.visiting))
+            Text(hit.days, color = Color.DarkGray, fontSize = 13.sp)
+        }
+    }
+
+    if (hit.onSite) {
+        Text("Recorded as on site.", fontWeight = FontWeight.Bold)
+        BigButton(if (state.busy) "Sending…" else "LEAVING: SCAN OUT", enabled = !state.busy) { vm.leaveStaff(hit.id) }
+    } else if (!hit.dueNow) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(hit.notDue ?: "They are not due at work at this time.", color = Amber, fontWeight = FontWeight.Bold)
+                Text("Scan them in as a visitor, and the customer will be asked.")
+            }
+        }
+        BigButton("SCAN IN AS A VISITOR") { vm.startVisitor(null) }
+    } else if (!hit.enrolled) {
+        // The first day: who they are from their ID, and the photo every later arrival is held against.
+        var scanned by remember { mutableStateOf(false) }
+        var typeIt by remember { mutableStateOf(false) }
+        var idNumber by remember { mutableStateOf("") }
+        var surname by remember { mutableStateOf("") }
+        var names by remember { mutableStateOf("") }
+        var document by remember { mutableStateOf("id_card") }
+        var idPhoto by remember { mutableStateOf<File?>(null) }
+        var face by remember { mutableStateOf<File?>(null) }
+        var note by remember { mutableStateOf<String?>(null) }
+        Text("FIRST DAY: register them", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        note?.let { Text(it, color = Red, fontWeight = FontWeight.Bold) }
+        val haveId = VisitorScan.idNumber(idNumber).length >= 5 && surname.isNotBlank() && (scanned || idPhoto != null)
+        if (!scanned && !typeIt) {
+            Text("1. Hold the phone over the barcode on their ID card or in their ID book.")
+            DocumentScanner { c ->
+                val s = VisitorScan.read(c)
+                if (s is Scanned.Identity) {
+                    idNumber = s.idNumber
+                    surname = s.surname
+                    names = s.names
+                    document = s.document
+                    scanned = true
+                    note = null
+                } else {
+                    note = "That barcode is not an ID. Try again, or type the details in."
+                }
+            }
+            OutlinedButton(onClick = { typeIt = true; note = null }, modifier = Modifier.fillMaxWidth()) { Text("It will not scan: type it in") }
+        } else {
+            if (scanned) Text("1. ID number $idNumber", fontWeight = FontWeight.Bold)
+            else {
+                Text("1. Take a photo of their ID, then type the details from it.")
+                PhotoTaker(idFile, front = false) { idPhoto = it }
+                OutlinedTextField(idNumber, { idNumber = it.take(20).uppercase() }, label = { Text("ID or passport number") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+            // An ID book's barcode holds only the number: the name is typed from the book.
+            OutlinedTextField(surname, { surname = it.take(80) }, label = { Text("Surname") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(names, { names = it.take(120) }, label = { Text("First names") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words), modifier = Modifier.fillMaxWidth())
+            if (haveId) {
+                Text("2. Take a clear photo of their face. This is the photo they are compared with from now on.")
+                PhotoTaker(faceFile, front = false) { face = it }
+            }
+            BigButton(if (state.busy) "Sending…" else "REGISTER AND LET IN", enabled = !state.busy && haveId && face != null) {
+                vm.enterStaff(StaffEntryDraft(eventId, hit.id, StaffEnrol(idNumber, surname, names, if (scanned) document else "id_card", if (scanned) "scan" else "manual"), true, face, if (scanned) null else idPhoto))
+            }
+        }
+    } else {
+        // A later day: the reference photo beside a snapshot taken now.
+        var face by remember { mutableStateOf<File?>(null) }
+        var doubt by remember { mutableStateOf(false) }
+        var why by remember { mutableStateOf("") }
+        val ref = state.staffRef
+        val bitmap = remember(ref) { ref?.let { android.graphics.BitmapFactory.decodeByteArray(it.bytes, 0, it.bytes.size)?.asImageBitmap() } }
+        Text("Their reference photo:", fontWeight = FontWeight.Bold)
+        if (bitmap != null) androidx.compose.foundation.Image(bitmap, contentDescription = "Their reference photo", modifier = Modifier.fillMaxWidth().height(240.dp))
+        else Text("The reference photo could not be loaded. Ask for their ID and check the name.", color = Amber)
+        Text("Now take a photo of the person at the gate:", fontWeight = FontWeight.Bold)
+        PhotoTaker(faceFile, front = false) { face = it }
+        val snapshot = face
+        LaunchedEffect(snapshot?.lastModified()) { if (snapshot != null) vm.compareStaff(hit.id, snapshot) }
+        val compare = state.staffCompare?.takeIf { snapshot != null }
+        if (compare != null && compare.result != "off") {
+            Text(compare.text, color = if (compare.result == "match") Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("The phone only advises. You decide.", color = Color.DarkGray, fontSize = 13.sp)
+        }
+        val needsNote = doubt || compare?.doubtful == true
+        if (!needsNote) {
+            BigButton(if (state.busy) "Sending…" else "SAME PERSON: LET IN", enabled = !state.busy && snapshot != null) { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, true, snapshot)) }
+            OutlinedButton(onClick = { doubt = true }, enabled = snapshot != null, modifier = Modifier.fillMaxWidth()) { Text("Not the same person") }
+        } else {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.background(Color(0xFFFBE3E0)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(if (doubt) "You say this is not the person on record." else "The photos do not clearly match.", color = Red, fontWeight = FontWeight.Bold)
+                    Text("Say why, then decide. Your supervisor and the customer are told either way.")
+                }
+            }
+            OutlinedTextField(why, { why = it.take(300) }, label = { Text("Note: what did you see?") }, modifier = Modifier.fillMaxWidth())
+            val ready = !state.busy && snapshot != null && why.trim().length >= 3
+            BigButton(if (state.busy) "Sending…" else "LET THEM IN", enabled = ready) { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, !doubt, snapshot, note = why, allowed = true)) }
+            Button(onClick = { vm.enterStaff(StaffEntryDraft(eventId, hit.id, null, !doubt, snapshot, note = why, allowed = false)) }, enabled = ready, modifier = Modifier.fillMaxWidth().height(64.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("DO NOT LET THEM IN", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+            if (doubt) OutlinedButton(onClick = { doubt = false }, modifier = Modifier.fillMaxWidth()) { Text("It is the same person after all") }
+        }
+    }
+    OutlinedButton(onClick = { vm.go(Page.Staff) }, modifier = Modifier.fillMaxWidth()) { Text("Look up someone else") }
 }

@@ -33,7 +33,7 @@ describe('visitor management: a site’s groundwork', () => {
       ['Visitor', null, null],
       ['Contractor', null, '18:00'],
     ]);
-    expect(s.checks).toHaveLength(11);
+    expect(s.checks).toHaveLength(12);
     // Looking twice does not make them twice.
     expect((await setup()).categories).toHaveLength(2);
   });

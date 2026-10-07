@@ -9,6 +9,9 @@ import {
   normalisePlate,
   overstayActionError,
   overstayDealtWith,
+  staffCode,
+  staffEntryNeedsReason,
+  staffErrors,
   stayText,
   stayUntil,
   visitDueAt,
@@ -35,6 +38,7 @@ describe('visitor management: the groundwork', () => {
       entryLimit: true,
       overstayAlert: true,
       rollCall: true,
+      staffFaceMatch: false,
     });
     expect(DEFAULT_VISITOR_SETTINGS).toMatchObject({ noResponseSeconds: 120, secondContact: true, overstayEscalationMinutes: 30, retentionMonths: 12 });
     expect(visitorSettingsErrors(DEFAULT_VISITOR_SETTINGS)).toEqual({});
@@ -211,6 +215,31 @@ describe('visitor management: the groundwork', () => {
       expect(overstayActionError('confirmed', ' ')).toBe('Type a note to say what you found.');
       expect(overstayActionError('dialled', '')).toBeNull();
       expect(overstayActionError('left', 'Tenant says he left at lunch.')).toBeNull();
+    });
+  });
+
+  describe('staff of a unit', () => {
+    const grace = { fullName: 'Grace Mokoena', cell: '+27 82 555 0147', idNumber: '', days: [1, 2, 3, 4, 5], hoursFrom: '07:00', hoursTo: '16:00', endDate: null };
+
+    it('gives each a code: the last six digits of their cell number, however it was typed', () => {
+      expect(staffCode('+27 82 555 0147')).toBe('550147');
+      expect(staffCode('082-555-0147')).toBe('550147');
+      expect(staffCode('0147')).toBeNull();
+    });
+
+    it('needs a name and a full cell number, and sensible days and hours', () => {
+      expect(staffErrors(grace, '2026-10-07')).toEqual({});
+      expect(staffErrors({ ...grace, fullName: ' ', cell: '555 0147' }, '2026-10-07')).toEqual({ fullName: 'Enter their name.', cell: 'Enter their full cell number. They give its last six digits at the gate.' });
+      expect(staffErrors({ ...grace, hoursTo: '06:00', endDate: '2026-10-01', idNumber: '12' }, '2026-10-07')).toEqual({ idNumber: 'Enter the full ID or passport number.', hoursTo: 'The end time must be after the start time.', endDate: 'That day has passed.' });
+    });
+
+    it('asks the guard for a reason only when he, or the comparison, is in doubt', () => {
+      expect(staffEntryNeedsReason(true, 'match')).toBe(false);
+      expect(staffEntryNeedsReason(true, 'off')).toBe(false);
+      expect(staffEntryNeedsReason(true, 'no_face')).toBe(false);
+      expect(staffEntryNeedsReason(true, 'uncertain')).toBe(true);
+      expect(staffEntryNeedsReason(true, 'no_match')).toBe(true);
+      expect(staffEntryNeedsReason(false, 'match')).toBe(true);
     });
   });
 });

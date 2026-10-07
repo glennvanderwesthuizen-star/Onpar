@@ -380,4 +380,51 @@ class VisitorTest {
         assertFalse(e.extraWorkers(null))
         assertFalse(ExpectedMatch("p1").extraWorkers(9))
     }
+
+    @Test
+    fun `staff are found by the last six digits of their cell number`() {
+        assertThrows<IllegalArgumentException> { device.visitors.staffFind("0147") }
+        server.enqueue(MockResponse().setBody("""{"staff":[{"id":"s1","fullName":"Grace Mokoena","visiting":"Unit 14","when":"Mon, Wed, Fri, 07:00 to 16:00","enrolled":false,"onSite":false,"dueNow":true,"notDue":null},{"id":"s2","fullName":"Sam Gardener","visiting":"Unit 20","when":"Every day, any time","enrolled":true,"onSite":false,"dueNow":false,"notDue":"They are not due at work at this time."}]}"""))
+        val found = device.visitors.staffFind("55 0147")
+        val req = server.takeRequest()
+        assertEquals("/api/device/staff/find", req.path)
+        assertEquals("""{"code":"550147"}""", req.body.readUtf8())
+        assertEquals(listOf("Grace Mokoena", "Sam Gardener"), found.map { it.fullName })
+        assertEquals("Mon, Wed, Fri, 07:00 to 16:00", found[0].days)
+        assertFalse(found[0].enrolled)
+        assertFalse(found[1].dueNow)
+    }
+
+    @Test
+    fun `a staff member's first day takes their ID and the reference photo`() {
+        val enrol = StaffEnrol("850101 5009 087", "Mokoena", "Grace", "id_card", "scan")
+        val d = StaffEntryDraft("44444444-4444-4444-8444-444444444444", "s1", enrol, true, null)
+        assertThrows<IllegalArgumentException> { device.visitors.staffEnter(d) }
+        assertThrows<IllegalArgumentException> { device.visitors.staffEnter(d.copy(face = photo("face.jpg"), enrol = enrol.copy(method = "manual"))) }
+        server.enqueue(MockResponse().setBody("""{"status":"on_site","visitId":"v1","message":"Registered. Let them in."}"""))
+        assertEquals("Registered. Let them in.", device.visitors.staffEnter(d.copy(face = photo("face.jpg"))).message)
+        val req = server.takeRequest()
+        assertEquals("/api/device/staff/s1/enter", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"idNumber\":\"8501015009087\"") && body.contains("\"handling\":null") && body.contains("name=\"face\""))
+    }
+
+    @Test
+    fun `on later days the snapshot is compared, and a doubt needs a note and the guard's decision`() {
+        server.enqueue(MockResponse().setBody("""{"result":"no_match","text":"This may be a different person. Look carefully."}"""))
+        val c = device.visitors.staffCompare("s1", photo("face.jpg"))
+        assertEquals("/api/device/staff/s1/compare", server.takeRequest().path)
+        assertTrue(c.doubtful)
+        assertFalse(StaffCompare("match").doubtful)
+        assertFalse(StaffCompare().doubtful)
+        val d = StaffEntryDraft("55555555-5555-4555-8555-555555555555", "s1", null, false, photo("face.jpg"), allowed = false)
+        assertThrows<IllegalArgumentException> { device.visitors.staffEnter(d) }
+        server.enqueue(MockResponse().setBody("""{"status":"refused","visitId":null,"message":"Not let in. Your supervisor and the customer have been told."}"""))
+        assertEquals("refused", device.visitors.staffEnter(d.copy(note = "A different woman.")).status)
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"samePerson\":false") && body.contains("\"handling\":{\"note\":\"A different woman.\",\"allowed\":false}") && body.contains("\"enrol\":null"))
+        server.enqueue(MockResponse().setBody("""{"status":"exited","message":"Scanned out."}"""))
+        assertEquals("exited", device.visitors.staffLeave("s1").status)
+        assertEquals("/api/device/staff/s1/leave", server.takeRequest().path)
+    }
 }

@@ -878,3 +878,26 @@ The owner found the tenant's form complicated ("One visit / A regular", then "A 
 - **Alerts that are only for information** ("your visitor has arrived", "has left", "a request was answered") still reach the phone but no longer add to the red count on Alerts. Under My account, Visitor alerts, the customer can switch **arrived** and **left** off. Anything that needs an answer is always sent and always counts: a visitor at the gate, a contractor still on site, something that did not match. An arrival where the plate or ID did not match what was announced is always told.
 - Date and time boxes no longer run past the right-hand edge on an iPhone.
 - Migration `0038_customer_arrival_alerts.sql`. One new server test. The form was walked through in a phone-sized browser for a quick visitor and a two-week contractor.
+
+### 7 Oct 2026: staff of a unit (D-47), plan approved by the owner the same evening
+
+- **Registering.** In the customer app, Visitors, **My staff**: name, cell number, optional ID number, working days and hours, optional last day. On the website the administrator can do the same for any unit (**Staff of units** on the site's page). The list shows the six digits each person gives at the gate, whether they are on site, and when they last came and went.
+- **At the gate,** a new **STAFF OF A UNIT** button. The guard types the last six digits of the worker's cell number. One match is chosen at once; where two people share the digits, the guard picks from their names.
+  - **First day:** the guard scans the ID (or types it, with a photo of it) and takes the reference photo. If the unit gave an ID number, the scanned one must be the same. A barred ID is refused.
+  - **Later days:** the reference photo is shown and the guard takes a snapshot. He taps **SAME PERSON: LET IN**, or **Not the same person**, which asks for a note and then **LET THEM IN** or **DO NOT LET THEM IN**.
+  - **Automatic photo matching** is a site check, **off to start** ("Automatic photo matching for staff"). When on, the phone says "look like the same person", "not sure" or "may be a different person". It only advises: a doubtful result means the guard must give a note to let them in, and a clear match changes nothing about who decides.
+  - Any doubt, by the guard's eye or the comparison, is a **Staff photo in doubt** exception for the supervisor, and the unit is told, whichever way the guard decided.
+  - **Not due** (wrong day, outside hours, past the last day): not let in as staff; the guard scans them in as a visitor and the customer is asked.
+  - **Leaving:** the six digits again, then **LEAVING: SCAN OUT**.
+- **No approval is asked** on a working day. The unit gets "your staff member has arrived" and "has left", both information-only and both can be switched off.
+- **Staff are on the on-site list and in the handover** under the name the unit gave. With finishing hours set, a staff member still on site after them is asked about like a contractor: "still busy until" or "should have left".
+- **Removing** someone stops their access at once; the record is kept.
+- Migration `0039_unit_staff.sql`: `unit_staff`, `visits.staff_id`, the "staff" capture method, the `face_mismatch` exception.
+- Tests: 10 new server tests (one runs the real face comparison on test photos), 3 new rules tests, 3 new phone-logic tests.
+
+**For the owner to know:**
+- A staff member's daily entry keeps the snapshot taken at the gate, like a pedestrian's face photo.
+- **Legal, not decided here:** keeping reference photos and comparing them automatically for people who are not employees. The owner's view is that a face seen at a gate is public; whether POPIA needs consent or a notice for this is for a specialist. The automatic comparison stays off until an administrator switches it on.
+- Staff come in on foot in this version: a staff member's own vehicle is not recorded.
+
+**Not yet proven:** by the owner on real phones.
