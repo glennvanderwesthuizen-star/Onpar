@@ -718,6 +718,25 @@ The owner approved the visitor management plan and its eight questions on 7 Oct 
 
 **Needs signal.** Saving a visitor without signal is step 7.
 
-**Not yet proven, and it cannot be proven here:** scanning a real licence disc and a real ID card with a real phone's camera. The barcode layouts are written from how these documents are known to be laid out, and tested only against barcodes generated to that layout. If a real disc or card does not read, "type it in" still works, and the layout is corrected from what the owner reports.
+**Proven 7 Oct 2026:** the owner scanned a real licence disc on the gate phone ("it took the make, model, colour, everything") and scanned in a visitor on foot; he had not yet retested everything when he said to go on. Written before that test: scanning a real licence disc and a real ID card could not be proven here. The barcode layouts are written from how these documents are known to be laid out, and tested only against barcodes generated to that layout. If a real disc or card does not read, "type it in" still works, and the layout is corrected from what the owner reports.
 
 **Not built yet:** viewing the kept photos (face, typed documents) on the website; that comes with the approval screen (the customer sees the face photo) and the supervisor's screens.
+
+### 7 Oct 2026: visitor management, step 3 of 7, approval (D-40)
+
+- **The customers of the unit are asked.** When the guard taps Request approval, everyone with the customer app for that unit gets the alert "Visitor at <gate>". A visitor for the office goes to the client. The locked screen says only "A visitor is at the gate. Open On Par to answer."
+- **In the customer app,** Home shows the visitor waiting with **Accept** and **Refuse**: name, vehicle, passengers, kind of visitor and gate, and the face photo for a visitor on foot. Never the ID number. The first answer for the unit counts; anyone else in the unit is told who answered. Each look at a face photo is recorded.
+- **On the gate phone,** a waiting screen counts down the site's wait (120 seconds unless changed) and asks the server every three seconds. Accept shows **LET THEM IN**; Refuse shows **TURN THE VISITOR AWAY**.
+- **No answer:** "No response. Dial the customer?" The phone dials the unit's main number (the first person in the unit with a number). The guard sees "Unit 14", never the number: the server hands it to the phone only once the wait is over, and the call screen shows the label. After the call he records **Approved by phone**, **Denied by phone** or **No answer**. After No answer he can dial the second contact (if the site allows it), and when every number has been tried, **Nobody answers: turn away** closes the visit as "Denied, no response".
+- **A unit where nobody uses the app** goes straight to the phone. With no number either, the visitor cannot be let in.
+- The customer can still answer in the app while the guard is dialling; whichever comes first counts and the other is refused.
+- **A barred visitor** is never put to the customer.
+- **Records:** every answer and every call is kept in `visit_approvals` (append-only), and in the audit trail, without phone numbers. The website's visitor list shows who answered.
+- Migration `0032_visit_approval.sql`.
+- Tests: 13 new server tests, 2 new phone-logic tests. The tenant's Accept and Refuse were run in a phone-sized browser.
+
+**On a phone where On Par is not the calling app** (a test phone that is not yet managed), the call opens in the phone's own dialler, which shows the number. Hiding it fully needs On Par set as the calling app, as on a managed gate phone.
+
+**Not yet proven:** the alert arriving on a real tenant's phone, and the call from a real gate phone.
+
+**Still to come:** announcing visitors (step 4), so the tenant is not asked each time.

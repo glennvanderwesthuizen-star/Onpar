@@ -167,7 +167,7 @@ describe('visitor management: approval', () => {
     expect((await decide(thabo, id, 'refuse')).status).toBe(409);
     const audit = await ownerQuery(`SELECT action, after::text AS t FROM audit_log WHERE entity_id = $1 AND action LIKE 'visit.%' ORDER BY id`, [id]);
     expect(audit.map((a: { action: string }) => a.action)).toEqual(['visit.create', 'visit.dial', 'visit.call_outcome', 'visit.dial', 'visit.call_outcome']);
-    for (const a of audit) expect(a.t).not.toMatch(/082|083/);
+    for (const a of audit) expect(a.t).not.toMatch(/555 01|55501/);
     expect((await w.http().get(`${site()}/visits`).set(auth(supervisor))).body[0]).toMatchObject({ status: 'on_site', answered: 'By phone at the gate' });
   });
 
