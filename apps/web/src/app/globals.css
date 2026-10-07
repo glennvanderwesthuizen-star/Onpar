@@ -445,3 +445,11 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .chips .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; font-size: 14px; background: var(--bg); }
 .chips .chip.off { opacity: .55; }
 .chips .chip button { border: 0; background: none; color: var(--mute); cursor: pointer; font: inherit; padding: 0 2px; text-decoration: underline; }
+
+/* Visitor management, step 1: the checks and small forms on a site's page. */
+.vis-checks { display: grid; gap: 4px; }
+.vis-check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+.vis-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.vis-check.off { cursor: default; }
+.vis-check.off b { color: var(--mute); }
+.vis-form { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }

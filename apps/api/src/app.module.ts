@@ -42,6 +42,8 @@ import { NotificationsService } from './notifications/notifications.service';
 import { SupervisorController } from './supervisor/supervisor.controller';
 import { CustomersController } from './customers/customers.controller';
 import { CustomerAppController } from './customers/customer-app.controller';
+import { VisitorSetupController } from './visitors/visitor-setup.controller';
+import { VisitorSetupService } from './visitors/visitor-setup.service';
 
 @Controller('health')
 class HealthController {
@@ -91,6 +93,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       SupervisorController,
       CustomersController,
       CustomerAppController,
+      VisitorSetupController,
     ],
     providers: [{ provide: CONFIG, useValue: config }, DbService, AuditService, StorageService, RetentionService,
       UserAuthGuard,
@@ -108,6 +111,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       RosterService,
       FaceMatchService,
       NotificationsService,
+      VisitorSetupService,
     ],
   })
   class AppModule {}

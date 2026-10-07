@@ -677,3 +677,21 @@ The bottom tabs are now Home, Alerts, On duty, **My tasks** and **More**.
 **Flagged (POPIA, P-3 and P-5):** tenants' names, email addresses and phone numbers are new personal information about people who are not employees. Before real tenants are loaded: a notice telling tenants what is kept and why, and a retention period for tenants who leave. Neither is built; deactivating a tenant keeps the record.
 
 **Not in this phase:** anything about visitors. Approving and refusing a visitor, announcing who is coming and at which gate, come with visitor management (D-40), which builds on this.
+
+### 7 Oct 2026: visitor management, step 1 of 7, the groundwork (D-40)
+
+The owner approved the visitor management plan and its eight questions on 7 Oct 2026 (answers in D-40).
+
+- **On the site's page**, a new section "Visitors", changed only by the administrator; company managers can look; nobody else sees it.
+- **Gates:** add, rename, retire. Names are unique within a site.
+- **Checks at the gate:** the spec's eleven checks as switches, on the spec's starting positions. Three cannot be switched on because nothing is behind them yet: stolen vehicle lookup, cell number PIN, documents. The server refuses them too.
+- **Waiting times:** seconds to answer an alert (120), minutes before an overstay goes to the supervisor (30), months records are kept (12, a proposal for legal), and whether the second contact may be dialled.
+- **Visitor categories:** the five standard ones, created the first time a site is opened, each with its own limit (4 hours; no limit; until 17:00). The administrator can change them and add more.
+- **Barred list:** an ID number, cell number or number plate, barred from the whole site or from one unit, always with a reason. Compared in one form however it is typed ("ca 123-456" is "CA123456"). Taking an entry off needs a reason and keeps the record. Each entry has a review date one year on.
+- A site that has never saved settings uses the defaults in the rules package (`packages/rules/src/visitors.ts`). Every change is in the audit trail with before and after.
+- Migration `0030_visitor_groundwork.sql`: `site_gates`, `site_visitor_settings`, `visitor_categories`, `barred_entries`, all with a company ID and row-level security.
+- Tests: 6 new rules tests and 9 new server tests, including that another company cannot see or change any of it. Clicked through in a browser as the administrator and as a company manager, and at phone width.
+
+**Nothing uses these settings yet.** No visitor is recorded until step 2. Removing old visitor records after the keeping period is built with the records themselves.
+
+**Not yet proven:** by the owner on the server.
