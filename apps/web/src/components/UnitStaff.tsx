@@ -99,7 +99,7 @@ function StaffForm({ path, units, onDone, onCancel }: { path: string; units?: { 
       </Field>
       <div className="m-actions">
         <button className="btn" disabled={busy}>
-          {busy ? 'Saving…' : 'Add to my staff'}
+          {busy ? 'Saving…' : 'Add staff member'}
         </button>
         <button type="button" className="btn ghost" onClick={onCancel}>
           Cancel
