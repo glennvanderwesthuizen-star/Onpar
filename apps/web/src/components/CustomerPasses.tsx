@@ -89,16 +89,17 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
           A regular
         </button>
       </div>
-      <Field label="Who is coming" hint={f.contractor ? 'Someone coming to do work. You say how many workers may come with them and when they must be gone.' : 'Someone coming to see you or to deliver.'}>
-        <div className="m-actions" style={{ marginBottom: 0 }}>
-          <button type="button" className={`btn ${f.contractor ? 'ghost' : ''}`} onClick={() => set({ contractor: false })}>
-            A visitor
-          </button>
-          <button type="button" className={`btn ${f.contractor ? '' : 'ghost'}`} onClick={() => set({ contractor: true })}>
-            A contractor
-          </button>
-        </div>
-      </Field>
+      <div className="m-actions" style={{ marginBottom: 4 }}>
+        <button type="button" className={`btn ${f.contractor ? 'ghost' : ''}`} onClick={() => set({ contractor: false })}>
+          A visitor
+        </button>
+        <button type="button" className={`btn ${f.contractor ? '' : 'ghost'}`} onClick={() => set({ contractor: true })}>
+          A contractor
+        </button>
+      </div>
+      <p className="mute small" style={{ marginTop: 0 }}>
+        {f.contractor ? 'Someone coming to do work. You say how many workers may come with them and when they must be gone.' : 'Someone coming to see you or to deliver.'}
+      </p>
       <Field label={f.contractor ? 'Contractor’s name or company' : 'Visitor’s name'} error={errors.visitorName}>
         <input value={f.visitorName} onChange={(e) => set({ visitorName: e.target.value })} required />
       </Field>
