@@ -848,3 +848,19 @@ The owner found the five visitor types meaningless at the gate. Decided the same
 **Still to talk through with the owner:** how once-off and regular contractors should differ in their access rules.
 
 **Raised by the owner, 7 Oct 2026 (D-47, to plan after step 7):** staff of a unit (cleaners, gardeners) as a third way in at the gate, with the last six digits of their cell number and a photo compared with a reference photo. See OPEN_DECISIONS.
+
+### 7 Oct 2026: contractors are registered by the customer; the customer is asked automatically (D-46)
+
+Decided by the owner the same evening, replacing the Visitor/Contractor choice at the gate:
+
+- **At the gate nobody chooses a kind.** Anyone unannounced is a visitor; the customer approves and he goes in.
+- **A contractor is someone the customer registered** under "Tell the gate who is coming": **A contractor**, with his cell number (required), the **workers who may come with him**, and the time he **must be gone by** (18:00 unless the customer sets another), for one visit or over days and dates.
+- **At the gate** a registered contractor comes up as EXPECTED with "CONTRACTOR: up to N workers, gone by HH:MM". The guard counts the workers in (and out, as passengers are). **More than approved:** he is not let in on the registration; the customer gets the usual request, saying how many arrived and how many were approved.
+- **Still on site at the time to be gone by:** the customer is asked automatically in their app, once: "Your contractor is still on site." They answer **Still busy until** (a time; nothing goes red, and the question comes again at that time) or **Should have left** (the gate shows it in red and the supervisor is alerted at once). No answer: red at the gate, supervisor after the site's 30 minutes, as before. A customer can also give "still busy until" before being asked. The same question is asked for any visitor a site has given a time limit.
+- **Guards do not phone about overstays:** the Dial button is off the on-site and handover screens. In a handover each overstay needs a note and "Still on site" or "Left, not scanned out".
+- Migration `0037_contractor_passes.sql`: contractor, workers and time on `visitor_passes`; `visits.leave_by` and `stay_asked_at`; `visit_stay_answers` (append-only).
+- Tests: 6 new server tests, 2 new rules tests, 1 new phone-logic test.
+
+**Not built:** an SMS to the contractor himself (needs an SMS provider). A one-visit registration whose contractor arrived with too many workers and was then accepted is not marked as used.
+
+**Not yet proven:** by the owner on real phones.

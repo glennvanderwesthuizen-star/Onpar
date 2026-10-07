@@ -288,6 +288,12 @@ export interface PassInput {
   hoursTo: string | null;
   startDate: string | null;
   endDate: string | null;
+  /** A contractor: comes to do work, with workers the customer has approved, and a time to be gone by. */
+  contractor: boolean;
+  /** Workers who may come with the contractor, not counting him. */
+  maxWorkers: number | null;
+  /** HH:MM to be gone by; null for the site's usual time. */
+  leaveBy: string | null;
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -305,6 +311,12 @@ export function passErrors(p: PassInput, today: string): Record<string, string> 
   if (id && (id.length < 5 || id.length > 20)) e.idNumber = 'Enter the full ID or passport number.';
   if (cell && (cell.length < 9 || cell.length > 15)) e.cell = 'Enter the full cell number.';
   if (reg && (reg.length < 2 || reg.length > 12)) e.registration = 'Enter the number plate.';
+  if (p.contractor) {
+    // A contractor can be reached, and the customer says how many workers may come with him.
+    if (!cell) e.cell = 'Enter the contractor’s cell number.';
+    if (p.maxWorkers === null || !Number.isInteger(p.maxWorkers) || p.maxWorkers < 0 || p.maxWorkers > 99) e.maxWorkers = 'Enter how many workers may come with them (0 if none).';
+    if (p.leaveBy !== null && !CLOCK.test(p.leaveBy)) e.leaveBy = 'Enter the time, for example 18:00.';
+  }
   if (p.kind === 'once') {
     if (!p.visitDate || !DAY.test(p.visitDate)) e.visitDate = 'Choose the day they are coming.';
     else if (p.visitDate < today) e.visitDate = 'That day has passed.';
@@ -407,7 +419,9 @@ export interface StayLimits {
   limitMinutes: number | null;
   limitUntil: string | null;
   /** The announcement the visitor was let in on, if any. */
-  pass: { kind: PassKind; visitDate: string | null; hoursTo: string | null; endDate: string | null } | null;
+  pass: { kind: PassKind; visitDate: string | null; hoursTo: string | null; endDate: string | null; leaveBy?: string | null } | null;
+  /** The customer said the visitor is still busy until this moment: it replaces every other limit. */
+  extendedTo?: Date | null;
 }
 
 const SAST = '+02:00';
@@ -421,6 +435,7 @@ const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_40
  * A visitor let in after a "gone by" time of day has until that time the next day.
  */
 export function visitDueAt(l: StayLimits): Date | null {
+  if (l.extendedTo) return l.extendedTo;
   const day = localDay(l.entryAt);
   const due: Date[] = [];
   if (l.limitMinutes !== null) due.push(new Date(l.entryAt.getTime() + l.limitMinutes * 60_000));
@@ -428,7 +443,9 @@ export function visitDueAt(l: StayLimits): Date | null {
     const today = localInstant(day, hhmm);
     return today.getTime() > l.entryAt.getTime() ? today : localInstant(nextDay(day), hhmm);
   };
-  if (l.limitUntil) due.push(goneBy(l.limitUntil));
+  // A contractor's own time to be gone by takes the place of the site's.
+  if (l.pass?.leaveBy) due.push(goneBy(l.pass.leaveBy));
+  else if (l.limitUntil) due.push(goneBy(l.limitUntil));
   if (l.pass?.kind === 'once' && l.pass.visitDate && l.pass.visitDate >= day) due.push(localInstant(nextDay(l.pass.visitDate), '00:00'));
   if (l.pass?.kind === 'ongoing') {
     if (l.pass.hoursTo) due.push(goneBy(l.pass.hoursTo));
@@ -469,4 +486,18 @@ export function overstayActionError(action: OverstayAction, note: string): strin
 export function overstayDealtWith(latest: { action: OverstayAction; at: Date } | null, lastHandoverStartedAt: Date | null): boolean {
   if (!latest || latest.action !== 'confirmed') return false;
   return !lastHandoverStartedAt || latest.at.getTime() >= lastHandoverStartedAt.getTime();
+}
+
+/** A customer's answer about a visitor still on site past their time. */
+export const STAY_ANSWERS = ['extended', 'should_have_left'] as const;
+export type StayAnswer = (typeof STAY_ANSWERS)[number];
+
+/**
+ * "Still busy until HH:MM" as a moment: later today in South Africa, or tomorrow when that
+ * time of day has already passed (a contractor working past midnight).
+ */
+export function stayUntil(now: Date, hhmm: string): Date | null {
+  if (!CLOCK.test(hhmm)) return null;
+  const today = localInstant(localDay(now), hhmm);
+  return today.getTime() > now.getTime() ? today : localInstant(nextDay(localDay(now)), hhmm);
 }

@@ -11,7 +11,11 @@ const optional = z.string().trim().nullable().default(null).transform((v) => v |
 const PassBody = z.object({
   kind: z.enum(PASS_KINDS, { message: 'Choose one visit or a regular.' }),
   visitorName: text(120),
-  categoryId: z.string().uuid('Choose the kind of visitor.'),
+  // No longer chosen by the customer (owner, 7 Oct 2026): a visitor, or a contractor.
+  categoryId: z.string().uuid().nullable().default(null),
+  contractor: z.boolean().default(false),
+  maxWorkers: z.number().nullable().default(null),
+  leaveBy: optional,
   gateId: z.string().uuid().nullable().default(null),
   idNumber: text(40),
   cell: text(40),

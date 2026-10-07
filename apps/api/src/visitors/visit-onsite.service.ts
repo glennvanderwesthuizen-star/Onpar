@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
-import { OVERSTAY_ACTION_LABELS, OverstayAction, overstayActionError, overstayDealtWith, PassKind, stayText, vehicleLine, visitDueAt, visitorName } from '@onpar/rules';
+import { OVERSTAY_ACTION_LABELS, OverstayAction, overstayActionError, overstayDealtWith, PassKind, sastTime, StayAnswer, stayText, stayUntil, vehicleLine, visitDueAt, visitorName } from '@onpar/rules';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -31,6 +31,12 @@ export interface OnSiteRow {
   action: { action: OverstayAction; label: string; note: string; at: Date; by: string; handoverId: string | null } | null;
   /** Overdue and not dealt with: the guard must act. */
   needsAction: boolean;
+  /** Registered by the customer as a contractor. */
+  contractor: boolean;
+  /** What the customer answered when asked about the stay: "Still busy until 21:00" or "Should have left". */
+  customerSays: string | null;
+  /** When the customer was last asked whether the visitor is still busy. */
+  askedAt: Date | null;
 }
 
 /**
@@ -75,11 +81,14 @@ export class VisitOnSiteService implements OnModuleDestroy {
         `SELECT v.id, v.type, p.surname, p.names, ve.registration, ve.make, ve.model, ve.colour, v.pax_in AS pax, v.unit_id AS "unitId", u.name AS "unitName", c.name AS category,
                 g.name AS "gateName", COALESCE(v.entry_at, v.captured_at) AS "enteredAt", c.limit_minutes AS "limitMinutes", to_char(c.limit_until, 'HH24:MI') AS "limitUntil",
                 ps.kind AS "passKind", to_char(ps.visit_date, 'YYYY-MM-DD') AS "visitDate", to_char(ps.hours_to, 'HH24:MI') AS "hoursTo", to_char(ps.end_date, 'YYYY-MM-DD') AS "endDate",
+                to_char(ps.leave_by, 'HH24:MI') AS "leaveBy", COALESCE(ps.contractor, false) AS contractor, v.leave_by AS "extendedTo", v.stay_asked_at AS "askedAt",
+                sa.answer AS "stayAnswer", sa.until AS "stayUntil",
                 a.action, a.note, a.at AS "actionAt", a.handover_id AS "handoverId", e.full_name AS "actionBy"
            FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id
            JOIN visitor_categories c ON c.id = v.category_id JOIN site_gates g ON g.id = v.gate_id LEFT JOIN visitor_passes ps ON ps.id = v.pass_id
            LEFT JOIN LATERAL (SELECT x.action, x.note, x.at, x.handover_id, x.guard_id FROM visit_overstay_actions x WHERE x.visit_id = v.id ORDER BY x.at DESC, x.id DESC LIMIT 1) a ON true
            LEFT JOIN employees e ON e.id = a.guard_id
+           LEFT JOIN LATERAL (SELECT s.answer, s.until FROM visit_stay_answers s WHERE s.visit_id = v.id ORDER BY s.at DESC, s.id DESC LIMIT 1) sa ON true
           WHERE v.site_id = $1 AND v.status = 'on_site' AND ($2::boolean IS NOT TRUE OR v.unit_id IS NOT DISTINCT FROM $3::uuid)`,
         [siteId, !!unit, unit?.unitId ?? null],
       )
@@ -87,7 +96,7 @@ export class VisitOnSiteService implements OnModuleDestroy {
     const out = rows.map((r): OnSiteRow => {
       const enteredAt = new Date(r.enteredAt);
       const dueAt = checks.overstayAlert
-        ? visitDueAt({ entryAt: enteredAt, limitMinutes: r.limitMinutes, limitUntil: r.limitUntil, pass: r.passKind ? { kind: r.passKind as PassKind, visitDate: r.visitDate, hoursTo: r.hoursTo, endDate: r.endDate } : null })
+        ? visitDueAt({ entryAt: enteredAt, limitMinutes: r.limitMinutes, limitUntil: r.limitUntil, pass: r.passKind ? { kind: r.passKind as PassKind, visitDate: r.visitDate, hoursTo: r.hoursTo, endDate: r.endDate, leaveBy: r.leaveBy } : null, extendedTo: r.extendedTo ? new Date(r.extendedTo) : null })
         : null;
       const overdue = !!dueAt && dueAt.getTime() <= now.getTime();
       const action = r.action ? { action: r.action as OverstayAction, label: OVERSTAY_ACTION_LABELS[r.action as OverstayAction], note: r.note as string, at: new Date(r.actionAt), by: r.actionBy as string, handoverId: r.handoverId as string | null } : null;
@@ -109,6 +118,9 @@ export class VisitOnSiteService implements OnModuleDestroy {
         overBy: overdue ? stayText(now.getTime() - dueAt!.getTime()) : null,
         action,
         needsAction: overdue && !overstayDealtWith(action, since),
+        contractor: r.contractor,
+        customerSays: r.stayAnswer === 'should_have_left' ? 'Should have left' : r.stayAnswer === 'extended' ? `Still busy until ${sastTime(new Date(r.stayUntil))}` : null,
+        askedAt: r.askedAt ? new Date(r.askedAt) : null,
       };
     });
     return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.overdue ? a.dueAt!.getTime() - b.dueAt!.getTime() : a.enteredAt.getTime() - b.enteredAt.getTime()));
@@ -294,6 +306,66 @@ export class VisitOnSiteService implements OnModuleDestroy {
     return out;
   }
 
+  /** Asks the people of the unit whether a visitor past their time is still busy. They answer in the app. */
+  private async askCustomer(tx: Tx, siteId: string, v: OnSiteRow, now: Date) {
+    await tx.query('UPDATE visits SET stay_asked_at = $2 WHERE id = $1', [v.id, now]);
+    const people = (
+      await tx.query(`SELECT id FROM customers WHERE site_id = $1 AND active AND (($2::uuid IS NOT NULL AND unit_id = $2::uuid) OR ($2::uuid IS NULL AND kind = 'client'))`, [siteId, v.unitId])
+    ).rows.map((r) => r.id as string);
+    if (!people.length) return;
+    const what = v.contractor ? 'contractor' : 'visitor';
+    await this.notifications.record(tx, {
+      userIds: [],
+      customerIds: people,
+      kind: 'visitor_still_on_site',
+      title: `Your ${what} is still on site`,
+      body: `${v.visitor} was due to leave by ${sastTime(v.dueAt!)} and has not been scanned out. Open to tell the gate: still busy, or should have left.`,
+      lockScreen: `A ${what} of yours is still on site. Open On Par to answer.`,
+      url: `/c/visits/${v.id}`,
+      siteId,
+      entityType: 'visit',
+      entityId: v.id,
+    });
+  }
+
+  /**
+   * A customer's answer about their visitor on site: "still busy until HH:MM" moves the time to
+   * be gone by (and can be given at any time); "should have left" goes to the gate in red and
+   * to the supervisor at once.
+   */
+  async answerStay(tx: Tx, me: { customerId: string; name: string; siteId: string; unitId: string | null; customerKind: 'client' | 'tenant' }, visitId: string, answer: StayAnswer, until: string | null, now = new Date()) {
+    if (!(await tx.query('SELECT 1 FROM visits WHERE id = $1 AND site_id = $2 FOR UPDATE', [visitId, me.siteId])).rowCount) throw new NotFoundException('Visitor not found.');
+    const v = (await this.list(tx, me.siteId, now)).find((x) => x.id === visitId && (x.unitId ? x.unitId === me.unitId : me.customerKind === 'client'));
+    if (!v) throw new ConflictException('This visitor is no longer on site.');
+    if (answer === 'extended') {
+      const to = until ? stayUntil(now, until) : null;
+      if (!to) throw new BadRequestException({ message: 'Choose the time they will be busy until.', errors: { until: 'Choose a time.' } });
+      await tx.query('UPDATE visits SET leave_by = $2 WHERE id = $1', [visitId, to]);
+      await tx.query(`INSERT INTO visit_stay_answers (company_id, visit_id, customer_id, answer, until) VALUES (app_company_id(), $1, $2, 'extended', $3)`, [visitId, me.customerId, to]);
+      await this.audit.record(tx, { actorType: 'customer', actorId: me.customerId, actorLabel: me.name, action: 'visit.stay_extended', entityType: 'visit', entityId: visitId, before: { dueAt: v.dueAt }, after: { until: to } });
+      return;
+    }
+    if (!v.overdue) throw new ConflictException('This visitor is not past their time.');
+    await tx.query(`INSERT INTO visit_stay_answers (company_id, visit_id, customer_id, answer) VALUES (app_company_id(), $1, $2, 'should_have_left')`, [visitId, me.customerId]);
+    await this.audit.record(tx, { actorType: 'customer', actorId: me.customerId, actorLabel: me.name, action: 'visit.stay_should_have_left', entityType: 'visit', entityId: visitId, after: { dueAt: v.dueAt } });
+    // Straight to the supervisor: the customer does not know where this person is.
+    await tx.query(
+      `INSERT INTO visit_overstays (visit_id, company_id, site_id, due_at, flagged_at, supervisor_alerted_at) VALUES ($1, app_company_id(), $2, $3, $4, $4)
+       ON CONFLICT (visit_id) DO UPDATE SET supervisor_alerted_at = COALESCE(visit_overstays.supervisor_alerted_at, excluded.supervisor_alerted_at)`,
+      [visitId, me.siteId, v.dueAt, now],
+    );
+    const siteName = (await tx.query('SELECT name FROM sites WHERE id = $1', [me.siteId])).rows[0].name as string;
+    await this.notifications.recordForSite(tx, me.siteId, {
+      kind: 'visitor_overstay',
+      title: `Visitor overstay at ${siteName}`,
+      body: `${v.visitor}, visiting ${v.unitName ? `unit ${v.unitName}` : 'the office'}, is ${v.overBy} past their time. ${me.name} says they should have left.`,
+      lockScreen: 'A visitor is on site past their time.',
+      url: `/sites/${me.siteId}`,
+      entityType: 'visit',
+      entityId: visitId,
+    });
+  }
+
   // --- Escalation ----------------------------------------------------------------------------
 
   /**
@@ -311,7 +383,14 @@ export class VisitOnSiteService implements OnModuleDestroy {
           if (!settings.checks.overstayAlert) continue;
           const over = (await this.list(tx, site.id, now)).filter((v) => v.overdue);
           for (const v of over) {
-            await tx.query('INSERT INTO visit_overstays (visit_id, company_id, site_id, due_at, flagged_at) VALUES ($1, app_company_id(), $2, $3, $4) ON CONFLICT (visit_id) DO NOTHING', [v.id, site.id, v.dueAt, now]);
+            // Noted afresh when the customer gave a later time and that has passed too.
+            await tx.query(
+              `INSERT INTO visit_overstays (visit_id, company_id, site_id, due_at, flagged_at) VALUES ($1, app_company_id(), $2, $3, $4)
+               ON CONFLICT (visit_id) DO UPDATE SET due_at = excluded.due_at, flagged_at = excluded.flagged_at, supervisor_alerted_at = NULL WHERE visit_overstays.due_at <> excluded.due_at`,
+              [v.id, site.id, v.dueAt, now],
+            );
+            // First the customer is asked, automatically: is the visitor still busy? (owner, 7 Oct 2026: no phone calls by guards)
+            if (!v.askedAt || v.askedAt.getTime() < v.dueAt!.getTime()) await this.askCustomer(tx, site.id, v, now);
             if (!v.needsAction) continue;
             const due = await tx.query(
               `UPDATE visit_overstays SET supervisor_alerted_at = $2 WHERE visit_id = $1 AND supervisor_alerted_at IS NULL AND flagged_at <= $2::timestamptz - make_interval(mins => $3) RETURNING visit_id`,

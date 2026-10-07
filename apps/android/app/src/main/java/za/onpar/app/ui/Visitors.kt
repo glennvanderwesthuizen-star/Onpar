@@ -324,7 +324,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
     // The visit.
     var pax by remember { mutableStateOf("") }
     // "Visitor" is already chosen; the guard taps Contractor for someone coming to do work on site.
-    var categoryId by remember { mutableStateOf(setup.categories.firstOrNull()?.id.orEmpty()) }
+    val categoryId = remember { (setup.categories.firstOrNull { !it.contractor } ?: setup.categories.firstOrNull())?.id.orEmpty() }
     var unitId by remember { mutableStateOf<String?>(null) }
     var office by remember { mutableStateOf(false) }
     var unitSearch by remember { mutableStateOf("") }
@@ -553,7 +553,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
             }
 
             if (type == "vehicle" && setup.on("paxCount")) {
-                OutlinedTextField(pax, { v -> pax = v.filter { it.isDigit() }.take(2) }, label = { Text("Passengers, not counting the driver") }, singleLine = true,
+                OutlinedTextField(pax, { v -> pax = v.filter { it.isDigit() }.take(2) }, label = { Text(if (state.scanCheck?.expected?.contractor == true) "Workers with him, not counting the driver" else "Passengers, not counting the driver") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             }
 
@@ -564,7 +564,12 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                         Text("${pass.by} told the gate: ${pass.visitorName}, ${pass.category}" + if (pass.regular) " (a regular)." else ".")
                         pass.namedGate?.let { Text("Announced for $it. They may still come in here.", color = Color.DarkGray) }
                         if (pass.mismatch.isNotEmpty()) Text("The ${pass.mismatch.joinToString(" and ")} is not the one the customer gave. Let them in; the customer is told.", color = Amber, fontWeight = FontWeight.Bold)
-                        Text("No approval is needed.", color = Color.DarkGray)
+                        if (pass.contractor) {
+                            Text("CONTRACTOR: up to ${pass.maxWorkers ?: 0} worker" + (if (pass.maxWorkers == 1) "" else "s") + " with him" + (pass.leaveBy?.let { ", gone by $it." } ?: "."), fontWeight = FontWeight.Bold)
+                            Text("Count the workers and enter the number above.", color = Color.DarkGray)
+                        }
+                        if (pass.extraWorkers(pax.toIntOrNull())) Text("More workers than the customer approved. The customer will be asked before they go in.", color = Red, fontWeight = FontWeight.Bold)
+                        else Text("No approval is needed.", color = Color.DarkGray)
                     }
                 }
             }
@@ -579,10 +584,8 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 }
             }
 
-            if (pass == null) Text("What kind of visitor?", fontWeight = FontWeight.Bold)
-            if (pass == null) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                setup.categories.forEach { c -> FilterChip(selected = categoryId == c.id, onClick = { categoryId = c.id }, label = { Text(c.name) }) }
-            }
+            // Anyone who arrives unannounced is a visitor (owner, 7 Oct 2026): the guard does not choose a kind.
+            // A contractor is someone the customer registered, and comes up above as expected.
 
             if (pass == null) Text("Who are they here to see?", fontWeight = FontWeight.Bold)
             val chosen = setup.units.firstOrNull { it.id == unitId }
@@ -665,7 +668,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                 when {
                     state.busy -> "Sending…"
                     barred.isNotEmpty() -> "Record and turn away"
-                    pass != null -> "Let them in"
+                    pass != null && !pass.extraWorkers(pax.toIntOrNull()) -> "Let them in"
                     else -> "Request approval"
                 },
                 enabled = !state.busy && problem == null,
@@ -972,12 +975,12 @@ fun VisitorExitScreen(vm: AppViewModel, state: UiState) {
 }
 
 /**
- * One visitor on the on-site list. A visitor past their time is in red, with the three things
- * the guard can do: phone the customer, confirm they are still on site, or mark them as having
- * left without being scanned out. The last two need a note.
+ * One visitor on the on-site list. A visitor past their time is in red, with
+ * the customer's answer from their app, and the two things the guard can do: confirm they are
+ * still on site, or mark them as having left without being scanned out. Both need a note.
  */
 @Composable
-private fun OnSiteCard(v: OnSiteVisitor, busy: Boolean, inHandover: Boolean, onDial: () -> Unit, onAct: (String, String) -> Unit) {
+private fun OnSiteCard(v: OnSiteVisitor, busy: Boolean, inHandover: Boolean, onAct: (String, String) -> Unit) {
     var note by remember(v.id) { mutableStateOf("") }
     var open by remember(v.id) { mutableStateOf(false) }
     val done = if (inHandover) v.handoverAction else v.action
@@ -986,12 +989,14 @@ private fun OnSiteCard(v: OnSiteVisitor, busy: Boolean, inHandover: Boolean, onD
         Column(Modifier.background(if (red) Color(0xFFFBE3E0) else if (v.overdue) Color(0xFFFDF0DC) else Color.Transparent).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (v.overdue) Text("PAST THEIR TIME BY ${(v.overBy ?: "").uppercase()}", color = if (red) Red else Amber, fontWeight = FontWeight.Bold)
             Text(v.visitor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text((v.vehicle ?: "On foot") + (v.pax?.let { " · $it passenger" + if (it == 1) "" else "s" } ?: ""))
+            Text((v.vehicle ?: "On foot") + (v.pax?.let { " · $it " + (if (v.contractor) "worker" else "passenger") + if (it == 1) "" else "s" } ?: "") + if (v.contractor) " · CONTRACTOR" else "")
             Text("To see " + (if (v.visiting == "The office") "the office" else v.visiting) + " · ${v.category}", color = Color.DarkGray, fontSize = 13.sp)
             Text("Came in ${time(v.enteredAt)} at ${v.gateName} · on site ${v.stay}", color = Color.DarkGray, fontSize = 13.sp)
             if (done != null) Text("${done.label}" + (if (done.note.isNotBlank()) ": ${done.note}" else "") + " (${done.by}, ${time(done.at)})", fontWeight = FontWeight.Bold)
+            // The customer is asked automatically, in their app, whether the visitor is still busy. Guards do not phone about this (owner, 7 Oct 2026).
+            v.customerSays?.let { Text("The customer says: $it", color = if (it.startsWith("Should")) Red else Green, fontWeight = FontWeight.Bold) }
+            if (v.overdue && v.customerSays == null) Text("The customer has been asked in their app. No answer yet.", color = Color.DarkGray, fontSize = 13.sp)
             if (v.overdue) {
-                OutlinedButton(onClick = onDial, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Dial the customer") }
                 OutlinedTextField(note, { note = it.take(300) }, label = { Text("Note: what did you find?") }, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onAct("confirmed", note); note = "" }, enabled = !busy && note.trim().length >= 3, modifier = Modifier.weight(1f)) { Text("Still on site") }
@@ -1012,25 +1017,6 @@ private fun OnSiteCard(v: OnSiteVisitor, busy: Boolean, inHandover: Boolean, onD
     }
 }
 
-/** Phones the customer about an overstay, asking for the phone permission first if the app does not have it yet. */
-@Composable
-private fun rememberOverstayDialer(vm: AppViewModel, inHandover: Boolean): (String) -> Unit {
-    val context = LocalContext.current
-    var pending by remember { mutableStateOf<String?>(null) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        val id = pending
-        pending = null
-        if (ok && id != null) vm.overstayAction(id, "dialled", "", inHandover)
-    }
-    return { id ->
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) vm.overstayAction(id, "dialled", "", inHandover)
-        else {
-            pending = id
-            ask.launch(Manifest.permission.CALL_PHONE)
-        }
-    }
-}
-
 /** Everyone on site now (visitor management, step 6): visitors past their time first, in red. */
 @Composable
 fun OnSiteScreen(vm: AppViewModel, state: UiState) {
@@ -1041,10 +1027,9 @@ fun OnSiteScreen(vm: AppViewModel, state: UiState) {
         OutlinedButton(onClick = { vm.loadOnSite() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
         return
     }
-    val dial = rememberOverstayDialer(vm, inHandover = false)
     Text("${list.onSite} on site" + (if (list.overstays > 0) ", ${list.overstays} past their time" else ""), fontWeight = FontWeight.Bold, fontSize = 18.sp)
     if (list.visitors.isEmpty()) Text("No visitors are on site.", color = Color.Gray)
-    list.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = false, onDial = { dial(v.id) }) { action, note -> vm.overstayAction(v.id, action, note, false) } }
+    list.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = false) { action, note -> vm.overstayAction(v.id, action, note, false) } }
     OutlinedButton(onClick = { vm.loadOnSite() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
 }
 
@@ -1067,10 +1052,9 @@ fun HandoverScreen(vm: AppViewModel, state: UiState) {
         OutlinedButton(onClick = { vm.startHandover() }, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
         return
     }
-    val dial = rememberOverstayDialer(vm, inHandover = true)
     Text("${h.onSite} on site, ${h.overstays} past their time", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-    if (h.todo > 0) Text("Deal with each visitor in red (${h.todo} to go): dial the customer, or type a note and say whether they are still on site.", color = Red, fontWeight = FontWeight.Bold)
+    if (h.todo > 0) Text("Deal with each visitor in red (${h.todo} to go): type a note and say whether they are still on site.", color = Red, fontWeight = FontWeight.Bold)
     else Text("Check the list below against who is really still on site, then sign off.")
-    h.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = true, onDial = { dial(v.id) }) { action, note -> vm.overstayAction(v.id, action, note, true) } }
+    h.visitors.forEach { v -> OnSiteCard(v, state.busy, inHandover = true) { action, note -> vm.overstayAction(v.id, action, note, true) } }
     BigButton(if (state.busy) "Sending…" else "SIGN OFF: HAND OVER", enabled = !state.busy && h.canSignOff) { vm.signOffHandover() }
 }

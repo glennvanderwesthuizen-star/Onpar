@@ -86,6 +86,9 @@ data class OnSiteVisitor(
     /** In a handover: what was done in this handover, and whether something still must be. */
     val handoverAction: OverstayActionInfo? = null,
     val todo: Boolean = false,
+    val contractor: Boolean = false,
+    /** What the customer answered when asked: "Still busy until 21:00" or "Should have left". */
+    val customerSays: String? = null,
 )
 
 @Serializable
@@ -189,7 +192,14 @@ data class ExpectedMatch(
     val namedGate: String? = null,
     /** What did not match what the customer gave, for example "number plate". The visitor is still let in and the customer told. */
     val mismatch: List<String> = emptyList(),
-)
+    /** A contractor the customer registered: how many workers may come with him (not counting him), and when he must be gone. */
+    val contractor: Boolean = false,
+    val maxWorkers: Int? = null,
+    val leaveBy: String? = null,
+) {
+    /** More workers than the customer approved: the customer is asked before they go in. */
+    fun extraWorkers(pax: Int?): Boolean = maxWorkers != null && (pax ?: 0) > maxWorkers
+}
 
 /**
  * The announcement the guard pulled up before scanning ("Are you expected?"). It is only a

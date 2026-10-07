@@ -16,6 +16,9 @@ interface Pass {
   cell: string | null;
   registration: string | null;
   by: string;
+  contractor: boolean;
+  maxWorkers: number | null;
+  leaveBy: string | null;
   state: 'current' | 'used' | 'ended' | 'cancelled';
   stateLabel: string;
 }
@@ -26,7 +29,7 @@ interface Options {
 }
 type Data = Options & { current: Pass[]; past: Pass[] };
 
-const EMPTY = { visitorName: '', categoryId: '', gateId: '', idNumber: '', cell: '', registration: '', visitDate: '', time: '', days: [] as number[], hoursFrom: '', hoursTo: '', startDate: '', endDate: '' };
+const EMPTY = { contractor: false, maxWorkers: '0', leaveBy: '18:00', visitorName: '', categoryId: '', gateId: '', idNumber: '', cell: '', registration: '', visitDate: '', time: '', days: [] as number[], hoursFrom: '', hoursTo: '', startDate: '', endDate: '' };
 
 /**
  * The form for telling the gate who is coming (visitor management, step 4): one visit on a
@@ -35,11 +38,10 @@ const EMPTY = { visitorName: '', categoryId: '', gateId: '', idNumber: '', cell:
  */
 export function PassForm({ options, fromVisit, startName = '', onDone, onCancel }: { options: Options; fromVisit?: string; startName?: string; onDone: () => void; onCancel: () => void }) {
   const [kind, setKind] = useState<'once' | 'ongoing'>(fromVisit ? 'ongoing' : 'once');
-  const [f, setF] = useState({ ...EMPTY, visitorName: startName, visitDate: options.today, categoryId: options.categories[0]?.id ?? '' });
+  const [f, setF] = useState({ ...EMPTY, visitorName: startName, visitDate: options.today });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const errors = error instanceof ApiError ? error.errors : {};
-  const categories = options.categories;
   const set = (patch: Partial<typeof EMPTY>) => setF({ ...f, ...patch });
 
   async function save(e: React.FormEvent) {
@@ -50,7 +52,10 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
       const body = {
         kind,
         visitorName: f.visitorName,
-        categoryId: f.categoryId || '00000000-0000-0000-0000-000000000000',
+        // A visitor, or a contractor with the workers you approve and a time to be gone by.
+        contractor: f.contractor,
+        maxWorkers: f.contractor ? (f.maxWorkers.trim() === '' ? null : Number(f.maxWorkers)) : null,
+        leaveBy: f.contractor ? f.leaveBy || null : null,
         gateId: f.gateId || null,
         idNumber: f.idNumber,
         cell: f.cell,
@@ -84,19 +89,29 @@ export function PassForm({ options, fromVisit, startName = '', onDone, onCancel 
           A regular
         </button>
       </div>
-      <Field label="Visitor's name" error={errors.visitorName}>
+      <Field label="Who is coming" hint={f.contractor ? 'Someone coming to do work. You say how many workers may come with them and when they must be gone.' : 'Someone coming to see you or to deliver.'}>
+        <div className="m-actions" style={{ marginBottom: 0 }}>
+          <button type="button" className={`btn ${f.contractor ? 'ghost' : ''}`} onClick={() => set({ contractor: false })}>
+            A visitor
+          </button>
+          <button type="button" className={`btn ${f.contractor ? '' : 'ghost'}`} onClick={() => set({ contractor: true })}>
+            A contractor
+          </button>
+        </div>
+      </Field>
+      <Field label={f.contractor ? 'Contractor’s name or company' : 'Visitor’s name'} error={errors.visitorName}>
         <input value={f.visitorName} onChange={(e) => set({ visitorName: e.target.value })} required />
       </Field>
-      <Field label="Kind of visitor" error={errors.categoryId}>
-        <select value={f.categoryId} onChange={(e) => set({ categoryId: e.target.value })} required>
-          <option value="">Choose…</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {f.contractor && (
+        <div className="grid g2">
+          <Field label="Workers with them" error={errors.maxWorkers} hint="Not counting the contractor. The gate counts them in and out; more than this and you are asked.">
+            <input inputMode="numeric" value={f.maxWorkers} onChange={(e) => set({ maxWorkers: e.target.value.replace(/\D/g, '').slice(0, 2) })} required />
+          </Field>
+          <Field label="Must be gone by" error={errors.leaveBy} hint="If they are still on site then, you are asked whether they are still busy.">
+            <input type="time" value={f.leaveBy} onChange={(e) => set({ leaveBy: e.target.value })} required />
+          </Field>
+        </div>
+      )}
 
       {kind === 'once' ? (
         <div className="grid g2">
@@ -236,7 +251,7 @@ export function CustomerPasses() {
               <span>
                 <b>{p.visitorName}</b> <Pill tone={p.kind === 'once' ? 'amber' : 'green'}>{p.stateLabel}</Pill>
                 <span className="mute small" style={{ display: 'block' }}>
-                  {p.category} · {p.when}
+                  {p.contractor ? `Contractor · up to ${p.maxWorkers ?? 0} worker${p.maxWorkers === 1 ? '' : 's'} · gone by ${p.leaveBy ?? '18:00'}` : 'Visitor'} · {p.when}
                   {p.gateName ? ` · ${p.gateName}` : ''}
                 </span>
                 <span className="mute small" style={{ display: 'block' }}>
@@ -256,7 +271,7 @@ export function CustomerPasses() {
                   <span>
                     {p.visitorName}
                     <span className="mute small" style={{ display: 'block' }}>
-                      {p.category} · {p.when}
+                      {p.contractor ? `Contractor · up to ${p.maxWorkers ?? 0} worker${p.maxWorkers === 1 ? '' : 's'} · gone by ${p.leaveBy ?? '18:00'}` : 'Visitor'} · {p.when}
                     </span>
                   </span>
                   <span className="mute small">{p.stateLabel}</span>

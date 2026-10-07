@@ -92,7 +92,7 @@ describe('visitor management: announced visitors', () => {
     expect(made.status).toBe(201);
     expect((await w.http().get('/api/customer/passes').set(auth(thabo.token))).body.current[0]).toMatchObject({ visitorName: 'Sipho Nkosi', registration: 'GP100200', gateName: 'Back gate', when: `${today}, any time`, stateLabel: 'Expected' });
     const found = await check({ idNumber: 'P11112222', registration: 'GP 100 200' });
-    expect(found.expected).toEqual({ passId: made.body.id, visitorName: 'Sipho Nkosi', visiting: 'Unit 14', category: 'Visitor', by: 'Thabo Tenant', regular: false, namedGate: 'Back gate', mismatch: [] });
+    expect(found.expected).toEqual({ passId: made.body.id, visitorName: 'Sipho Nkosi', visiting: 'Unit 14', category: 'Visitor', by: 'Thabo Tenant', regular: false, namedGate: 'Back gate', mismatch: [], contractor: false, maxWorkers: null, leaveBy: null });
     const before = (await myAlerts(thabo)).length;
     // The guard had unit 20 chosen; the announcement decides who the visitor is for.
     const r = await arrive({ passId: made.body.id, vehicle: { registration: 'GP 100 200', make: 'VW', model: 'Polo', colour: 'Red', vin: '', discExpiry: null, method: 'scan' }, categoryId: null, unitId: null });

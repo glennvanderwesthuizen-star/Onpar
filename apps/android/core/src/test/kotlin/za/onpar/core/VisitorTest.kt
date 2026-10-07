@@ -367,4 +367,17 @@ class VisitorTest {
         device.visitors.handoverAcknowledge("h1")
         assertEquals("/api/device/visitors/handover/h1/acknowledge", server.takeRequest().path)
     }
+
+    @Test
+    fun `a registered contractor comes with the workers approved, and more than that means the customer is asked`() {
+        server.enqueue(MockResponse().setBody("""{"person":null,"vehicle":null,"barred":[],"expected":{"passId":"p7","visitorName":"Fix It Plumbing","visiting":"Unit 14","category":"Contractor","by":"Thabo Tenant","regular":true,"namedGate":null,"mismatch":[],"contractor":true,"maxWorkers":2,"leaveBy":"18:00"}}"""))
+        val e = device.visitors.check(null, "ND700", null).expected!!
+        server.takeRequest()
+        assertTrue(e.contractor)
+        assertEquals("18:00", e.leaveBy)
+        assertFalse(e.extraWorkers(2))
+        assertTrue(e.extraWorkers(3))
+        assertFalse(e.extraWorkers(null))
+        assertFalse(ExpectedMatch("p1").extraWorkers(9))
+    }
 }

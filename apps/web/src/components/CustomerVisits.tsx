@@ -24,6 +24,8 @@ export interface CustomerVisit {
   hasFace: boolean;
   outcome: string | null;
   canPass: boolean;
+  /** While on site: when they are due to leave, and what this unit told the gate. */
+  stay?: { dueAt: string | null; overdue: boolean; overBy: string | null; says: string | null; contractor: boolean } | null;
 }
 
 /**
@@ -44,6 +46,20 @@ export function VisitRequest({ visit, onChange }: { visit: CustomerVisit; onChan
         setPassing(true);
       })
       .catch(setError);
+
+  const [until, setUntil] = useState('');
+  async function stay(answer: 'extended' | 'should_have_left') {
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await api<CustomerVisit>(`/customer/visits/${visit.id}/stay`, { method: 'POST', json: { answer, until: answer === 'extended' ? until : null } }));
+      setUntil('');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function decide(decision: 'accept' | 'refuse') {
     setBusy(true);
@@ -90,6 +106,44 @@ export function VisitRequest({ visit, onChange }: { visit: CustomerVisit; onChan
       ) : (
         <div className={`banner ${visit.status === 'on_site' ? 'ok' : 'err'}`} style={{ marginTop: 12, marginBottom: 0 }} role="status">
           <b>{visit.outcome ?? visit.statusLabel}</b>
+        </div>
+      )}
+      {visit.status === 'on_site' && visit.stay && (
+        <div style={{ marginTop: 12 }}>
+          {visit.stay.overdue ? (
+            <div className="banner warn" role="status">
+              <b>Still on site, {visit.stay.overBy} past the time to be gone by.</b> Is your {visit.stay.contractor ? 'contractor' : 'visitor'} still busy?
+            </div>
+          ) : (
+            visit.stay.dueAt && (
+              <p className="mute small" style={{ margin: 0 }}>
+                Due to leave by {formatDateTime(visit.stay.dueAt)}.
+              </p>
+            )
+          )}
+          {visit.stay.says && (
+            <p className="small" style={{ margin: '6px 0 0' }}>
+              You told the gate: <b>{visit.stay.says}</b>
+            </p>
+          )}
+          {(visit.stay.overdue || visit.stay.dueAt) && (
+            <>
+              <label className="f" style={{ marginTop: 10 }}>
+                <span>Still busy until</span>
+                <input type="time" value={until} onChange={(e) => setUntil(e.target.value)} />
+              </label>
+              <div className="m-actions" style={{ marginBottom: 0 }}>
+                <button className="btn" disabled={busy || !until} onClick={() => stay('extended')}>
+                  Tell the gate
+                </button>
+                {visit.stay.overdue && (
+                  <button className="btn danger" disabled={busy} onClick={() => stay('should_have_left')}>
+                    Should have left
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
       {visit.canPass && !passing && !passed && (

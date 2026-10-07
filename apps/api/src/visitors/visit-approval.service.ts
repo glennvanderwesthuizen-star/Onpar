@@ -100,7 +100,7 @@ export class VisitApprovalService {
   }
 
   /** Asks the customers of the unit to accept or refuse, and starts the wait. */
-  async request(tx: Tx, visitId: string): Promise<void> {
+  async request(tx: Tx, visitId: string, note?: string): Promise<void> {
     const v = (await this.load(tx, visitId))!;
     const people = await this.customers(tx, v.siteId, v.unitId);
     const { noResponseSeconds } = await this.setup.settings(tx, v.siteId);
@@ -114,7 +114,7 @@ export class VisitApprovalService {
       customerIds: people.map((p) => p.id),
       kind: 'visitor_request',
       title: `Visitor at ${v.gateName}`,
-      body: `${who}. ${how}. Open to accept or refuse.`,
+      body: `${who}. ${how}. ${note ? `${note} ` : ''}Open to accept or refuse.`,
       // The locked screen of a phone names nobody.
       lockScreen: 'A visitor is at the gate. Open On Par to answer.',
       url: `/c/visits/${v.id}`,

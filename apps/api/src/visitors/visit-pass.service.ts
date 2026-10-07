@@ -10,7 +10,10 @@ import { VisitorSetupService } from './visitor-setup.service';
 export interface PassBody {
   kind: PassKind;
   visitorName: string;
-  categoryId: string;
+  categoryId: string | null;
+  contractor: boolean;
+  maxWorkers: number | null;
+  leaveBy: string | null;
   gateId: string | null;
   idNumber: string;
   cell: string;
@@ -34,6 +37,10 @@ export interface PassMatch {
   category: string;
   visitorName: string;
   by: string;
+  /** A contractor the customer registered: how many workers may come with him, and when he must be gone. */
+  contractor: boolean;
+  maxWorkers: number | null;
+  leaveBy: string | null;
   /** The gate the customer named, when it is not this one. */
   namedGate: string | null;
   /** What did not match what the customer gave ("number plate"); the visitor is still let in and the customer told. */
@@ -43,7 +50,8 @@ export interface PassMatch {
 const COLUMNS = `p.id, p.kind, p.visitor_name AS "visitorName", p.unit_id AS "unitId", u.name AS "unitName", p.category_id AS "categoryId", c.name AS category, c.kind AS "categoryKind",
   p.gate_id AS "gateId", g.name AS "gateName", p.id_number, p.cell, p.registration, to_char(p.visit_date, 'YYYY-MM-DD') AS "visitDate", to_char(p.time_from, 'HH24:MI') AS time,
   p.days, to_char(p.hours_from, 'HH24:MI') AS "hoursFrom", to_char(p.hours_to, 'HH24:MI') AS "hoursTo", to_char(p.start_date, 'YYYY-MM-DD') AS "startDate",
-  to_char(p.end_date, 'YYYY-MM-DD') AS "endDate", p.status, p.created_at AS "createdAt", cu.full_name AS by`;
+  to_char(p.end_date, 'YYYY-MM-DD') AS "endDate", p.status, p.created_at AS "createdAt", cu.full_name AS by,
+  p.contractor, p.max_workers AS "maxWorkers", to_char(COALESCE(p.leave_by, CASE WHEN p.contractor THEN c.limit_until END), 'HH24:MI') AS "leaveBy"`;
 const FROM = `visitor_passes p JOIN visitor_categories c ON c.id = p.category_id JOIN customers cu ON cu.id = p.created_by
   LEFT JOIN site_units u ON u.id = p.unit_id LEFT JOIN site_gates g ON g.id = p.gate_id`;
 /** South African time now, as a plain timestamp. */
@@ -100,6 +108,9 @@ export class VisitPassService implements OnModuleDestroy {
       category: p.category,
       visitorName: p.visitorName,
       by: p.by,
+      contractor: p.contractor,
+      maxWorkers: p.maxWorkers,
+      leaveBy: p.leaveBy,
       namedGate: p.gateId && p.gateId !== gateId ? p.gateName : null,
       mismatch,
     };
@@ -154,8 +165,11 @@ export class VisitPassService implements OnModuleDestroy {
   }
 
   async create(tx: Tx, me: CustomerPrincipal, b: PassBody, from?: { visitId: string; idNumber: string | null; registration: string | null }) {
-    const category = (await this.setup.categories(tx, me.siteId)).find((c) => c.id === b.categoryId && c.active);
+    // A contractor goes under the site's contractor kind (which carries the usual time to be gone by); anyone else is a visitor.
+    const active = (await this.setup.categories(tx, me.siteId)).filter((c) => c.active);
+    const category = b.contractor ? (active.find((c) => c.contractor) ?? active[0]) : b.categoryId ? active.find((c) => c.id === b.categoryId) : (active.find((c) => !c.contractor) ?? active[0]);
     if (!category) throw new BadRequestException({ message: 'Choose the kind of visitor.', errors: { categoryId: 'Choose the kind of visitor.' } });
+    b = { ...b, categoryId: category.id, maxWorkers: b.contractor ? b.maxWorkers : null, leaveBy: b.contractor ? b.leaveBy : null };
     // Made from an approved visit: the ID number and number plate come from that visit, which the customer never sees in full.
     const idNumber = from ? (from.idNumber ?? '') : b.idNumber;
     const registration = from ? (from.registration ?? '') : b.registration;
@@ -167,8 +181,8 @@ export class VisitPassService implements OnModuleDestroy {
     const id = (
       await tx.query(
         `INSERT INTO visitor_passes (company_id, site_id, unit_id, created_by, category_id, gate_id, visitor_name, id_number, cell, registration, kind, visit_date, time_from,
-                                     days, hours_from, hours_to, start_date, end_date, from_visit_id)
-         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::date, $12::time, $13::smallint[], $14::time, $15::time, $16::date, $17::date, $18) RETURNING id`,
+                                     days, hours_from, hours_to, start_date, end_date, from_visit_id, contractor, max_workers, leave_by)
+         VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::date, $12::time, $13::smallint[], $14::time, $15::time, $16::date, $17::date, $18, $19, $20, $21::time) RETURNING id`,
         [
           me.siteId,
           me.unitId,
@@ -188,10 +202,13 @@ export class VisitPassService implements OnModuleDestroy {
           once ? null : b.startDate,
           once ? null : b.endDate,
           from?.visitId ?? null,
+          b.contractor,
+          b.maxWorkers,
+          b.leaveBy,
         ],
       )
     ).rows[0].id as string;
-    await this.audit.byAccount(tx, me, { action: 'pass.create', entityType: 'visitor_pass', entityId: id, after: { kind: b.kind, categoryId: b.categoryId, gateId: b.gateId, fromVisitId: from?.visitId ?? null, when: passWhen(b) } });
+    await this.audit.byAccount(tx, me, { action: 'pass.create', entityType: 'visitor_pass', entityId: id, after: { kind: b.kind, categoryId: b.categoryId, contractor: b.contractor, maxWorkers: b.maxWorkers, leaveBy: b.leaveBy, gateId: b.gateId, fromVisitId: from?.visitId ?? null, when: passWhen(b) } });
     return { id };
   }
 
@@ -284,6 +301,9 @@ function shape(p: Record<string, any>) {
     cell: (p.cell ?? null) as string | null,
     registration: (p.registration ?? null) as string | null,
     by: p.by as string,
+    contractor: p.contractor as boolean,
+    maxWorkers: (p.maxWorkers ?? null) as number | null,
+    leaveBy: (p.contractor ? p.leaveBy : null) as string | null,
     state,
     stateLabel: { current: p.kind === 'once' ? 'Expected' : 'Regular', used: 'Arrived', ended: 'Ended', cancelled: 'Removed' }[state] as string,
   };

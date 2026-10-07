@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { EXCEPTION_LABELS, ExceptionType, VISIT_STATUS_LABELS, VisitStatus, vehicleLine, visitorName } from '@onpar/rules';
+import { EXCEPTION_LABELS, ExceptionType, STAY_ANSWERS, VISIT_STATUS_LABELS, VisitStatus, vehicleLine, visitorName } from '@onpar/rules';
 import { CurrentCustomer, CustomerAuthGuard, CustomerPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
@@ -10,6 +10,7 @@ import { StorageService } from '../storage/storage.service';
 import { VisitApprovalService } from './visit-approval.service';
 import { VisitOnSiteService } from './visit-onsite.service';
 
+const StayBody = z.object({ answer: z.enum(STAY_ANSWERS, { message: 'Choose an answer.' }), until: z.string().trim().nullable().default(null) });
 const DecideBody = z.object({ decision: z.enum(['accept', 'refuse'], { message: 'Choose Accept or Refuse.' }) });
 
 const COLUMNS = `v.id, v.type, v.status, v.captured_at AS "at", v.respond_by AS "respondBy", v.decided_at AS "decidedAt", p.surname, p.names, ve.registration, ve.make, ve.model, ve.colour,
@@ -109,10 +110,27 @@ export class CustomerVisitsController {
     });
   }
 
+  /**
+   * About a visitor of theirs who is on site: "still busy until HH:MM", which can be said at any
+   * time, or "should have left" once they are past their time. No phone call is needed.
+   */
+  @Post(':id/stay')
+  @HttpCode(200)
+  stay(@CurrentCustomer() me: CustomerPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const b = parseBody(StayBody, body);
+    return this.db.withTenant(me.companyId, async (tx) => {
+      if (!(await tx.query(`SELECT 1 FROM visits v WHERE v.id = $4 AND ${MINE}`, [me.siteId, me.unitId, me.customerKind, id])).rowCount) throw new NotFoundException('Visitor not found.');
+      await this.onSite.answerStay(tx, me, id, b.answer, b.until);
+      return this.find(tx, me, id);
+    });
+  }
+
   private async find(tx: Tx, me: CustomerPrincipal, id: string) {
     const r = (await tx.query(`SELECT ${COLUMNS} FROM ${FROM} WHERE v.id = $4 AND ${MINE}`, [me.siteId, me.unitId, me.customerKind, id])).rows[0];
     if (!r) throw new NotFoundException('Visitor not found.');
-    return shape(r);
+    // While on site: when they are due to leave, and what this unit has told the gate about it.
+    const here = r.status === 'on_site' ? (await this.onSite.list(tx, me.siteId, new Date())).find((v) => v.id === id) : undefined;
+    return { ...shape(r), stay: here ? { dueAt: here.dueAt, overdue: here.overdue, overBy: here.overBy, says: here.customerSays, contractor: here.contractor } : null };
   }
 }
 

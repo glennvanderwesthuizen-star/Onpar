@@ -227,6 +227,10 @@ export class GateController {
               regular: pass.kind === 'ongoing',
               namedGate: pass.namedGate,
               mismatch: pass.mismatch,
+              contractor: pass.contractor,
+              // Workers who may come with a contractor, not counting him. More than this and the customer is asked.
+              maxWorkers: pass.maxWorkers,
+              leaveBy: pass.contractor ? pass.leaveBy : null,
             }
           : null,
       };
@@ -270,7 +274,10 @@ export class GateController {
         b.categoryId = pass.categoryId;
         b.unitId = pass.unitId;
       }
-      const category = (await this.setup.categories(tx, gate.siteId)).find((c) => c.id === b.categoryId && (c.active || pass));
+      const kinds = await this.setup.categories(tx, gate.siteId);
+      // Anyone who arrives unannounced is a visitor (owner, 7 Oct 2026): the guard does not choose a kind.
+      if (!pass && !b.categoryId) b.categoryId = (kinds.find((c) => c.active && !c.contractor) ?? kinds.find((c) => c.active))?.id ?? null;
+      const category = kinds.find((c) => c.id === b.categoryId && (c.active || pass));
       if (!category) errors.categoryId = 'Choose the kind of visitor.';
       if (pass) {
         // The unit comes from the pass.
@@ -325,9 +332,11 @@ export class GateController {
       // A barred visitor is turned away, so the earlier visit is left as it is.
       if (earlier.length && !barred.length) await this.exits.closeUnscanned(tx, gate, await this.exitActor(tx, guard), earlier, b.onSite!, b.eventId);
       // Barred comes first; then a pass lets the visitor straight in; anyone else waits for the customer.
-      const status: VisitStatus = barred.length ? 'denied' : pass ? 'on_site' : 'awaiting_approval';
+      // A contractor with more workers than the customer approved is not let in on the registration: the customer is asked.
+      const extraWorkers = pass && pass.maxWorkers !== null && (b.pax ?? 0) > pass.maxWorkers ? { approved: pass.maxWorkers, arrived: b.pax ?? 0 } : null;
+      const status: VisitStatus = barred.length ? 'denied' : pass && !extraWorkers ? 'on_site' : 'awaiting_approval';
       const deniedReason = barred.length ? 'barred' : null;
-      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(earlier.length && !barred.length ? { alreadyOnSite: earlier.map((x) => x.id) } : {}), ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}) };
+      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(earlier.length && !barred.length ? { alreadyOnSite: earlier.map((x) => x.id) } : {}), ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}), ...(extraWorkers ? { extraWorkers } : {}) };
       const faceKey = b.type === 'pedestrian' && face ? await this.storage.put(guard.companyId, 'visitors', face.buffer, IMAGE_TYPES[face.mimetype]) : null;
       const manual = b.person.method === 'manual' || v?.method === 'manual';
       const id = (
@@ -364,7 +373,7 @@ export class GateController {
             guard.employeeId,
             faceKey,
             faceKey ? face!.mimetype : null,
-            !!pass && !barred.length,
+            !!pass && !barred.length && !extraWorkers,
             pass && !barred.length ? pass.passId : null,
           ],
         )
@@ -402,7 +411,7 @@ export class GateController {
         });
       }
       // Not barred: the customers of the unit are asked, and the gate waits for the answer.
-      if (status === 'awaiting_approval') await this.approval.request(tx, id);
+      if (status === 'awaiting_approval') await this.approval.request(tx, id, extraWorkers ? `Your contractor has ${extraWorkers.arrived} worker${extraWorkers.arrived === 1 ? '' : 's'} with them; you approved ${extraWorkers.approved}.` : undefined);
       // Expected: let in at once, the pass marked as used, and the customer told who arrived.
       if (status === 'on_site' && pass) {
         await this.passes.used(tx, pass.passId, id, settings.checks.entryLimit);

@@ -10,6 +10,7 @@ import {
   overstayActionError,
   overstayDealtWith,
   stayText,
+  stayUntil,
   visitDueAt,
   passErrors,
   passWhen,
@@ -93,13 +94,20 @@ describe('visitor management: the groundwork', () => {
   });
 
   describe('a pass a customer makes for a visitor', () => {
-    const once = { kind: 'once' as const, visitorName: 'Sipho Nkosi', idNumber: '', cell: '082 555 0140', registration: '', visitDate: '2026-10-08', time: null, days: [], hoursFrom: null, hoursTo: null, startDate: null, endDate: null };
+    const once = { kind: 'once' as const, visitorName: 'Sipho Nkosi', idNumber: '', cell: '082 555 0140', registration: '', visitDate: '2026-10-08', time: null, days: [], hoursFrom: null, hoursTo: null, startDate: null, endDate: null, contractor: false, maxWorkers: null, leaveBy: null };
     const regular = { ...once, kind: 'ongoing' as const, visitDate: null, days: [1, 3, 5], hoursFrom: '08:00', hoursTo: '17:00' };
 
     it('needs a name and at least one way for the gate to recognise the visitor', () => {
       expect(passErrors(once, '2026-10-07')).toEqual({});
       expect(passErrors({ ...once, cell: '', visitorName: 'S' }, '2026-10-07')).toEqual({ visitorName: 'Enter the visitor’s name.', identifier: 'Give at least one: their ID number, cell number or number plate.' });
       expect(passErrors({ ...once, cell: '082', registration: 'ca 123 456' }, '2026-10-07')).toEqual({ cell: 'Enter the full cell number.' });
+    });
+
+    it('needs a contractor\u2019s cell number and how many workers may come with them', () => {
+      const c = { ...once, contractor: true, cell: '', registration: 'CA 1' };
+      expect(passErrors(c, '2026-10-07')).toEqual({ cell: 'Enter the contractor\u2019s cell number.', maxWorkers: 'Enter how many workers may come with them (0 if none).' });
+      expect(passErrors({ ...c, cell: '082 555 0140', maxWorkers: 4, leaveBy: '6pm' }, '2026-10-07')).toEqual({ leaveBy: 'Enter the time, for example 18:00.' });
+      expect(passErrors({ ...c, cell: '082 555 0140', maxWorkers: 0, leaveBy: '18:00' }, '2026-10-07')).toEqual({});
     });
 
     it('takes one visit on a day that has not passed, with an optional time', () => {
@@ -176,6 +184,15 @@ describe('visitor management: the groundwork', () => {
       const regular = { kind: 'ongoing' as const, visitDate: null, hoursTo: '16:00', endDate: '2026-10-09' };
       expect(visitDueAt({ ...none, entryAt: at('2026-10-07T08:00:00'), limitUntil: '17:00', pass: regular })).toEqual(at('2026-10-07T16:00:00'));
       expect(visitDueAt({ ...none, entryAt: at('2026-10-09T08:00:00'), pass: { ...regular, hoursTo: null } })).toEqual(at('2026-10-10T00:00:00'));
+    });
+
+    it('lets a contractor\u2019s own time, and the customer\u2019s "still busy until", take the place of the site\u2019s limit', () => {
+      const pass = { kind: 'ongoing' as const, visitDate: null, hoursTo: null, endDate: null, leaveBy: '16:30' };
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T08:00:00'), limitUntil: '18:00', pass })).toEqual(at('2026-10-07T16:30:00'));
+      expect(visitDueAt({ ...none, entryAt: at('2026-10-07T08:00:00'), limitUntil: '18:00', pass, extendedTo: at('2026-10-07T21:00:00') })).toEqual(at('2026-10-07T21:00:00'));
+      expect(stayUntil(at('2026-10-07T18:05:00'), '21:00')).toEqual(at('2026-10-07T21:00:00'));
+      expect(stayUntil(at('2026-10-07T23:30:00'), '01:00')).toEqual(at('2026-10-08T01:00:00'));
+      expect(stayUntil(at('2026-10-07T18:05:00'), '9pm')).toBeNull();
     });
 
     it('writes time on site in a short form', () => {

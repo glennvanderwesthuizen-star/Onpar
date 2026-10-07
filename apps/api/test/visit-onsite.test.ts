@@ -277,4 +277,98 @@ describe('visitor management: on-site list, overstays and handover', () => {
     expect(JSON.stringify(h)).not.toMatch(/P0000/);
     expect((await w.http().get('/api/customer/visits/history').set(auth(nomsa.token))).body).toHaveLength(1);
   });
+
+  describe('contractors (owner, 7 Oct 2026): registered by the customer, counted in, and asked about automatically', () => {
+    const svc = () => w.app.get(VisitOnSiteService);
+    const register = (body: Record<string, unknown>) =>
+      w.http().post('/api/customer/passes').set(auth(thabo.token)).send({ kind: 'ongoing', visitorName: 'Fix It Plumbing', contractor: true, visitDate: null, ...body });
+    const myAlerts = async () => {
+      await w.app.get(NotificationsService).settled();
+      return (await w.http().get('/api/notifications').set(auth(thabo.token))).body.alerts as { kind: string; title: string; body: string; url: string }[];
+    };
+    const arrive = (data: Record<string, unknown>) => {
+      seq += 1;
+      const person = { idNumber: `P${String(seq).padStart(8, '0')}`, surname: `Plumber${seq}`, names: 'T', document: 'id_card', method: 'scan' };
+      return w.http().post('/api/device/visitors').set(g()).field('data', JSON.stringify({ eventId: randomUUID(), type: 'vehicle', person, pax: 1, trustedAt: now(), deviceClock: now(), ...data }));
+    };
+    const van = (registration: string) => ({ registration, make: 'Isuzu', model: 'KB', colour: 'White', vin: '', discExpiry: null, method: 'scan' });
+    let visitId: string;
+
+    it('treats anyone who arrives unannounced as a visitor, without the guard choosing a kind', async () => {
+      const r = await arrive({ vehicle: van('ZN 1'), unitId: unit14 });
+      expect(r.body.status).toBe('awaiting_approval');
+      const [v] = await ownerQuery('SELECT c.name FROM visits v JOIN visitor_categories c ON c.id = v.category_id WHERE v.id = $1', [r.body.id]);
+      expect(v.name).toBe('Visitor');
+      await w.http().post(`/api/customer/visits/${r.body.id}/decide`).set(auth(thabo.token)).send({ decision: 'refuse' });
+    });
+
+    it('needs the contractor’s cell number and the number of workers the customer approves', async () => {
+      expect((await register({ registration: 'ND 700' })).body.errors).toEqual({ cell: 'Enter the contractor’s cell number.', maxWorkers: 'Enter how many workers may come with them (0 if none).' });
+      const made = await register({ registration: 'ND 700', cell: '083 555 0700', maxWorkers: 2 });
+      expect(made.status).toBe(201);
+      const mine = (await w.http().get('/api/customer/passes').set(auth(thabo.token))).body.current.find((p: { id: string }) => p.id === made.body.id);
+      // No time given: the site's time for contractors.
+      expect(mine).toMatchObject({ visitorName: 'Fix It Plumbing', category: 'Contractor', contractor: true, maxWorkers: 2, leaveBy: '18:00' });
+      const found = (await w.http().post('/api/device/visitors/check').set(g()).send({ registration: 'ND700' })).body.expected;
+      expect(found).toMatchObject({ visitorName: 'Fix It Plumbing', category: 'Contractor', contractor: true, maxWorkers: 2, leaveBy: '18:00', regular: true });
+    });
+
+    it('lets the contractor in with the workers approved, and asks the customer when there are more', async () => {
+      const passId = (await w.http().post('/api/device/visitors/check').set(g()).send({ registration: 'ND700' })).body.expected.passId;
+      const many = await arrive({ vehicle: van('ND 700'), passId, pax: 3 });
+      expect(many.body.status).toBe('awaiting_approval');
+      expect((await myAlerts())[0]).toMatchObject({ kind: 'visitor_request', body: expect.stringContaining('Your contractor has 3 workers with them; you approved 2. Open to accept or refuse.') });
+      const [row] = await ownerQuery('SELECT checks, announced, pass_id FROM visits WHERE id = $1', [many.body.id]);
+      expect(row).toMatchObject({ announced: false, pass_id: passId, checks: { extraWorkers: { approved: 2, arrived: 3 } } });
+      await w.http().post(`/api/customer/visits/${many.body.id}/decide`).set(auth(thabo.token)).send({ decision: 'refuse' });
+      const ok = await arrive({ vehicle: van('ND 700'), passId, pax: 2 });
+      expect(ok.body.status).toBe('on_site');
+      visitId = ok.body.id;
+      expect((await onSite(peter)).visitors.find((v: { id: string }) => v.id === visitId)).toMatchObject({ category: 'Contractor', contractor: true, pax: 2, overdue: false, customerSays: null });
+    });
+
+    it('asks the customer, automatically and once, when the contractor is still on site at the time to be gone by', async () => {
+      await ownerQuery(`UPDATE visits SET entry_at = now() - interval '30 hours' WHERE id = $1`, [visitId]);
+      const before = (await myAlerts()).filter((a) => a.kind === 'visitor_still_on_site').length;
+      await svc().tick(new Date());
+      await svc().tick(new Date());
+      const asked = (await myAlerts()).filter((a) => a.kind === 'visitor_still_on_site');
+      // The other overstay in this unit is asked about too, once each.
+      expect(asked.length - before).toBeGreaterThanOrEqual(1);
+      const mine = asked.find((a) => a.url === `/c/visits/${visitId}`)!;
+      expect(mine).toMatchObject({ title: 'Your contractor is still on site' });
+      expect(mine.body).toMatch(/^Plumber\d+, T was due to leave by 18:00 and has not been scanned out\. Open to tell the gate: still busy, or should have left\.$/);
+      expect(asked.filter((a) => a.url === `/c/visits/${visitId}`)).toHaveLength(1);
+      const seen = (await w.http().get(`/api/customer/visits/${visitId}`).set(auth(thabo.token))).body;
+      expect(seen.stay).toMatchObject({ overdue: true, says: null, contractor: true });
+    });
+
+    it('moves the time when the customer says "still busy until", and asks again when that passes', async () => {
+      const stay = (who: { token: string }, body: Record<string, unknown>) => w.http().post(`/api/customer/visits/${visitId}/stay`).set(auth(who.token)).send(body);
+      expect((await stay(nomsa, { answer: 'extended', until: '21:00' })).status).toBe(404);
+      expect((await stay(thabo, { answer: 'extended' })).status).toBe(400);
+      const until = new Date(Date.now() + 2 * 3600_000 + 2 * 3600_000).toISOString().slice(11, 16); // two hours from now, South African time
+      const r = await stay(thabo, { answer: 'extended', until });
+      expect(r.status).toBe(200);
+      expect(r.body.stay).toMatchObject({ overdue: false, says: `Still busy until ${until}` });
+      expect((await onSite(peter)).visitors.find((v: { id: string }) => v.id === visitId)).toMatchObject({ overdue: false, needsAction: false, customerSays: `Still busy until ${until}` });
+      // Not past their time now, so "should have left" is not an answer yet.
+      expect((await stay(thabo, { answer: 'should_have_left' })).status).toBe(409);
+      await svc().tick(new Date(Date.now() + 3 * 3600_000));
+      expect((await myAlerts()).filter((a) => a.url === `/c/visits/${visitId}` && a.kind === 'visitor_still_on_site')).toHaveLength(2);
+    });
+
+    it('shows the gate in red, and tells the supervisor at once, when the customer says he should have left', async () => {
+      await ownerQuery(`UPDATE visits SET leave_by = now() - interval '10 minutes' WHERE id = $1`, [visitId]);
+      const r = await w.http().post(`/api/customer/visits/${visitId}/stay`).set(auth(thabo.token)).send({ answer: 'should_have_left' });
+      expect(r.status).toBe(200);
+      expect(r.body.stay).toMatchObject({ overdue: true, says: 'Should have left' });
+      expect((await onSite(peter)).visitors.find((v: { id: string }) => v.id === visitId)).toMatchObject({ overdue: true, needsAction: true, customerSays: 'Should have left' });
+      const [a] = await staffAlerts();
+      expect(a.kind).toBe('visitor_overstay');
+      expect(a.body).toMatch(/^Plumber\d+, T, visiting unit 14, is \d+ min past their time\. Thabo Tenant says they should have left\.$/);
+      expect(await ownerQuery(`SELECT answer FROM visit_stay_answers WHERE visit_id = $1 ORDER BY at`, [visitId])).toEqual([{ answer: 'extended' }, { answer: 'should_have_left' }]);
+    });
+  });
 });
+
