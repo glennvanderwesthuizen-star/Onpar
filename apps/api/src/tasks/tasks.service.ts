@@ -227,6 +227,22 @@ export class TasksService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * The guard opened the task on his phone: it has been seen. Kept once, at the first opening, for
+   * The Wire's fast response (owner, 8 Oct 2026). Opening a task never costs anything.
+   */
+  seen(guard: GuardPrincipal, occurrenceId: string, a: { trustedAt: Date; deviceClock: Date }, receivedAt = new Date()) {
+    const time = reconcileTime(a.trustedAt, a.deviceClock, receivedAt);
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const r = await tx.query(
+        `UPDATE task_occurrences SET seen_at = $2, seen_by = $3 WHERE id = $1 AND seen_at IS NULL
+           AND ((assignee_type = 'employee' AND assignee_employee_id = $3) OR (assignee_type = 'post' AND assignee_device_id = $4))`,
+        [occurrenceId, time.ok ? time.officialAt : receivedAt, guard.employeeId, guard.deviceId],
+      );
+      return { seen: true, first: !!r.rowCount };
+    });
+  }
+
   /** Attaches a photo sent after the completion. Once only. */
   async attachPhoto(guard: GuardPrincipal, occurrenceId: string, photo: Upload) {
     return this.db.withTenant(guard.companyId, async (tx) => {

@@ -26,6 +26,11 @@ interface Settings {
   launchCreditPerYear: number;
   randPerBarb: number;
   notesPaidPerMonth: number;
+  fastResponseMinutes: number;
+  fastResponsePercent: number;
+  mentorMaxMentees: number;
+  leaverDays: number;
+  standardBearer: { name: string; year: number } | null;
   discretionaryBudgetPerSite: number;
   storeOpen: boolean;
   coursesPerYear: number;
@@ -106,6 +111,8 @@ const BARB_FIELDS: { key: string; label: string }[] = [
   { key: 'thuthukaSent', label: 'Thuthuka note sent' },
   { key: 'thuthukaAdopted', label: 'Thuthuka note adopted' },
   { key: 'customerPraise', label: 'Customer praise' },
+  { key: 'fastResponse', label: 'Fast response, per month' },
+  { key: 'mentor', label: 'Mentor award, per guard per month' },
   { key: 'discretionaryMin', label: 'Recognition award, least' },
   { key: 'discretionaryMax', label: 'Recognition award, most' },
 ];
@@ -239,6 +246,8 @@ export default function WirePage() {
 
       <WireBoard />
 
+      <StandardBearer canManage={data.canManage} settings={data.settings} saved={reload} />
+
       <WireStore canManage={data.canManage} settings={data.settings as unknown as Record<string, unknown>} saved={reload} />
 
       <Values key={JSON.stringify(data.settings)} data={data} saved={reload} />
@@ -283,7 +292,14 @@ function GuardLines({ g, data, open, toggle, saved }: { g: GuardRow; data: Overv
 }
 
 function GuardDetail({ id, data, saved }: { id: string; data: Overview; saved: () => void }) {
-  const { data: g, error, reload } = useLoad(() => api<GuardRow & { entries: { date: string; rule: Rule; barbs: number; note: string; kind: string }[] }>(`/wire/guards/${id}`), [id]);
+  const { data: g, error, reload } = useLoad(
+    () =>
+      api<GuardRow & { entries: { date: string; rule: Rule; barbs: number; note: string; kind: string }[]; mentor: { id: string; name: string } | null; mentees: { id: string; name: string }[]; leftOn: string | null }>(
+        `/wire/guards/${id}`,
+      ),
+    [id],
+  );
+  const [mentorId, setMentorId] = useState('');
   const [joined, setJoined] = useState('');
   const [score, setScore] = useState('');
   const [busy, setBusy] = useState(false);
@@ -292,6 +308,7 @@ function GuardDetail({ id, data, saved }: { id: string; data: Overview; saved: (
     if (g) {
       setJoined(g.joinedOn);
       setScore(g.recruitmentScore === null ? '' : String(g.recruitmentScore));
+      setMentorId(g.mentor?.id ?? '');
     }
   }, [g]);
   if (error) return <ErrorBanner error={error} />;
@@ -310,9 +327,49 @@ function GuardDetail({ id, data, saved }: { id: string; data: Overview; saved: (
       setBusy(false);
     }
   };
+  const saveMentor = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/wire/guards/${id}/mentor`, { method: 'PUT', json: { mentorId: mentorId || null } });
+      reload();
+      saved();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="grid g2" style={{ padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
       <div>
+        {g.leftOn && (
+          <div className="banner warn small">
+            Left the company (noted {formatDate(g.leftOn)}). His Wire and insignia stay; barbs not handed in lapse after {data.settings.leaverDays} days.
+          </div>
+        )}
+        <h3>Mentoring</h3>
+        <p className="small">
+          {g.mentor ? `Mentored by ${g.mentor.name}.` : 'No mentor.'} {g.mentees.length > 0 && `Mentoring ${g.mentees.map((m) => m.name).join(' and ')}.`}
+        </p>
+        {data.canManage && (
+          <div className="row">
+            <select value={mentorId} onChange={(e) => setMentorId(e.target.value)}>
+              <option value="">No mentor</option>
+              {data.guards
+                .filter((x) => x.employeeId !== id && x.active)
+                .map((x) => (
+                  <option key={x.employeeId} value={x.employeeId}>
+                    {x.name} ({x.site})
+                  </option>
+                ))}
+            </select>
+            <button className="btn ghost sm" disabled={busy || mentorId === (g.mentor?.id ?? '')} onClick={saveMentor}>
+              Save mentor
+            </button>
+          </div>
+        )}
+        <p className="mute small">A mentor earns {data.settings.barbs.mentor} barbs in each month his guard earns the improvement award.</p>
         <h3>His months</h3>
         {!g.months.length && <p className="mute small">No finished months yet.</p>}
         {g.months.map((m) => (
@@ -436,6 +493,10 @@ function Values({ data, saved }: { data: Overview; saved: () => void }) {
         <Field label="Service before The Wire, barbs per year">{intIn(v.launchCreditPerYear, (n) => setV({ ...v, launchCreditPerYear: n }))}</Field>
         <Field label="Company cost of one barb (R)">{intIn(v.randPerBarb, (n) => setV({ ...v, randPerBarb: n }))}</Field>
         <Field label="Thuthuka notes paid each month">{intIn(v.notesPaidPerMonth, (n) => setV({ ...v, notesPaidPerMonth: n }))}</Field>
+        <Field label="Fast response: minutes to open a new task">{intIn(v.fastResponseMinutes, (n) => setV({ ...v, fastResponseMinutes: n }))}</Field>
+        <Field label="Fast response: share opened in time (%)">{intIn(v.fastResponsePercent, (n) => setV({ ...v, fastResponsePercent: n }))}</Field>
+        <Field label="Guards one mentor may have">{intIn(v.mentorMaxMentees, (n) => setV({ ...v, mentorMaxMentees: n }))}</Field>
+        <Field label="Days a leaver has to hand in barbs">{intIn(v.leaverDays, (n) => setV({ ...v, leaverDays: n }))}</Field>
         <Field label="Recognition barbs per site per month">{intIn(v.discretionaryBudgetPerSite, (n) => setV({ ...v, discretionaryBudgetPerSite: n }))}</Field>
         {data.canManage && (
           <Field label="The Wire started on" hint="Shifts from this day earn barbs. Set it earlier to count shifts already worked; barbs already paid stay.">
@@ -532,6 +593,58 @@ function SimTable({ sim, rand: r, currentRand, totals }: { sim: SimResult; rand:
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** The year's Bob Wire: the guard who came closest to the standard becomes its face for the next year (rule book). */
+function StandardBearer({ canManage, settings, saved }: { canManage: boolean; settings: Settings; saved: () => void }) {
+  const { data, error, reload } = useLoad(() =>
+    api<{ current: { name: string; year: number } | null; year: number; candidates: { id: string; name: string; site: string | null; months: number; atStandard: number; average: number }[] }>('/wire/standard-bearer'),
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  if (error) return <ErrorBanner error={error} />;
+  if (!data) return null;
+  const name = async (who: string | null) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api('/wire/settings', { method: 'PUT', json: { ...settings, standardBearer: who ? { name: who, year: data.year } : null } });
+      reload();
+      saved();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card">
+      <h2>The year&apos;s Bob Wire</h2>
+      <p className="mute small">
+        Once a year the guard who came closest to the standard is named, and guards see his name beside Bob Wire on My Wire. Guards with at least six finished months in the last twelve are listed, most months at the standard first.
+      </p>
+      <ErrorBanner error={err} />
+      <p>{data.current ? <b>{`${data.current.year}: ${data.current.name}`}</b> : 'Nobody named yet.'}</p>
+      {!data.candidates.length && <p className="mute">No guard has six finished months yet.</p>}
+      {data.candidates.map((c) => (
+        <div key={c.id} className="row small" style={{ justifyContent: 'space-between' }}>
+          <span>
+            <b>{c.name}</b> {c.site && <span className="mute">({c.site})</span>} · {c.atStandard} of {c.months} months at the standard · average {c.average}%
+          </span>
+          {canManage && (
+            <button className="btn ghost sm" disabled={busy || data.current?.name === c.name} onClick={() => name(c.name)}>
+              Name him for {data.year}
+            </button>
+          )}
+        </div>
+      ))}
+      {canManage && data.current && (
+        <button className="btn ghost sm" style={{ marginTop: 8 }} disabled={busy} onClick={() => name(null)}>
+          Clear the name
+        </button>
+      )}
     </div>
   );
 }

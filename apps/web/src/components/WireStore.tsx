@@ -119,6 +119,7 @@ export function WireStore({ canManage, settings, saved }: { canManage: boolean; 
         )}
 
         <h3 style={{ marginTop: 16 }}>Hand-ins to supply {waiting.length > 0 && <Pill tone="amber">{waiting.length}</Pill>}</h3>
+        {canManage && <HandInFile />}
         {!data.handins.length && <p className="mute">None yet.</p>}
         {data.handins.map((h) => (
           <HandIn key={h.id} h={h} canManage={canManage} busy={busy} run={run} />
@@ -286,5 +287,19 @@ function ItemRow({
         )}
       </td>
     </tr>
+  );
+}
+
+/** The month's supplied hand-ins as a spreadsheet file, for payroll and for charging each franchisee. */
+function HandInFile() {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  return (
+    <div className="row small" style={{ marginBottom: 8 }}>
+      Supplied in
+      <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+      <a className="btn ghost sm" href={`/api/wire/handins.csv?month=${month}`}>
+        Download the file
+      </a>
+    </div>
   );
 }

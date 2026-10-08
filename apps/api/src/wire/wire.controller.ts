@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { bobWireMonthsTo, INSIGNIA_LABELS, mergeWire, sastDate, WIRE_RULES, WireRule, wireSettingsErrors } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentGuard, CurrentUser, GuardOrSelfAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
@@ -12,6 +13,7 @@ const ProfileBody = z.object({
   recruitmentScore: z.number().int().min(0).max(100).nullable().default(null),
   showName: z.boolean().default(false),
 });
+const MentorBody = z.object({ mentorId: z.string().uuid().nullable() });
 const SimBody = z.object({ settings: z.unknown(), from: z.string().regex(/^\d{4}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}$/) });
 
 const MONTH = /^\d{4}-\d{2}$/;
@@ -126,6 +128,81 @@ export class WireController {
     });
   }
 
+  /** Pairs a guard with a mentor, or ends the pairing (rule book: a mentor earns when his mentee improves). */
+  @Put('guards/:id/mentor')
+  @RequirePermission('wire.manage')
+  setMentor(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const { mentorId } = parseBody(MentorBody, body);
+    return this.db.withTenant(user.companyId, async (tx) => {
+      await this.assertGuard(tx, user, id);
+      const today = sastDate(new Date());
+      if (mentorId) {
+        if (mentorId === id) throw new BadRequestException('A guard cannot mentor himself.');
+        await this.assertGuard(tx, user, mentorId);
+        const { settings } = await this.wire.settings(tx);
+        const busy = (await tx.query(`SELECT count(*)::int AS n FROM wire_mentors WHERE mentor_id = $1 AND end_date IS NULL AND mentee_id <> $2`, [mentorId, id])).rows[0].n as number;
+        if (busy >= settings.mentorMaxMentees) throw new ConflictException(`That guard is already mentoring ${busy} guard${busy === 1 ? '' : 's'}, the most allowed.`);
+      }
+      await tx.query(`UPDATE wire_mentors SET end_date = $2 WHERE mentee_id = $1 AND end_date IS NULL`, [id, today]);
+      if (mentorId) await tx.query(`INSERT INTO wire_mentors (company_id, mentor_id, mentee_id, start_date, set_by) VALUES (app_company_id(), $1, $2, $3, $4)`, [mentorId, id, today, user.userId]);
+      await this.audit.byUser(tx, user, { action: 'wire.mentor_set', entityType: 'employee', entityId: id, after: { mentorId } });
+      return this.wire.guard(tx, id);
+    });
+  }
+
+  /**
+   * Candidates for the year's Bob Wire: guards with at least six finished months in the last
+   * twelve, most months at the standard first. The owner names one in the values.
+   */
+  @Get('standard-bearer')
+  @RequirePermission('wire.view')
+  candidates(@CurrentUser() user: UserPrincipal) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const { settings } = await this.wire.settings(tx);
+      const rows = (
+        await tx.query(
+          `SELECT e.id, e.full_name AS name, s.name AS site, count(*)::int AS months,
+                  count(*) FILTER (WHERE m.award = 'standard')::int AS "atStandard", round(avg(m.overall), 1)::float AS average
+             FROM wire_months m JOIN employees e ON e.id = m.employee_id LEFT JOIN sites s ON s.id = e.home_site_id
+            WHERE m.month >= to_char(now() - interval '12 months', 'YYYY-MM') AND m.overall IS NOT NULL AND e.status = 'active'
+              AND ($1::uuid[] IS NULL OR e.home_site_id = ANY($1::uuid[]))
+            GROUP BY e.id, e.full_name, s.name HAVING count(*) >= 6
+            ORDER BY "atStandard" DESC, average DESC LIMIT 5`,
+          [user.siteIds],
+        )
+      ).rows;
+      return { current: settings.standardBearer, year: Number(sastDate(new Date()).slice(0, 4)), candidates: rows };
+    });
+  }
+
+  /** The month's supplied hand-ins, per guard and employer, with the cost: for payroll and for charging franchisees. */
+  @Get('handins.csv')
+  @RequirePermission('wire.manage')
+  async handinFile(@CurrentUser() user: UserPrincipal, @Query('month') month: string | undefined, @Res() res: Response) {
+    const m = month && MONTH.test(month) ? month : sastDate(new Date()).slice(0, 7);
+    const rows = await this.db.withTenant(user.companyId, async (tx) =>
+      (
+        await tx.query(
+          `SELECT to_char(h.done_at AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD') AS supplied, e.employee_number, e.full_name, s.name AS site, c.name AS employer,
+                  h.item_name, h.category, h.barbs, h.cost_rand::float AS cost
+             FROM wire_handins h JOIN employees e ON e.id = h.employee_id LEFT JOIN sites s ON s.id = h.site_id JOIN companies c ON c.id = h.company_id
+            WHERE h.status = 'supplied' AND to_char(h.done_at AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM') = $1
+            ORDER BY e.full_name, h.done_at`,
+          [m],
+        )
+      ).rows,
+    );
+    const cell = (v: unknown) => {
+      const t = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const lines = [['Supplied', 'Employee number', 'Guard', 'Site', 'Employer', 'Benefit', 'Kind', 'Barbs', 'Cost (R)'].join(',')];
+    for (const r of rows) lines.push([r.supplied, r.employee_number, r.full_name, r.site, r.employer, r.item_name, r.category, r.barbs, r.cost ?? ''].map(cell).join(','));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="the-wire-hand-ins-${m}.csv"`);
+    res.send(lines.join('\r\n') + '\r\n');
+  }
+
   /** "What if": the real months replayed under other values. Writes nothing. */
   @Post('simulate')
   @RequirePermission('wire.view')
@@ -189,6 +266,9 @@ export class GuardWireController {
         next: { name: g.next.name, toGo: g.next.toGo, months: g.next.months },
         months: g.months.slice(0, 6).map((m) => ({ month: m.month, barbs: m.barbs, award: m.award })),
         perShift: settings.barbs.readyForDuty + settings.barbs.dutiesComplete + settings.barbs.cleanHandover,
+        mentor: g.mentor?.name ?? null,
+        mentees: g.mentees.map((m) => m.name),
+        standardBearer: settings.standardBearer,
         readyLeadMinutes: settings.readyLeadMinutes,
         recent: g.entries.slice(0, 15).filter((e) => e.kind === 'earned').map((e) => ({ date: e.date, label: WIRE_RULES[e.rule] ?? e.rule, barbs: e.barbs, note: ['thuthuka_adopted', 'customer_praise', 'discretionary'].includes(e.rule) ? e.note : '' })),
       };

@@ -925,6 +925,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(tasks = list) }
     }
 
+    /** The guard opened a task (The Wire's fast response). Quietly, in the background. */
+    fun taskSeen(task: TaskItem) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { device.tasks.seen(task) } }
+    }
+
     fun completeTask(task: TaskItem, comment: String, photo: File?) = run {
         try {
             val r = device.tasks.complete(task, comment, photo)

@@ -1033,3 +1033,14 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - **New training types** in Training: pre-employment training, SASSETA-accredited course, armed response, instructor rating (beside firearm competency, first aid, fire fighting, other). Recording one pays the New skill barbs as before.
 - **Goals can need training:** a "Needs training" column in the goals and store table; the guard's step ("Pre-employment training") is ticked once a current (not expired) record of that kind is in Training. Migration `0047_wire_needs_training.sql`.
 - Open for the owner: which SASSETA agency and accreditation details to record, and how TSF's own pre-employment training is accredited.
+
+## Finishing The Wire (owner, 8 Oct 2026; D-49)
+
+- **Fast response:** opening a task on the phone marks it seen (`POST /device/tasks/:id/seen`, once, works with no signal). At month end a guard who opened at least 90% of his tasks within 60 minutes of them becoming his (created, or his Duty On if later) earns 5 barbs. No tasks, no award. All three numbers are values on the page.
+- **Mentoring:** the owner pairs a guard with a mentor in the guard's row on The Wire page (up to two guards per mentor). At month end the mentor earns 10 barbs for each of his guards who earned the improvement award. My Wire shows "Your mentor" or "You are mentoring".
+- **The year's Bob Wire:** a card lists guards with at least six finished months in the last twelve, most months at the standard first; the owner names one for the year. My Wire shows "The standard is set by Bob Wire. 2026: name".
+- **Hand-in file:** "Download the file" under Hand-ins to supply gives the month's supplied hand-ins (date, employee number, guard, site, employer, benefit, barbs, cost) for payroll and for charging franchisees.
+- **Guards who leave:** the day The Wire first sees a guard as inactive is noted; after 30 days (a value) his available barbs lapse with a ledger entry; his Wire total and insignia stay. A guard who comes back carries on. Alumni access for leavers needs the guard's own-phone app (later).
+- **Reminders:** the owner gets a "The Wire: waiting for you" alert, once, for a Thuthuka note not looked at within a day, and for an award or hand-in waiting a week.
+- Migration `0048_wire_finish.sql`. Tests: 1 rules, 6 server, 1 phone-logic.
+- "Try these values" now includes fast response; mentor awards are not replayed.

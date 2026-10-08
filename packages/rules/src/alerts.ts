@@ -4,7 +4,7 @@ import { can, Permission, Role } from './roles';
  * Alerts sent to a person's own phone (plan of 6 Oct 2026, decision D-38). One list for every
  * app, so the alerts page, the settings and the server always agree.
  */
-export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'wrong_post', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_overstay', 'visitor_handover', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending', 'visitor_left', 'visitor_exit_exception', 'visitor_still_on_site'] as const;
+export const ALERT_KINDS = ['test', 'panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'wrong_post', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_overstay', 'visitor_handover', 'visitor_request', 'visitor_answered', 'visitor_arrived', 'visitor_pass_ending', 'visitor_left', 'visitor_exit_exception', 'visitor_still_on_site', 'wire_waiting'] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export interface AlertInfo {
@@ -39,6 +39,7 @@ export const ALERT_INFO: Record<AlertKind, AlertInfo> = {
   visitor_pass_ending: { label: 'Regular visitor ending', about: 'A contractor you set up for a fixed period has three days left.', permission: null, optional: false, customer: true },
   visitor_left: { label: 'Visitor left', about: 'A visitor to your unit was scanned out at the gate.', permission: null, optional: true, customer: true, info: true },
   visitor_exit_exception: { label: 'Visitor exception', about: 'Something did not match when a visitor to your unit left.', permission: null, optional: false, customer: true },
+  wire_waiting: { label: 'The Wire: waiting for you', about: 'A Thuthuka note, an award or a hand-in has waited too long for a decision.', permission: 'wire.manage', optional: true },
   visitor_still_on_site: { label: 'Still on site', about: 'A contractor or visitor of yours is still on site past the time they were due to leave.', permission: null, optional: false, customer: true },
 };
 

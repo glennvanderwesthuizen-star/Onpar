@@ -16,6 +16,8 @@ import {
   shiftBarbs,
   simulateGuard,
   wireSettingsErrors,
+  fastResponse,
+  mentorBarbs,
   mostImproved,
   milestonesCrossed,
   boardName,
@@ -208,9 +210,22 @@ describe('The Wire', () => {
     expect(boardName({ ...g, showName: true }, false)).toBe('Sipho Dlamini, Gauteng');
   });
 
+  it('fast response: 90% of his tasks opened in time; mentors earn when a mentee improves', () => {
+    expect(fastResponse({ ...perfect, tasksAllocated: 10, tasksSeenInTime: 9 }, s)).toBe(true);
+    expect(fastResponse({ ...perfect, tasksAllocated: 10, tasksSeenInTime: 8 }, s)).toBe(false);
+    expect(fastResponse({ ...perfect, tasksAllocated: 0, tasksSeenInTime: 0 }, s)).toBe(false);
+    expect(fastResponse(perfect, s)).toBe(false);
+    expect(monthBarbs('2026-01', { ...perfect, tasksSeenInTime: 30 }, EMPTY_RUN, s).entries).toContainEqual({ rule: 'fast_response', barbs: 5 });
+    expect(mentorBarbs(['improvement', null], s)).toBe(10);
+    expect(mentorBarbs(['improvement', 'improvement', 'improvement'], s)).toBe(20);
+    expect(mentorBarbs(['standard'], s)).toBe(0);
+  });
+
   it('checks settings', () => {
     expect(wireSettingsErrors(s)).toEqual({});
     expect(wireSettingsErrors(mergeWire({ gold: 900 }))).toHaveProperty('gold');
     expect(wireSettingsErrors(mergeWire({ barbs: { improvement: -5 } }))).toHaveProperty(['barbs.improvement']);
+    expect(wireSettingsErrors(mergeWire({ standardBearer: { name: 'Sipho Dlamini', year: 2026 } }))).toEqual({});
+    expect(wireSettingsErrors(mergeWire({ standardBearer: { name: '', year: 2026 } }))).toHaveProperty('standardBearer');
   });
 });

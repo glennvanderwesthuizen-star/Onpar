@@ -25,6 +25,8 @@ export interface WireSettings {
     longServiceMonthly: number;
     anniversary: number;
     thuthukaSent: number;
+    fastResponse: number;
+    mentor: number;
     thuthukaAdopted: number;
     customerPraise: number;
     discretionaryMin: number;
@@ -36,6 +38,15 @@ export interface WireSettings {
   storeOpen: boolean;
   /** Funded courses a guard may hand in for in any twelve months. */
   coursesPerYear: number;
+  /** Fast response: minutes to open a new task, and the share of tasks that must be opened in time. */
+  fastResponseMinutes: number;
+  fastResponsePercent: number;
+  /** Guards a mentor may have at a time. */
+  mentorMaxMentees: number;
+  /** Days a guard who has left has to hand in his available barbs, after which they lapse. */
+  leaverDays: number;
+  /** The real guard named as this year's Bob Wire, if one has been named. */
+  standardBearer: { name: string; year: number } | null;
   /** Discretionary barbs each site may award in a month. */
   discretionaryBudgetPerSite: number;
   /** Monthly score (percent) that counts as the standard. */
@@ -78,11 +89,18 @@ export const DEFAULT_WIRE: WireSettings = {
     customerPraise: 25,
     discretionaryMin: 5,
     discretionaryMax: 15,
+    fastResponse: 5,
+    mentor: 10,
   },
   notesPaidPerMonth: 2,
   discretionaryBudgetPerSite: 100,
   storeOpen: false,
   coursesPerYear: 1,
+  fastResponseMinutes: 60,
+  fastResponsePercent: 90,
+  mentorMaxMentees: 2,
+  leaverDays: 30,
+  standardBearer: null,
   standardScore: 95,
   improvementMargin: 1,
   silver: 1000,
@@ -108,6 +126,8 @@ export const WIRE_RULES = {
   long_service: 'Long service',
   anniversary: 'Anniversary',
   entry: 'Entry barbs',
+  fast_response: 'Fast response',
+  mentor: 'Mentor award',
   thuthuka_sent: 'Thuthuka note sent',
   thuthuka_adopted: 'Thuthuka note adopted',
   customer_praise: 'Customer praise',
@@ -140,6 +160,13 @@ export function wireSettingsErrors(s: WireSettings): Record<string, string> {
   if (!whole(s.notesPaidPerMonth, 0, 31)) e.notesPaidPerMonth = 'A whole number from 0 to 31.';
   if (typeof s.storeOpen !== 'boolean') e.storeOpen = 'Open or closed.';
   if (!whole(s.coursesPerYear, 0, 12)) e.coursesPerYear = 'A whole number from 0 to 12.';
+  if (!whole(s.fastResponseMinutes, 1, 1440)) e.fastResponseMinutes = 'From 1 to 1,440 minutes.';
+  if (!whole(s.fastResponsePercent, 1, 100)) e.fastResponsePercent = 'A percentage from 1 to 100.';
+  if (!whole(s.mentorMaxMentees, 0, 10)) e.mentorMaxMentees = 'A whole number from 0 to 10.';
+  if (!whole(s.leaverDays, 0, 365)) e.leaverDays = 'From 0 to 365 days.';
+  if (s.standardBearer !== null && !(typeof s.standardBearer === 'object' && typeof s.standardBearer.name === 'string' && s.standardBearer.name.trim().length >= 2 && whole(s.standardBearer.year, 2020, 2100))) {
+    e.standardBearer = 'A name and a year, or nobody.';
+  }
   if (!whole(s.discretionaryBudgetPerSite, 0, 100_000)) e.discretionaryBudgetPerSite = 'A whole number of barbs.';
   if (!(typeof s.standardScore === 'number' && s.standardScore > 0 && s.standardScore <= 100)) e.standardScore = 'A percentage from 1 to 100.';
   if (!(typeof s.improvementMargin === 'number' && s.improvementMargin >= 0 && s.improvementMargin <= 50)) e.improvementMargin = 'From 0 to 50 percentage points.';
@@ -201,6 +228,8 @@ export interface MonthFacts {
   newSkills: number;
   /** A completed year of service falls in this month. */
   anniversary: boolean;
+  /** Of his tasks, those he opened within the fast-response time. Missing in months before it was counted. */
+  tasksSeenInTime?: number;
 }
 
 export interface MonthScore {
@@ -289,6 +318,17 @@ export function monthAward(month: string, score: number, run: WireRun, s: WireSe
   return { award: null, barbs: 0, average, next };
 }
 
+/** He opened enough of his month's tasks in time (rule book: 90% within the target). Nothing to open, nothing earned. */
+export function fastResponse(f: MonthFacts, s: WireSettings): boolean {
+  if (s.barbs.fastResponse <= 0 || f.tasksAllocated <= 0 || f.tasksSeenInTime === undefined) return false;
+  return (f.tasksSeenInTime / f.tasksAllocated) * 100 >= s.fastResponsePercent;
+}
+
+/** Mentor awards for a month: for each of his mentees (up to the limit) who earned the improvement award. */
+export function mentorBarbs(menteeAwards: (string | null)[], s: WireSettings): number {
+  return menteeAwards.slice(0, s.mentorMaxMentees).filter((a) => a === 'improvement').length * s.barbs.mentor;
+}
+
 /** Everything a month earns besides the shift barbs, which are written as each shift ends. */
 export function monthBarbs(month: string, f: MonthFacts, run: WireRun, s: WireSettings) {
   const score = monthlyScore(f, s);
@@ -301,6 +341,7 @@ export function monthBarbs(month: string, f: MonthFacts, run: WireRun, s: WireSe
   if (f.worked > 0 && s.barbs.longServiceMonthly > 0) entries.push({ rule: 'long_service', barbs: s.barbs.longServiceMonthly });
   if (f.anniversary && s.barbs.anniversary > 0) entries.push({ rule: 'anniversary', barbs: s.barbs.anniversary });
   if (f.newSkills > 0 && s.barbs.newSkill > 0) entries.push({ rule: 'new_skill', barbs: s.barbs.newSkill * f.newSkills });
+  if (fastResponse(f, s)) entries.push({ rule: 'fast_response', barbs: s.barbs.fastResponse });
   return { score, award, entries, run: award?.next ?? run };
 }
 

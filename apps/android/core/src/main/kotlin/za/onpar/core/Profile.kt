@@ -145,7 +145,13 @@ data class MyWire(
     val perShift: Int = 3,
     val readyLeadMinutes: Int = 15,
     val recent: List<WireRecent> = emptyList(),
+    val mentor: String? = null,
+    val mentees: List<String> = emptyList(),
+    val standardBearer: StandardBearer? = null,
 )
+
+@Serializable
+data class StandardBearer(val name: String, val year: Int)
 
 /** The guard's own score, training, and the site's approved contacts. */
 class ProfileActions(private val device: OnParDevice, dataDir: File) {

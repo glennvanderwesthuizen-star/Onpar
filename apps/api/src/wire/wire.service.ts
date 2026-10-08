@@ -10,6 +10,7 @@ import {
   MonthFacts,
   monthBarbs,
   monthsTo,
+  mentorBarbs,
   sastDate,
   shiftBarbs,
   ShiftFacts,
@@ -21,6 +22,7 @@ import {
 } from '@onpar/rules';
 import { DbService, Tx } from '../db/db.service';
 import { RosterService } from '../roster/roster.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /** How far back each sweep looks again, so late corrections still earn what is now due. */
 const LOOKBACK_DAYS = 35;
@@ -33,6 +35,7 @@ interface WorkedShift {
   facts: ShiftFacts;
   taskIds: string[];
   tasksDone: number;
+  seenInTime: number;
 }
 
 const monthOf = (date: string) => date.slice(0, 7);
@@ -63,6 +66,7 @@ export class WireService implements OnModuleDestroy {
   constructor(
     private readonly db: DbService,
     private readonly roster: RosterService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async settings(tx: Tx): Promise<{ settings: WireSettings; startedOn: string; saved: boolean }> {
@@ -85,14 +89,16 @@ export class WireService implements OnModuleDestroy {
     const rows = (
       await tx.query(
         `SELECT a.id, a.employee_id, a.site_id, to_char(a.shift_date, 'YYYY-MM-DD') AS date, a.duty_on_at, a.duty_from_at, a.scheduled_start,
-                coalesce(t.ids, '{}') AS task_ids, coalesce(t.done, 0) AS done, coalesce(t.open, 0) AS open,
+                coalesce(t.ids, '{}') AS task_ids, coalesce(t.done, 0) AS done, coalesce(t.open, 0) AS open, coalesce(t.seen_in_time, 0) AS seen_in_time,
                 coalesce(r.raised, 0) AS raised, coalesce(r.unhandled, 0) AS unhandled
            FROM attendance a
            LEFT JOIN duty_events de ON de.attendance_id = a.id AND de.kind = 'duty_on'
            LEFT JOIN LATERAL (
              SELECT array_agg(o.id) AS ids,
                     count(*) FILTER (WHERE o.state = 'completed' OR (o.state = 'could_not_complete' AND o.review IS DISTINCT FROM 'not_accepted'))::int AS done,
-                    count(*) FILTER (WHERE o.state IN ('open','missed') OR (o.state = 'could_not_complete' AND o.review = 'not_accepted'))::int AS open
+                    count(*) FILTER (WHERE o.state IN ('open','missed') OR (o.state = 'could_not_complete' AND o.review = 'not_accepted'))::int AS open,
+                    -- Opened on the phone within the fast-response time of becoming his (created, or his Duty On if later).
+                    count(*) FILTER (WHERE o.seen_at IS NOT NULL AND o.seen_at <= greatest(o.created_at, a.duty_on_at) + make_interval(mins => $4))::int AS seen_in_time
                FROM task_occurrences o
               WHERE o.site_id = a.site_id AND o.occurrence_date = a.shift_date AND o.state <> 'cancelled'
                 AND (o.assignee_employee_id = a.employee_id
@@ -106,7 +112,7 @@ export class WireService implements OnModuleDestroy {
                FROM reports rp WHERE rp.reported_by_employee = a.employee_id AND rp.reported_at BETWEEN a.duty_on_at AND a.duty_from_at
            ) r ON true
           WHERE a.duty_from_at IS NOT NULL AND a.shift_date BETWEEN $1 AND $2 AND ($3::uuid[] IS NULL OR a.employee_id = ANY($3::uuid[]))`,
-        [from, to, employeeIds],
+        [from, to, employeeIds, s.fastResponseMinutes],
       )
     ).rows;
     return rows.map((r) => ({
@@ -121,6 +127,7 @@ export class WireService implements OnModuleDestroy {
       },
       taskIds: r.task_ids,
       tasksDone: r.done,
+      seenInTime: r.seen_in_time,
     }));
   }
 
@@ -171,10 +178,12 @@ export class WireService implements OnModuleDestroy {
       const working = (days.get(g.id) ?? []).filter((d) => d.status === 'working');
       const taskIds = new Set<string>();
       let tasksDone = 0;
+      let seenInTime = 0;
       for (const x of mine) {
         // A post task shared by two shifts counts once, with the later shift's view of it.
         for (const id of x.taskIds) taskIds.add(id);
         tasksDone += x.tasksDone;
+        seenInTime += x.seenInTime;
       }
       const rep = reports.get(g.id);
       const anniversaryDay = `${month}${g.joined.slice(7)}`;
@@ -187,6 +196,7 @@ export class WireService implements OnModuleDestroy {
         cleanHandover: mine.filter((x) => x.facts.cleanHandover).length,
         tasksAllocated: taskIds.size,
         tasksDone: Math.min(tasksDone, taskIds.size),
+        tasksSeenInTime: Math.min(seenInTime, taskIds.size),
         itemsRaised: rep?.raised ?? 0,
         itemsHandled: rep?.handled ?? 0,
         newSkills: skills.get(g.id) ?? 0,
@@ -254,10 +264,90 @@ export class WireService implements OnModuleDestroy {
           [g.employeeId, month, g.siteId, r.score?.attendance ?? null, r.score?.job ?? null, r.score?.overall ?? null, r.award?.average ?? null, r.award?.award ?? null, r.run.streak, r.run.graceMonth, JSON.stringify(g.facts)],
         );
       }
+      await this.mentorAwards(tx, settings, month);
       await tx.query('INSERT INTO wire_month_runs (company_id, month) VALUES (app_company_id(), $1) ON CONFLICT DO NOTHING', [month]);
       runs++;
     }
     return runs;
+  }
+
+  /** Mentor awards for a month: a mentor earns when a guard he was mentoring that month earned the improvement award. */
+  private async mentorAwards(tx: Tx, settings: WireSettings, month: string) {
+    const rows = (
+      await tx.query(
+        `SELECT l.mentor_id, e.home_site_id AS site, m.award FROM wire_mentors l JOIN employees e ON e.id = l.mentor_id
+           LEFT JOIN wire_months m ON m.employee_id = l.mentee_id AND m.month = $1
+          WHERE l.start_date <= $3::date AND (l.end_date IS NULL OR l.end_date >= $2::date)
+          ORDER BY l.mentor_id, l.start_date`,
+        [month, firstDay(month), lastDay(month)],
+      )
+    ).rows as { mentor_id: string; site: string; award: string | null }[];
+    const byMentor = new Map<string, { site: string; awards: (string | null)[] }>();
+    for (const r of rows) {
+      const m = byMentor.get(r.mentor_id) ?? { site: r.site, awards: [] };
+      m.awards.push(r.award);
+      byMentor.set(r.mentor_id, m);
+    }
+    for (const [mentorId, m] of byMentor) {
+      await this.earn(tx, { employeeId: mentorId, siteId: m.site, date: lastDay(month), rule: 'mentor', barbs: mentorBarbs(m.awards, settings), key: `month:${month}` });
+    }
+  }
+
+  /**
+   * Guards who have left: noted on the day The Wire first sees it, and after the set number of
+   * days their available barbs lapse. The Wire total never changes. A guard who comes back carries on.
+   */
+  private async leavers(tx: Tx, settings: WireSettings, today: string) {
+    await tx.query(
+      `INSERT INTO wire_profiles (employee_id, company_id, joined_on, left_on)
+       SELECT e.id, e.company_id, e.created_at::date, $1::date FROM employees e WHERE e.status <> 'active'
+       ON CONFLICT (employee_id) DO UPDATE SET left_on = coalesce(wire_profiles.left_on, excluded.left_on)`,
+      [today],
+    );
+    await tx.query(`UPDATE wire_profiles p SET left_on = NULL FROM employees e WHERE e.id = p.employee_id AND e.status = 'active' AND p.left_on IS NOT NULL`);
+    const due = (
+      await tx.query(
+        `SELECT p.employee_id, to_char(p.left_on, 'YYYY-MM-DD') AS left_on,
+                (SELECT coalesce(sum(CASE WHEN w.kind = 'handed_in' THEN -w.barbs ELSE w.barbs END), 0) FROM wire_entries w WHERE w.employee_id = p.employee_id)::int AS available
+           FROM wire_profiles p WHERE p.left_on IS NOT NULL AND p.left_on <= $1::date - $2::int`,
+        [today, settings.leaverDays],
+      )
+    ).rows as { employee_id: string; left_on: string; available: number }[];
+    for (const d of due) {
+      if (d.available <= 0) continue;
+      await tx.query(
+        `INSERT INTO wire_entries (company_id, employee_id, entry_date, kind, rule, barbs, source_key, note)
+         VALUES (app_company_id(), $1, $2, 'handed_in', 'lapsed', $3, $4, 'Not handed in within the days after leaving') ON CONFLICT DO NOTHING`,
+        [d.employee_id, today, d.available, `lapse:${d.left_on}`],
+      );
+    }
+  }
+
+  /** Tells the owner, once, about a note, award or hand-in that has waited too long. */
+  private async reminders(tx: Tx) {
+    const waiting = [
+      ...(
+        await tx.query(
+          `UPDATE wire_notes SET reminded_at = now() WHERE status = 'sent' AND reminded_at IS NULL AND sent_at < now() - interval '24 hours'
+           RETURNING id, site_id, 'A Thuthuka note has waited a day to be looked at.' AS what`,
+        )
+      ).rows,
+      ...(
+        await tx.query(
+          `UPDATE wire_awards SET reminded_at = now() WHERE status = 'pending' AND reminded_at IS NULL AND raised_at < now() - interval '7 days'
+           RETURNING id, site_id, 'An award has waited a week for your decision.' AS what`,
+        )
+      ).rows,
+      ...(
+        await tx.query(
+          `UPDATE wire_handins SET reminded_at = now() WHERE status = 'requested' AND reminded_at IS NULL AND requested_at < now() - interval '7 days'
+           RETURNING id, site_id, 'A hand-in has waited a week to be supplied.' AS what`,
+        )
+      ).rows,
+    ];
+    for (const w of waiting) {
+      await this.notifications.recordForSite(tx, w.site_id, { kind: 'wire_waiting', title: 'The Wire: waiting for you', body: w.what, lockScreen: 'The Wire: something is waiting', url: '/wire', entityType: 'wire', entityId: w.id });
+    }
   }
 
   /** A guard's run going into a month, from his locked months before it. */
@@ -281,6 +371,9 @@ export class WireService implements OnModuleDestroy {
     const today = sastDate(now);
     const shifts = await this.sweepShifts(tx, today);
     const months = await this.monthEnd(tx, today);
+    const { settings } = await this.settings(tx);
+    await this.leavers(tx, settings, today);
+    await this.reminders(tx);
     return { shifts, months };
   }
 
@@ -341,6 +434,9 @@ export class WireService implements OnModuleDestroy {
     const finished = [...byMonth.entries()].filter(([m]) => m < month).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 3);
     const pace = finished.length ? Math.round(finished.reduce((a, [, n]) => a + n, 0) / finished.length) : Math.round(byMonth.get(month) ?? 0);
     const level = insignia(wireTotal, settings);
+    const mentor = (await tx.query(`SELECT e.id, e.full_name AS name FROM wire_mentors l JOIN employees e ON e.id = l.mentor_id WHERE l.mentee_id = $1 AND l.end_date IS NULL`, [employeeId])).rows[0] ?? null;
+    const mentees = (await tx.query(`SELECT e.id, e.full_name AS name FROM wire_mentors l JOIN employees e ON e.id = l.mentee_id WHERE l.mentor_id = $1 AND l.end_date IS NULL ORDER BY l.start_date`, [employeeId])).rows;
+    const left = (await tx.query(`SELECT to_char(left_on, 'YYYY-MM-DD') AS d FROM wire_profiles WHERE employee_id = $1`, [employeeId])).rows[0]?.d ?? null;
     const next = level === 'black' ? { name: 'Silver barb', at: settings.silver } : level === 'silver' ? { name: 'Gold barb', at: settings.gold } : { name: 'Next 1,000', at: Math.floor(wireTotal / 1000) * 1000 + 1000 };
     return {
       employeeId,
@@ -349,6 +445,9 @@ export class WireService implements OnModuleDestroy {
       recruitmentScore: e.recruitment_score as number | null,
       showName: e.show_name as boolean,
       insignia: level,
+      mentor: mentor as { id: string; name: string } | null,
+      mentees: mentees as { id: string; name: string }[],
+      leftOn: left as string | null,
       wireTotal,
       launchCredit: launch,
       available: Math.max(0, earned - handedIn + returned),

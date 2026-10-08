@@ -63,6 +63,26 @@ class TaskActions(private val device: OnParDevice, dataDir: File) {
 
     fun cached(): List<TaskItem> = if (cache.exists()) runCatching { OnParJson.decodeFromString(list, cache.readText()) }.getOrDefault(emptyList()) else emptyList()
 
+    private val seenHere = File(dataDir, "tasks-seen.txt")
+
+    /**
+     * He opened the task: tells the server once, so The Wire can count how quickly new tasks are
+     * picked up (fast response). Waits on the phone with no signal. Opening never costs anything.
+     */
+    fun seen(task: TaskItem): Submitted? {
+        if (!task.isOpen) return null
+        val already = if (seenHere.exists()) seenHere.readLines().toSet() else emptySet()
+        if (task.id in already) return null
+        val eventId = UUID.randomUUID().toString()
+        val body = buildJsonObject {
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        val r = device.outbox.submit(device.client(), eventId, "Task opened: ${task.title}", "/device/tasks/${task.id}/seen", body, device.requireGuard())
+        if (r !is Submitted.Refused) seenHere.appendText(task.id + "\n")
+        return r
+    }
+
     /** Marks a task done, with its photo if it has one. The photo follows the task, so a weak signal never holds it up. */
     fun complete(task: TaskItem, comment: String, photo: File?): Submitted {
         check(task)

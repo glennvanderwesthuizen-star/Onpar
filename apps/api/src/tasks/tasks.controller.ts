@@ -77,6 +77,7 @@ const ActionBody = z.object({
   deviceClock: isoTime,
   photoToFollow: z.boolean().default(false),
 });
+const SeenBody = z.object({ trustedAt: isoTime, deviceClock: isoTime });
 const CannotBody = ActionBody.extend({
   reason: z.enum(Object.keys(COULD_NOT_COMPLETE_REASONS) as [keyof typeof COULD_NOT_COMPLETE_REASONS]),
 });
@@ -403,6 +404,13 @@ export class GuardTasksController {
   @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
   cannot(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: Record<string, unknown>, @UploadedFile() photo?: Upload) {
     return this.tasks.cannotComplete(guard, id, parseBody(CannotBody, jsonField(body)), photo);
+  }
+
+  /** The guard opened the task (The Wire's fast response). Safe to send twice. */
+  @Post(':id/seen')
+  @HttpCode(200)
+  seen(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.tasks.seen(guard, id, parseBody(SeenBody, body));
   }
 
   @Post(':id/photo')

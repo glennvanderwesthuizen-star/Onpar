@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,6 +85,7 @@ fun TaskScreen(vm: AppViewModel, state: UiState, id: String) {
         return
     }
     val context = LocalContext.current
+    LaunchedEffect(id) { vm.taskSeen(t) }
     val photoFile = remember(id) { File(context.cacheDir, "task-$id.jpg") }
     var photo by remember(id) { mutableStateOf(photoFile.takeIf { it.exists() }) }
     var takePhoto by remember(id) { mutableStateOf(t.photoRequired) }

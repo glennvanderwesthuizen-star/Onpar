@@ -154,4 +154,14 @@ class ProfileTest {
         device.profile.showMyName(true)
         assertTrue(server.takeRequest().body.readUtf8().contains("true"))
     }
+
+    @Test
+    fun `opening a task tells the server once, and never for a task already done`() {
+        val task = TaskItem(id = "t1", date = "2026-10-08", title = "Gate check", state = "open")
+        server.enqueue(MockResponse().setBody("""{"seen":true,"first":true}"""))
+        assertTrue(device.tasks.seen(task) is Submitted.Sent)
+        assertEquals("/api/device/tasks/t1/seen", server.takeRequest().path)
+        assertEquals(null, device.tasks.seen(task))
+        assertEquals(null, device.tasks.seen(task.copy(id = "t2", state = "completed")))
+    }
 }

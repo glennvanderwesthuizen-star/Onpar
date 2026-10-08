@@ -81,6 +81,12 @@ fun WireScreen(vm: AppViewModel, state: UiState) {
             Text("${w.thisMonth.total} barbs earned", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             w.thisMonth.bySource.forEach { Text("${it.label}: +${it.barbs}") }
             if (w.streak > 0) Text("${w.streak} month${if (w.streak == 1) "" else "s"} in a row at the standard.", color = Green, fontWeight = FontWeight.Bold)
+            w.mentor?.let { Text("Your mentor: $it") }
+            if (w.mentees.isNotEmpty()) Text("You are mentoring ${w.mentees.joinToString(" and ")}. You earn when they improve.")
+            Text(
+                "The standard is set by Bob Wire" + (w.standardBearer?.let { ". ${it.year}: ${it.name}" } ?: "") + ".",
+                color = Color.Gray, fontSize = 14.sp,
+            )
         }
     }
     Card(Modifier.fillMaxWidth()) {
