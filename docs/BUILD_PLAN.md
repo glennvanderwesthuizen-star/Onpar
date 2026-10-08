@@ -1055,3 +1055,19 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - **Defaults chosen, for the owner to change:** the list is per shift (not per post); missing or damaged items raise an equipment report; the handover does **not** stop Duty From or the incoming guard's work (warn, not block, as with lock or roam) — supervisors see any handover not received. The visitor handover still has to be done before Duty From on gate phones.
 - **Not built:** a voice note with the handover (nice-to-have); signing by both guards on one phone at the same moment.
 - Migration `0049_shift_handovers.sql`; rules `packages/rules/src/handover.ts`. Tests: 3 rules, 4 server, 1 phone-logic.
+
+### 8 Oct 2026: visitor management, step 7 of 7, the gate without signal (D-40)
+
+Follows the visitor specification's offline section: with no signal the gate goes straight to phoning the customer, and everything captured waits on the phone with the time it happened.
+
+- **The offline pack.** The gate phone fetches it every 10 minutes while it has signal (and whenever Visitors is opened): the passes that can apply today or tomorrow, the barred list, who is on site, and for every unit (and the office) the numbers to phone. The numbers are dialled by the phone and never shown to the guard. Fetching it is written to the audit trail.
+- **Scanning in with no signal.** The scan is checked against the pack on the phone, with the same rules as the server (pass times, one-visit pass first, barred for the site or the unit, already on site). The visit screen says "No signal: checked against the phone's own list from 08:10". Then:
+  - **Barred:** RECORD AND TURN AWAY.
+  - **Expected:** LET THEM IN (no call needed).
+  - **Anyone else:** PHONE THE CUSTOMER (or the second contact), then APPROVED: LET IN, DENIED: TURN AWAY, or "Nobody answered: turn away". The call is an ordinary phone call and needs no data.
+- **Sent later.** The visit waits on the phone with its photos and goes to the server when the signal returns, in the order things happened. The server records it **as it happened at the gate**: the guard's decision, the phone call (as "by phone"), the pass used, and the time of entry from the phone's trusted clock. Nobody is asked in the app afterwards. A visitor still recorded as on site is closed as "left without scan-out" with the note "scanned in again while the gate had no signal".
+- **Barred after the fact.** If someone was added to the barred list after the phone last had signal and the guard let them in, the visit is marked and the supervisor gets an alert at once: "Barred visitor let in … while the gate had no signal".
+- **Scanning out with no signal.** The phone finds the visitor on its own list (and asks the passengers where the site counts them). Nobody on the list: the guard gives a reason, as for any exception. The exit waits and the server finds the visit itself when it arrives; anything that does not match is recorded for the supervisor with the note "the gate had no signal", never sent back to the guard.
+- **The website** marks such visits "No signal at the gate", and "Barred: let in with no signal" where that happened.
+- Not built: staff of a unit with no signal (they need the photo comparison on the server; the guard lets them in as a visitor by phoning the tenant).
+- Tests: 4 rules, 7 server, 6 phone-logic.

@@ -66,7 +66,12 @@ export interface ExitInput {
   sameDriver: boolean | null;
   paxOut: number | null;
   handling: Handling | null;
+  /** Scanned out with no signal: the server finds the visit itself and asks the guard nothing more. */
+  capturedOffline?: boolean;
 }
+
+/** What is recorded when a visitor scanned out with no signal does not match the entry. */
+export const OFFLINE_EXIT_NOTE = 'The gate had no signal: the guard let the visitor go without the usual checks.';
 interface Photo {
   mimetype: string;
   buffer: Buffer;
@@ -154,11 +159,12 @@ export class VisitExitService {
     const keys = { idNumber: b.idNumber, registration: b.registration };
     if (!keys.idNumber && !keys.registration) throw new BadRequestException('Scan the licence disc or the visitor’s ID.');
     const v = (await this.onSite(tx, gate.siteId, keys, true))[0] ?? null;
-    if ((v?.id ?? null) !== b.visitId) throw new ConflictException('This visitor’s record has changed. Go back and scan again.');
+    const offline = !!b.capturedOffline;
+    if (!offline && (v?.id ?? null) !== b.visitId) throw new ConflictException('This visitor’s record has changed. Go back and scan again.');
 
     const facts = v ? this.facts(v, keys, b.sameDriver, b.paxOut) : { samePerson: null, sameVehicle: false, paxOut: b.paxOut };
-    if (v && checks.exitMatch && facts.samePerson === null) throw new BadRequestException({ message: 'Say whether this is the same driver who came in.', errors: { sameDriver: 'Choose Yes or No.' } });
-    if (v && checks.paxCount && v.type === 'vehicle' && facts.sameVehicle && b.paxOut === null) {
+    if (!offline && v && checks.exitMatch && facts.samePerson === null) throw new BadRequestException({ message: 'Say whether this is the same driver who came in.', errors: { sameDriver: 'Choose Yes or No.' } });
+    if (!offline && v && checks.paxCount && v.type === 'vehicle' && facts.sameVehicle && b.paxOut === null) {
       throw new BadRequestException({ message: 'Enter the number of passengers leaving (0 if the driver is alone).', errors: { paxOut: 'Enter the passengers.' } });
     }
     const types = exitExceptions(checks, { ...facts, visit: v ? { type: v.type, paxIn: v.paxIn } : null });
@@ -175,6 +181,8 @@ export class VisitExitService {
     }
 
     // An exception: the guard must have given a reason or a note, and his decision.
+    // With no signal he could not be asked, and the visitor has gone: it is recorded for the supervisor.
+    if (!b.handling && offline) b = { ...b, handling: { reason: v ? null : 'not_scanned_in', note: OFFLINE_EXIT_NOTE, allowed: true } };
     if (!b.handling) {
       throw new UnprocessableEntityException({ message: types.map((t) => EXCEPTION_TEXT[t]).join(' '), exceptions: types.map(exceptionView), reasons: REASON_LIST });
     }

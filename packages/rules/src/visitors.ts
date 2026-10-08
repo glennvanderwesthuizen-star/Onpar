@@ -580,3 +580,76 @@ export function staffEntryNeedsReason(guardSaysSame: boolean, result: StaffFaceR
 export function staffEntryAutomatic(result: StaffFaceResult): boolean {
   return result === 'match';
 }
+
+// --- Step 7: the gate without signal --------------------------------------------------------------
+
+/**
+ * What the guard decided at a gate with no signal (visitor specification, offline): the visitor
+ * was expected (on the phone's copy of the passes), the customer was phoned and said yes or no,
+ * nobody answered, or the visitor was on the phone's copy of the barred list.
+ */
+export const OFFLINE_DECISIONS = ['pass', 'approved', 'denied', 'no_answer', 'barred'] as const;
+export type OfflineDecision = (typeof OFFLINE_DECISIONS)[number];
+export const OFFLINE_DECISION_LABELS: Record<OfflineDecision, string> = {
+  pass: 'Expected (checked with no signal)',
+  approved: 'Approved by phone (no signal)',
+  denied: 'Denied by phone (no signal)',
+  no_answer: 'Nobody answered (no signal)',
+  barred: 'Barred (checked with no signal)',
+};
+
+/**
+ * How a visit captured with no signal is recorded: as it happened at the gate. Only the guard's
+ * decision counts, because the visitor was let in or turned away before the server knew.
+ */
+export function offlineOutcome(decision: OfflineDecision): { status: VisitStatus; deniedReason: string | null; call: 'approved' | 'denied' | 'no_response' | null } {
+  switch (decision) {
+    case 'pass':
+      return { status: 'on_site', deniedReason: null, call: null };
+    case 'approved':
+      return { status: 'on_site', deniedReason: null, call: 'approved' };
+    case 'denied':
+      return { status: 'denied', deniedReason: 'phone', call: 'denied' };
+    case 'no_answer':
+      return { status: 'denied_no_response', deniedReason: 'no_response', call: 'no_response' };
+    case 'barred':
+      return { status: 'denied', deniedReason: 'barred', call: null };
+  }
+}
+
+/** A pass as the gate phone keeps it for when there is no signal. Dates YYYY-MM-DD, times HH:MM, days 1 (Monday) to 7. */
+export interface PackPass {
+  kind: 'once' | 'ongoing';
+  visitDate: string | null;
+  time: string | null;
+  days: number[] | null;
+  hoursFrom: string | null;
+  hoursTo: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/**
+ * Whether a pass applies at a moment in South African time, the same test the server makes:
+ * a visit with a time, one hour either side; a regular on his days, hours and dates. The phone
+ * uses this with no signal, so the two must agree.
+ */
+export function passAppliesAt(p: PackPass, date: string, time: string, isoDay: number): boolean {
+  const now = minutes(time);
+  if (p.kind === 'once') {
+    if (!p.visitDate) return false;
+    if (!p.time) return p.visitDate === date;
+    // One hour either side, which can cross midnight.
+    const dayMs = 86_400_000;
+    const offset = (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${p.visitDate}T00:00:00Z`)) / dayMs;
+    const diff = offset * 1440 + now - minutes(p.time);
+    return Math.abs(diff) <= 60;
+  }
+  if (p.startDate && p.startDate > date) return false;
+  if (p.endDate && p.endDate < date) return false;
+  if (p.days && p.days.length && !p.days.includes(isoDay)) return false;
+  if (p.hoursFrom && p.hoursTo && (now < minutes(p.hoursFrom) || now > minutes(p.hoursTo))) return false;
+  return true;
+}

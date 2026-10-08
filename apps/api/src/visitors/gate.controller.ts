@@ -12,6 +12,8 @@ import {
   EXCEPTION_TEXT,
   IDENTITY_DOCUMENTS,
   normaliseCell,
+  OFFLINE_DECISIONS,
+  offlineOutcome,
   normaliseIdNumber,
   normalisePlate,
   OVERSTAY_ACTIONS,
@@ -86,6 +88,12 @@ const VisitBody = z.object({
   // The visitor is still recorded as on site: the guard's reason for letting them in again.
   onSite: z.object({ reason: z.enum(EXCEPTION_REASONS).nullable().default(null), note: short(300) }).nullable().default(null),
   capturedOffline: z.boolean().default(false),
+  // Captured with no signal (gate without signal): what the guard decided at the gate, from the
+  // phone's offline pack and a phone call to the customer. The visit is recorded as it happened.
+  offline: z
+    .object({ decision: z.enum(OFFLINE_DECISIONS), contact: z.enum(CALL_CONTACTS).nullable().default(null) })
+    .nullable()
+    .default(null),
   trustedAt: isoTime,
   deviceClock: isoTime,
 });
@@ -108,6 +116,8 @@ const ExitBody = z.object({
   sameDriver: z.boolean().nullable().default(null),
   paxOut: z.number().int().min(0).max(99).nullable().default(null),
   handling: z.object({ reason: z.enum(EXCEPTION_REASONS).nullable().default(null), note: short(300), allowed: z.boolean({ message: 'Choose whether to let the visitor go.' }) }).nullable().default(null),
+  // Scanned out with no signal: the server finds the visit itself and nothing is sent back to the guard.
+  capturedOffline: z.boolean().default(false),
   trustedAt: isoTime,
   deviceClock: isoTime,
 });
@@ -267,9 +277,20 @@ export class GateController {
       if (b.person.method === 'manual' && !identityPhoto) errors.identity = 'Photograph the document you typed the details from.';
       if (b.vehicle?.method === 'manual' && !discPhoto) errors.disc = 'Photograph the licence disc you typed the details from.';
       if (!settings.checks.expiredLicenceOk && b.person.document === 'drivers_licence' && !b.licenceExpiry) errors.licenceExpiry = 'Enter the date the licence expires.';
+      const offline = b.capturedOffline ? b.offline : null;
+      if (offline?.decision === 'pass' && !b.passId) errors.passId = 'Say which pass the visitor was let in on.';
       // A pass the gate phone found is checked again here: it must still fit this visitor at this moment.
-      const pass = b.passId ? await this.passes.match(tx, gate.siteId, gate.id, { idNumber: b.person.idNumber, registration: b.vehicle?.registration, cell: b.cell }) : null;
-      if (b.passId && pass?.passId !== b.passId) throw new ConflictException('This visitor is no longer expected. Go back one step and ask for approval.');
+      // With no signal the guard already let the visitor in on it, so it is taken as it was then.
+      const keys = { idNumber: b.person.idNumber, registration: b.vehicle?.registration, cell: b.cell };
+      const pass = !b.passId
+        ? null
+        : offline
+          ? offline.decision === 'pass'
+            ? await this.passes.forOffline(tx, gate.siteId, gate.id, b.passId, keys)
+            : null
+          : await this.passes.match(tx, gate.siteId, gate.id, keys);
+      if (b.passId && !offline && pass?.passId !== b.passId) throw new ConflictException('This visitor is no longer expected. Go back one step and ask for approval.');
+      if (offline?.decision === 'pass' && !pass) errors.passId = 'That pass is not known on this site.';
       if (pass) {
         b.categoryId = pass.categoryId;
         b.unitId = pass.unitId;
@@ -290,11 +311,14 @@ export class GateController {
 
       const today = await this.today(tx);
       const warnings = visitWarnings(settings.checks, today, b.licenceExpiry, b.vehicle?.discExpiry ?? null);
-      const unseen = warnings.filter((w) => !b.acknowledged.includes(w));
+      // With no signal the phone showed its own warnings; what it missed is recorded, not sent back.
+      const unseen = offline ? [] : warnings.filter((w) => !b.acknowledged.includes(w));
       if (unseen.length) throw new UnprocessableEntityException({ message: unseen.map((w) => VISIT_WARNING_TEXT[w]).join(' '), warnings: unseen });
 
       // The same person already waiting for an answer from the same unit: the guard is taken back to that visit, not given a second one.
-      const waiting = (
+      const waiting = offline
+        ? null
+        : (
         await tx.query(
           `SELECT v.id FROM visits v JOIN visitor_people p ON p.id = v.person_id WHERE v.site_id = $1 AND v.status = 'awaiting_approval' AND p.id_number = $2 AND v.unit_id IS NOT DISTINCT FROM $3 ORDER BY v.captured_at DESC LIMIT 1`,
           [gate.siteId, b.person.idNumber, b.unitId],
@@ -303,6 +327,7 @@ export class GateController {
       if (waiting) return this.reply(waiting.id, 'awaiting_approval', null);
       // Still recorded as on site: the guard was warned and must give a reason before letting them in again.
       const earlier = await this.exits.onSite(tx, gate.siteId, { idNumber: b.person.idNumber, registration: b.vehicle?.registration }, true);
+      if (earlier.length && offline && !b.onSite) b.onSite = { reason: 'not_scanned_out', note: 'Scanned in again while the gate had no signal.' };
       if (earlier.length && !b.onSite) throw new UnprocessableEntityException({ message: `${EXCEPTION_TEXT.no_scan_out} Give a reason before you continue.`, onSite: true, reasons: REASON_LIST });
 
       const at = time.officialAt;
@@ -330,13 +355,17 @@ export class GateController {
 
       const barred = settings.checks.barredList ? await this.barred(tx, gate.siteId, b.unitId, b.person.idNumber, v?.registration) : [];
       // A barred visitor is turned away, so the earlier visit is left as it is.
-      if (earlier.length && !barred.length) await this.exits.closeUnscanned(tx, gate, await this.exitActor(tx, guard), earlier, b.onSite!, b.eventId);
+      if (earlier.length && (offline ? offlineOutcome(offline.decision).status === 'on_site' : !barred.length)) await this.exits.closeUnscanned(tx, gate, await this.exitActor(tx, guard), earlier, b.onSite!, b.eventId);
       // Barred comes first; then a pass lets the visitor straight in; anyone else waits for the customer.
       // A contractor with more workers than the customer approved is not let in on the registration: the customer is asked.
       const extraWorkers = pass && pass.maxWorkers !== null && (b.pax ?? 0) > pass.maxWorkers ? { approved: pass.maxWorkers, arrived: b.pax ?? 0 } : null;
-      const status: VisitStatus = barred.length ? 'denied' : pass && !extraWorkers ? 'on_site' : 'awaiting_approval';
-      const deniedReason = barred.length ? 'barred' : null;
-      const checks = { barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(earlier.length && !barred.length ? { alreadyOnSite: earlier.map((x) => x.id) } : {}), ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}), ...(extraWorkers ? { extraWorkers } : {}) };
+      const decided = offline ? offlineOutcome(offline.decision) : null;
+      const status: VisitStatus = decided ? decided.status : barred.length ? 'denied' : pass && !extraWorkers ? 'on_site' : 'awaiting_approval';
+      const deniedReason = decided ? decided.deniedReason : barred.length ? 'barred' : null;
+      // Let in with no signal, but on the barred list here (added after the phone last had signal).
+      const barredLetIn = !!decided && status === 'on_site' && barred.length > 0;
+      const checks = {
+        ...(offline ? { offline: offline.decision, ...(barredLetIn ? { barredLetIn: true } : {}) } : {}), barred: barred.map((x) => ({ entryId: x.entryId, kind: x.kind, from: x.unitId ? 'unit' : 'site' })), warnings, ...(earlier.length && !barred.length ? { alreadyOnSite: earlier.map((x) => x.id) } : {}), ...(pass?.mismatch.length ? { mismatch: pass.mismatch } : {}), ...(extraWorkers ? { extraWorkers } : {}) };
       const faceKey = b.type === 'pedestrian' && face ? await this.storage.put(guard.companyId, 'visitors', face.buffer, IMAGE_TYPES[face.mimetype]) : null;
       const manual = b.person.method === 'manual' || v?.method === 'manual';
       const id = (
@@ -345,7 +374,8 @@ export class GateController {
                                capture_method, identity_document, identity_method, disc_method, licence_expiry, disc_expiry, checks, captured_offline, captured_at,
                                late_synced, entry_guard, face_photo_key, face_photo_type, announced, pass_id, entry_at, decided_at)
            VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::date, $18::date, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                   CASE WHEN $11 = 'on_site' THEN now() END, CASE WHEN $11 <> 'awaiting_approval' THEN now() END)
+                   CASE WHEN $11 = 'on_site' THEN (CASE WHEN $20 THEN $21::timestamptz ELSE now() END) END,
+                   CASE WHEN $11 <> 'awaiting_approval' THEN (CASE WHEN $20 THEN $21::timestamptz ELSE now() END) END)
            RETURNING id`,
           [
             gate.siteId,
@@ -373,8 +403,8 @@ export class GateController {
             guard.employeeId,
             faceKey,
             faceKey ? face!.mimetype : null,
-            !!pass && !barred.length && !extraWorkers,
-            pass && !barred.length ? pass.passId : null,
+            !!pass && (status === 'on_site') && (!!decided || (!barred.length && !extraWorkers)),
+            pass && (decided ? status === 'on_site' : !barred.length) ? pass.passId : null,
           ],
         )
       ).rows[0].id as string;
@@ -399,7 +429,25 @@ export class GateController {
         entityId: id,
         after: { gateId: gate.id, deviceId: guard.deviceId, type: b.type, status, deniedReason, captureMethod: manual ? 'manual' : 'scan', document: b.person.document, categoryId: b.categoryId, unitId: b.unitId, pax: b.pax, checks, passId: pass?.passId ?? null, capturedOffline: b.capturedOffline, lateSynced: time.lateSynced },
       });
-      if (barred.length) {
+      // The phone call the guard made with no signal, as if he had recorded it online.
+      if (decided?.call) {
+        const who = (await this.approval.contacts(tx, { siteId: gate.siteId, unitId: b.unitId, unitName: null }))[offline!.contact ?? 'primary'];
+        await tx.query(
+          `INSERT INTO visit_approvals (company_id, visit_id, method, outcome, customer_id, contact, guard_id, device_id, event_id, at) VALUES (app_company_id(), $1, 'phone', $2, $3, $4, $5, $6, $7, $8)`,
+          [id, decided.call, who?.customerId ?? null, offline!.contact, guard.employeeId, guard.deviceId, b.eventId, at],
+        );
+      }
+      if (barredLetIn) {
+        await this.notifications.recordForSite(tx, gate.siteId, {
+          kind: 'visitor_barred',
+          title: `Barred visitor let in at ${gate.siteName}`,
+          body: `While ${gate.name} had no signal, someone now on the barred list was let in. The phone did not yet know. Check who is on site.`,
+          lockScreen: 'A barred visitor was let in at a gate.',
+          url: `/sites/${gate.siteId}`,
+          entityType: 'visit',
+          entityId: id,
+        });
+      } else if (deniedReason === 'barred') {
         await this.notifications.recordForSite(tx, gate.siteId, {
           kind: 'visitor_barred',
           title: `Barred visitor at ${gate.siteName}`,
@@ -411,9 +459,9 @@ export class GateController {
         });
       }
       // Not barred: the customers of the unit are asked, and the gate waits for the answer.
-      if (status === 'awaiting_approval') await this.approval.request(tx, id, extraWorkers ? `Your contractor has ${extraWorkers.arrived} worker${extraWorkers.arrived === 1 ? '' : 's'} with them; you approved ${extraWorkers.approved}.` : undefined);
+      if (status === 'awaiting_approval' && !decided) await this.approval.request(tx, id, extraWorkers ? `Your contractor has ${extraWorkers.arrived} worker${extraWorkers.arrived === 1 ? '' : 's'} with them; you approved ${extraWorkers.approved}.` : undefined);
       // Expected: let in at once, the pass marked as used, and the customer told who arrived.
-      if (status === 'on_site' && pass) {
+      if (status === 'on_site' && pass && (!decided || offline!.decision === 'pass')) {
         await this.passes.used(tx, pass.passId, id, settings.checks.entryLimit);
         await this.approval.arrivedOnPass(tx, id, pass.passId, pass.mismatch);
       }
@@ -520,6 +568,67 @@ export class GateController {
   }
 
   /** Where a visit stands: the countdown, the answer, and whether the guard may phone. The waiting screen asks every few seconds. */
+  /**
+   * The gate without signal (visitor specification, offline): what the gate phone keeps so the
+   * guard can go on working when the signal drops. Today's and tomorrow's passes, the barred
+   * list, who is on site, and the numbers to phone for each unit. The numbers are dialled by the
+   * phone and never shown to the guard. Fetched again every few minutes while there is signal.
+   */
+  @Get('offline-pack')
+  offlinePack(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      const gate = await this.requireGate(tx, guard);
+      const settings = await this.setup.settings(tx, gate.siteId);
+      const units = (await tx.query('SELECT id, name FROM site_units WHERE site_id = $1 AND active ORDER BY length(name), lower(name)', [gate.siteId])).rows as { id: string; name: string }[];
+      const people = (
+        await tx.query(
+          `SELECT id, unit_id AS "unitId", kind, phone, second_contact_phone AS "secondPhone" FROM customers WHERE site_id = $1 AND active ORDER BY created_at, id`,
+          [gate.siteId],
+        )
+      ).rows as { id: string; unitId: string | null; kind: string; phone: string; secondPhone: string }[];
+      // The same choice of numbers as when the guard phones with signal: the main number and, where the site allows it, a second.
+      const numbers = (unitId: string | null) => {
+        const mine = people.filter((p) => (unitId ? p.unitId === unitId : p.kind === 'client'));
+        const main = mine.find((p) => p.phone.trim());
+        const out: { primary: string | null; second: string | null } = { primary: main?.phone.trim() ?? null, second: null };
+        if (settings.secondContact) out.second = mine.find((p) => p.secondPhone.trim())?.secondPhone.trim() ?? mine.find((p) => p.phone.trim() && p.id !== main?.id)?.phone.trim() ?? null;
+        return out;
+      };
+      const barred = settings.checks.barredList
+        ? ((await tx.query(`SELECT kind, value, unit_id AS "unitId" FROM barred_entries WHERE site_id = $1 AND removed_at IS NULL`, [gate.siteId])).rows as { kind: string; value: string; unitId: string | null }[])
+        : [];
+      const onSite = (
+        await tx.query(
+          `SELECT v.id, v.type, v.pax_in AS "paxIn", p.id_number AS "idNumber", p.surname, p.names, ve.registration, u.name AS "unitName"
+             FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id
+            WHERE v.site_id = $1 AND v.status = 'on_site' ORDER BY v.entry_at DESC LIMIT 500`,
+          [gate.siteId],
+        )
+      ).rows;
+      await this.audit.record(tx, { ...(await this.actor(tx, guard)), action: 'visitor.offline_pack', entityType: 'site_gate', entityId: gate.id, after: { deviceId: guard.deviceId } });
+      return {
+        at: new Date().toISOString(),
+        today: await this.today(tx),
+        gateId: gate.id,
+        hasClient: await this.hasClient(tx, gate.siteId),
+        secondContact: settings.secondContact,
+        office: numbers(null),
+        units: units.map((u) => ({ id: u.id, name: u.name, ...numbers(u.id) })),
+        passes: await this.passes.forPack(tx, gate.siteId),
+        barred,
+        onSite: onSite.map((v) => ({
+          id: v.id,
+          type: v.type,
+          paxIn: v.paxIn,
+          idNumber: v.idNumber,
+          registration: v.registration ?? null,
+          visitor: visitorName(v.surname, v.names),
+          visiting: v.unitName ? `Unit ${v.unitName}` : 'The office',
+        })),
+      };
+    });
+  }
+
   @Get(':id')
   state(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
     return this.db.withTenant(guard.companyId, async (tx) => this.approval.gateState(tx, id, (await this.requireGate(tx, guard)).siteId));

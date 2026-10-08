@@ -116,9 +116,76 @@ export class VisitPassService implements OnModuleDestroy {
     };
   }
 
+  /**
+   * The pass a gate phone with no signal let a visitor in on (gate without signal). Found by its id
+   * and not by the time now: it fitted when the guard checked it, even if it is used or over by the
+   * time the visit reaches the server.
+   */
+  async forOffline(tx: Tx, siteId: string, gateId: string, passId: string, v: { idNumber?: string; registration?: string }): Promise<PassMatch | null> {
+    const p = (await tx.query(`SELECT ${COLUMNS} FROM ${FROM} WHERE p.id = $1 AND p.site_id = $2`, [passId, siteId])).rows[0];
+    if (!p) return null;
+    const mismatch: string[] = [];
+    if (p.registration && v.registration && p.registration !== v.registration) mismatch.push('number plate');
+    if (p.id_number && v.idNumber && p.id_number !== v.idNumber) mismatch.push('ID number');
+    return {
+      passId: p.id,
+      kind: p.kind,
+      unitId: p.unitId,
+      unitName: p.unitName,
+      categoryId: p.categoryId,
+      category: p.category,
+      visitorName: p.visitorName,
+      by: p.by,
+      contractor: p.contractor,
+      maxWorkers: p.maxWorkers,
+      leaveBy: p.leaveBy,
+      namedGate: p.gateId && p.gateId !== gateId ? p.gateName : null,
+      mismatch,
+    };
+  }
+
+  /**
+   * The passes a gate phone keeps for when it has no signal: every active pass that can apply today
+   * or tomorrow, with what the phone needs to match and time it itself.
+   */
+  async forPack(tx: Tx, siteId: string) {
+    return (
+      await tx.query(
+        `SELECT ${COLUMNS} FROM ${FROM}
+          WHERE p.site_id = $1 AND p.status = 'active' AND NOT ${OVER}
+            AND ((p.kind = 'once' AND p.visit_date <= ${LOCAL}::date + 1) OR (p.kind = 'ongoing' AND (p.start_date IS NULL OR p.start_date <= ${LOCAL}::date + 1)))
+          ORDER BY (p.kind = 'once') DESC, p.created_at LIMIT 500`,
+        [siteId],
+      )
+    ).rows.map((p) => ({
+      id: p.id as string,
+      kind: p.kind as PassKind,
+      visitorName: p.visitorName as string,
+      unitId: (p.unitId ?? null) as string | null,
+      visiting: p.unitName ? `Unit ${p.unitName}` : 'The office',
+      category: p.category as string,
+      by: p.by as string,
+      gateId: (p.gateId ?? null) as string | null,
+      gateName: (p.gateName ?? null) as string | null,
+      idNumber: (p.id_number ?? null) as string | null,
+      registration: (p.registration ?? null) as string | null,
+      cell: (p.cell ?? null) as string | null,
+      visitDate: (p.visitDate ?? null) as string | null,
+      time: (p.time ?? null) as string | null,
+      days: (p.days ?? null) as number[] | null,
+      hoursFrom: (p.hoursFrom ?? null) as string | null,
+      hoursTo: (p.hoursTo ?? null) as string | null,
+      startDate: (p.startDate ?? null) as string | null,
+      endDate: (p.endDate ?? null) as string | null,
+      contractor: !!p.contractor,
+      maxWorkers: (p.maxWorkers ?? null) as number | null,
+      leaveBy: (p.leaveBy ?? null) as string | null,
+    }));
+  }
+
   /** A one-visit pass is used up by one entry, where the site limits it to one. */
   async used(tx: Tx, passId: string, visitId: string, entryLimit: boolean) {
-    await tx.query(`UPDATE visitor_passes SET used_at = now(), used_visit_id = $2, status = CASE WHEN kind = 'once' AND $3 THEN 'used' ELSE status END WHERE id = $1`, [passId, visitId, entryLimit]);
+    await tx.query(`UPDATE visitor_passes SET used_at = now(), used_visit_id = $2, status = CASE WHEN status = 'active' AND kind = 'once' AND $3 THEN 'used' ELSE status END WHERE id = $1`, [passId, visitId, entryLimit]);
   }
 
   /** The gate's "Expected today" list: every pass that applies some time today, soonest first. */

@@ -63,6 +63,8 @@ interface Visit {
   documentLabel: string;
   warnings: string[];
   answered: string | null;
+  noSignal?: boolean;
+  barredLetIn?: boolean;
 }
 interface Setup {
   gates: Gate[];
@@ -566,6 +568,8 @@ export function SiteVisits({ siteId }: { siteId: string }) {
                       {v.deniedReason === 'barred' && <Pill tone="red">Barred</Pill>}
                       {v.captureMethod === 'manual' && <Pill tone="grey">Manual capture</Pill>}
                       {v.warnings.length > 0 && <Pill tone="amber">Expired document</Pill>}
+                      {v.noSignal && <Pill tone="amber">No signal at the gate</Pill>}
+                      {v.barredLetIn && <Pill tone="red">Barred: let in with no signal</Pill>}
                     </div>
                     {v.answered && <div className="mute small">{v.answered}</div>}
                     {v.exitAt && (

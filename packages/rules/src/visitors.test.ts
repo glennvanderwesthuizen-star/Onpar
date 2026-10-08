@@ -1,4 +1,6 @@
 import {
+  offlineOutcome,
+  passAppliesAt,
   barredValue,
   categoryLimitText,
   DEFAULT_VISITOR_CATEGORIES,
@@ -246,5 +248,37 @@ describe('visitor management: the groundwork', () => {
       expect(staffErrors({ ...grace, byVehicle: true }, '2026-10-07')).toEqual({ registration: 'Enter the number plate of their vehicle.' });
       expect(staffErrors({ ...grace, byVehicle: true, registration: 'ca 123-456' }, '2026-10-07')).toEqual({});
     });
+  });
+});
+
+describe('the gate without signal', () => {
+  const once = { kind: 'once' as const, visitDate: '2026-10-08', time: null, days: null, hoursFrom: null, hoursTo: null, startDate: null, endDate: null };
+  it('a one-visit pass with no time applies all that day only', () => {
+    expect(passAppliesAt(once, '2026-10-08', '23:59', 4)).toBe(true);
+    expect(passAppliesAt(once, '2026-10-09', '00:01', 5)).toBe(false);
+  });
+  it('a one-visit pass with a time applies one hour either side, also across midnight', () => {
+    const p = { ...once, time: '10:00' };
+    expect(passAppliesAt(p, '2026-10-08', '09:00', 4)).toBe(true);
+    expect(passAppliesAt(p, '2026-10-08', '11:00', 4)).toBe(true);
+    expect(passAppliesAt(p, '2026-10-08', '11:01', 4)).toBe(false);
+    const late = { ...once, time: '23:30' };
+    expect(passAppliesAt(late, '2026-10-09', '00:20', 5)).toBe(true);
+    expect(passAppliesAt(late, '2026-10-09', '00:31', 5)).toBe(false);
+  });
+  it('a regular applies on his days, between his hours and within his dates', () => {
+    const r = { ...once, kind: 'ongoing' as const, visitDate: null, days: [1, 2, 3, 4, 5], hoursFrom: '07:00', hoursTo: '17:00', startDate: '2026-10-01', endDate: '2026-10-31' };
+    expect(passAppliesAt(r, '2026-10-08', '07:00', 4)).toBe(true);
+    expect(passAppliesAt(r, '2026-10-08', '17:01', 4)).toBe(false);
+    expect(passAppliesAt(r, '2026-10-10', '09:00', 6)).toBe(false);
+    expect(passAppliesAt(r, '2026-11-02', '09:00', 1)).toBe(false);
+    expect(passAppliesAt(r, '2026-09-30', '09:00', 3)).toBe(false);
+  });
+  it('records the visit as the guard decided it at the gate', () => {
+    expect(offlineOutcome('pass')).toEqual({ status: 'on_site', deniedReason: null, call: null });
+    expect(offlineOutcome('approved').status).toBe('on_site');
+    expect(offlineOutcome('denied')).toEqual({ status: 'denied', deniedReason: 'phone', call: 'denied' });
+    expect(offlineOutcome('no_answer')).toEqual({ status: 'denied_no_response', deniedReason: 'no_response', call: 'no_response' });
+    expect(offlineOutcome('barred').deniedReason).toBe('barred');
   });
 });

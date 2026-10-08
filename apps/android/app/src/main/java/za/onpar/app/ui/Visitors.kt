@@ -521,6 +521,9 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
             val pass = state.scanCheck?.expected
 
             Text("3. The visit", style = MaterialTheme.typography.titleMedium)
+            if (state.scanCheck?.offline == true) {
+                Text("No signal: checked against the phone's own list" + (state.scanCheck?.packAt?.let { " from ${time(it)}" } ?: "") + ".", color = Amber, fontWeight = FontWeight.Bold)
+            }
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(listOf(surname, names).filter { it.isNotBlank() }.joinToString(", "), fontWeight = FontWeight.Bold)
@@ -675,6 +678,7 @@ fun NewVisitorScreen(vm: AppViewModel, state: UiState) {
                     state.busy -> "Sending…"
                     barred.isNotEmpty() -> "Record and turn away"
                     pass != null && !pass.extraWorkers(pax.toIntOrNull()) -> "Let them in"
+                    state.scanCheck?.offline == true -> "No signal: phone the customer"
                     else -> "Request approval"
                 },
                 enabled = !state.busy && problem == null,
@@ -892,12 +896,13 @@ fun VisitorExitScreen(vm: AppViewModel, state: UiState) {
         return
     }
 
+    if (found.offline) Text("No signal: checked against the phone's own list. The exit is saved and sent later.", color = Amber, fontWeight = FontWeight.Bold)
     // The entry record, to compare against who and what is at the gate now.
     val visit = found.visit
     if (visit != null) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("CAME IN AT ${time(visit.enteredAt)}, ${visit.gateName}", color = Color.DarkGray, fontSize = 13.sp)
+                if (visit.enteredAt != null) Text("CAME IN AT ${time(visit.enteredAt)}, ${visit.gateName}", color = Color.DarkGray, fontSize = 13.sp)
                 Text(visit.visitor, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Text(visit.vehicle ?: "On foot")
                 visit.paxIn?.let { Text("$it passenger" + (if (it == 1) "" else "s") + " came in with the driver", fontWeight = FontWeight.Bold) }
@@ -1272,4 +1277,85 @@ fun StaffScreen(vm: AppViewModel, state: UiState) {
         }
     }
     OutlinedButton(onClick = { vm.go(Page.Staff) }, modifier = Modifier.fillMaxWidth()) { Text("Look up someone else") }
+}
+
+/**
+ * The gate without signal (visitor step 7). The phone checked the visitor against its own copy
+ * of the passes and the barred list. An expected visitor goes in, a barred one is turned away;
+ * anyone else, the guard phones the customer (the call needs no data) and records the answer.
+ * The visit waits on the phone and is sent, with the time it happened, when there is signal.
+ */
+@Composable
+fun OfflineVisitScreen(vm: AppViewModel, state: UiState) {
+    val context = LocalContext.current
+    var pendingDial by remember { mutableStateOf<String?>(null) }
+    val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val contact = pendingDial
+        pendingDial = null
+        if (ok && contact != null) vm.offlineDial(contact)
+    }
+    fun dial(contact: String) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) vm.offlineDial(contact)
+        else {
+            pendingDial = contact
+            askCall.launch(Manifest.permission.CALL_PHONE)
+        }
+    }
+
+    VisitorHeader("Visitor: no signal") { vm.go(Page.Visitors) }
+    val d = state.offlineVisit
+    if (d == null) {
+        Text("Nothing to finish here.", color = Color.DarkGray)
+        return
+    }
+    val done = state.offlineDone
+    if (done != null) {
+        val saved = "Saved on the phone. It is sent to the office when there is signal."
+        when (done.status) {
+            "on_site" -> Verdict("LET THEM IN", saved, good = true)
+            "denied_no_response" -> Verdict("TURN AWAY", "Nobody answered. $saved", good = false)
+            else -> Verdict("TURN AWAY", (done.blocked?.let { "$it " } ?: "") + saved, good = false)
+        }
+        BigButton("NEXT VISITOR") { vm.go(Page.Visitors) }
+        return
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.background(Color(0xFFFDF0DC)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("NO SIGNAL", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            val check = state.offlineCheck
+            Text(
+                if (check == null) "The phone has no list of expected or barred visitors yet. Phone the customer."
+                else "Checked against the phone's own list" + (check.packAt?.let { ", from ${time(it)}" } ?: "") + ".",
+            )
+        }
+    }
+    Text(listOf(d.person.surname, d.person.names).filter { it.isNotBlank() }.joinToString(", "), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+
+    val check = state.offlineCheck
+    when (za.onpar.core.GateOffline.decisionWithoutCall(check, d)) {
+        "barred" -> {
+            Verdict("ON THE BARRED LIST", "Do not let this visitor in. Record it so your supervisor is told.", good = false)
+            BigButton(if (state.busy) "Saving…" else "RECORD AND TURN AWAY", enabled = !state.busy) { vm.offlineDecide("barred", null) }
+        }
+        "pass" -> {
+            val pass = check?.expected
+            Verdict("EXPECTED", "${pass?.by ?: "The customer"} told the gate: ${pass?.visitorName ?: ""}, to see " + (if (pass?.visiting == "The office") "the office" else pass?.visiting ?: "") + ". No approval is needed.", good = true)
+            BigButton(if (state.busy) "Saving…" else "LET THEM IN", enabled = !state.busy) { vm.offlineDecide("pass", null) }
+        }
+        else -> {
+            Text("Phone the customer and ask whether to let the visitor in.", fontWeight = FontWeight.Bold)
+            val called = state.offlineCalled
+            BigButton(if (called == "primary") "PHONE AGAIN" else "PHONE THE CUSTOMER", enabled = !state.busy) { dial("primary") }
+            OutlinedButton(onClick = { dial("second") }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Phone the second contact") }
+            Text("Then tap what the customer said:", color = Color.DarkGray)
+            val contact = called ?: "primary"
+            Button(onClick = { vm.offlineDecide("approved", contact) }, enabled = !state.busy && called != null, modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Green)) { Text("APPROVED: LET IN", fontWeight = FontWeight.Bold) }
+            Button(onClick = { vm.offlineDecide("denied", contact) }, enabled = !state.busy && called != null, modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Red)) { Text("DENIED: TURN AWAY", fontWeight = FontWeight.Bold) }
+            OutlinedButton(onClick = { vm.offlineDecide("no_answer", called) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Nobody answered (or no number): turn away") }
+        }
+    }
+    OutlinedButton(onClick = { vm.go(Page.Visitors) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel: back to visitors") }
 }

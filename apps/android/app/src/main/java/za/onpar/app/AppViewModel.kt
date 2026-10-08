@@ -65,6 +65,8 @@ sealed interface Page {
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
     data object Visitors : Page
     data object NewVisitor : Page
+    /** The gate without signal: the guard decides at the gate, and the visit waits on the phone. */
+    data object OfflineVisit : Page
     /** "Are you expected?": look an announced visitor up before scanning them in. */
     data object ExpectedVisitor : Page
     /** One visitor: waiting for the customer's answer, the phone call, and how it ended. */
@@ -143,6 +145,11 @@ data class UiState(
     val visit: za.onpar.core.VisitState? = null,
     /** The number just phoned for that visitor ("primary" or "second"): the guard must say how the call went. */
     val calledContact: String? = null,
+    /** A visitor captured with no signal: the draft, the phone's own check, the number dialled, and how it ended. */
+    val offlineVisit: za.onpar.core.VisitDraft? = null,
+    val offlineCheck: za.onpar.core.ScanCheck? = null,
+    val offlineCalled: String? = null,
+    val offlineDone: za.onpar.core.VisitReply? = null,
     /** What the exit scan found for the visitor who is leaving. */
     val exitFound: za.onpar.core.ExitFound? = null,
     /** The guard has answered (same driver, passengers) and the server has said what the exit raises. */
@@ -242,6 +249,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val more = g.counts.needAction > (it.gate?.counts?.needAction ?: 0)
                     it.copy(gate = g, overstayAlarm = if (more) it.overstayAlarm + 1 else it.overstayAlarm)
                 }
+                // The gate without signal: keep the offline pack fresh while there is signal.
+                if (g.gate != null) runCatching { device.visitors.refreshPack() }
             }
         } catch (e: ApiException) {
             if (e.unauthorised) signOut() else _state.update { it.copy(error = e.message) }
@@ -421,8 +430,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadVisitors() = run {
         val setup = device.visitors.setup()
-        val list = if (setup.gate != null) device.visitors.recent() else emptyList()
-        val due = if (setup.gate != null) runCatching { device.visitors.expected() }.getOrDefault(emptyList()) else emptyList()
+        // With no signal the gate still works: the last lists stay on the screen.
+        val list = if (setup.gate != null) {
+            try {
+                device.visitors.recent()
+            } catch (e: OfflineException) {
+                _state.update { it.copy(online = false) }
+                _state.value.visits
+            }
+        } else emptyList()
+        val due = if (setup.gate != null) runCatching { device.visitors.expected() }.getOrDefault(_state.value.expected) else emptyList()
+        if (setup.gate != null) runCatching { device.visitors.refreshPack() }
         _state.update { it.copy(gate = setup, visits = list, expected = due) }
     }
 
@@ -501,6 +519,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun leave(draft: za.onpar.core.ExitDraft) = run {
         try {
+            val offline = _state.value.exitFound?.takeIf { it.offline }
+            if (offline != null) {
+                val done = device.visitors.exitOffline(draft, offline)
+                draft.photo?.delete()
+                _state.update { it.copy(exitDone = done) }
+                return@run
+            }
             val raised = if (draft.allowed == null) device.visitors.exitFind(draft.idNumber, draft.registration, draft.sameDriver, draft.paxOut) else null
             if (raised != null && raised.exceptions.isNotEmpty()) {
                 _state.update { it.copy(exitFound = raised, exitChecked = true) }
@@ -612,10 +637,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveVisit(draft: za.onpar.core.VisitDraft) = run {
         try {
             val setup = _state.value.gate ?: device.visitors.setup()
-            val reply = device.visitors.create(setup, draft)
+            val known = _state.value.scanCheck
+            if (known?.offline == true) {
+                goOffline(draft, known)
+                return@run
+            }
+            val reply = try {
+                device.visitors.create(setup, draft)
+            } catch (e: OfflineException) {
+                goOffline(draft, null)
+                return@run
+            }
             listOfNotNull(draft.face, draft.identityPhoto, draft.discPhoto).forEach { it.delete() }
             _state.update { it.copy(scanCheck = null) }
             go(Page.Visit(reply.id))
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    /** No signal: the guard decides at the gate from the phone's pack and a phone call. */
+    private fun goOffline(draft: za.onpar.core.VisitDraft, known: za.onpar.core.ScanCheck?) {
+        val check = known ?: device.visitors.offlineCheck(draft.person.idNumber, draft.vehicle?.registration, draft.unitId, draft.cell)
+        _state.update { it.copy(online = false, offlineVisit = draft, offlineCheck = check, offlineCalled = null, offlineDone = null) }
+        go(Page.OfflineVisit)
+    }
+
+    /** Phones the customer with no signal. The number comes from the phone's pack and is never shown. */
+    fun offlineDial(contact: String) = run {
+        val d = _state.value.offlineVisit ?: return@run
+        val unitId = d.unitId ?: _state.value.offlineCheck?.expected?.passId?.let { pass -> device.visitors.pack()?.passes?.firstOrNull { it.id == pass }?.unitId }
+        val numbers = device.visitors.offlineNumbers(unitId)
+        val number = if (contact == "second") numbers.second else numbers.primary
+        if (number == null) _state.update { it.copy(error = "There is no number for this on the phone.") }
+        else if (Calls.placeHidden(getApplication(), number, if (contact == "second") "Second contact" else "Customer")) _state.update { it.copy(offlineCalled = contact) }
+        else _state.update { it.copy(error = "The phone could not start the call.") }
+    }
+
+    /** The guard's decision with no signal. The visit waits on the phone and is sent when there is signal. */
+    fun offlineDecide(decision: String, contact: String?) = run {
+        val d = _state.value.offlineVisit ?: return@run
+        try {
+            val setup = _state.value.gate ?: device.visitors.setup()
+            val reply = device.visitors.createOffline(setup, d, decision, contact)
+            listOfNotNull(d.face, d.identityPhoto, d.discPhoto).forEach { it.delete() }
+            _state.update { it.copy(offlineDone = reply, scanCheck = null) }
         } catch (e: IllegalArgumentException) {
             _state.update { it.copy(error = e.message) }
         }

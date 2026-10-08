@@ -170,6 +170,9 @@ data class ScanCheck(
     /** Still recorded as on site from an earlier visit: the guard is warned and must give a reason to let them in again. */
     val onSite: List<OnSiteHit> = emptyList(),
     val reasons: List<ReasonOption> = emptyList(),
+    /** Checked on the phone with no signal, against its pack from `packAt`. */
+    val offline: Boolean = false,
+    val packAt: String? = null,
 )
 
 /** An earlier visit of this person or vehicle that was never scanned out. */
@@ -209,6 +212,8 @@ data class ExitFound(
     val askPax: Boolean = false,
     val exceptions: List<ExitException> = emptyList(),
     val reasons: List<ReasonOption> = emptyList(),
+    /** Found on the phone with no signal: the exit is saved and sent later. */
+    val offline: Boolean = false,
 )
 
 /** How a scan-out ended: "exited", "exited_exception", "held" (not let go) or "logged" (nobody on site matched). */
@@ -449,6 +454,7 @@ object VisitorRules {
 /** Visitors on the gate phone (visitor management, step 2): scan a visitor in and ask for approval. */
 class VisitorActions(private val device: OnParDevice, dataDir: File) {
     private val cache = File(dataDir, "gate.json")
+    private val packFile = File(dataDir, "gate-offline.json")
     private val rows = ListSerializer(VisitRow.serializer())
 
     /** The gate's setup, kept on the phone so the screens still open without signal. */
@@ -468,8 +474,93 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
     /** Today's visitors at this site. */
     fun recent(): List<VisitRow> = OnParJson.decodeFromJsonElement(rows, device.client().get("/device/visitors/recent", device.requireGuard()))
 
-    /** After a scan: a returning visitor's details, and whether the ID number or number plate is barred. */
-    fun check(idNumber: String?, registration: String?, unitId: String?, cell: String? = null): ScanCheck {
+    // --- The gate without signal (visitor step 7) ------------------------------------------
+
+    /**
+     * Fetches the offline pack when the one on the phone is older than `maxAgeMinutes`. Quiet:
+     * returns null when there is no signal, and the old pack stays.
+     */
+    fun refreshPack(maxAgeMinutes: Long = 10): OfflinePack? {
+        if (packFile.exists() && System.currentTimeMillis() - packFile.lastModified() < maxAgeMinutes * 60_000) return pack()
+        return try {
+            val fresh = OnParJson.decodeFromJsonElement(OfflinePack.serializer(), device.client().get("/device/visitors/offline-pack", device.requireGuard()))
+            packFile.writeText(OnParJson.encodeToString(OfflinePack.serializer(), fresh))
+            fresh
+        } catch (e: OfflineException) {
+            null
+        } catch (e: ApiException) {
+            null
+        }
+    }
+
+    /** The pack on the phone, from when it last had signal. */
+    fun pack(): OfflinePack? = if (packFile.exists()) runCatching { OnParJson.decodeFromString(OfflinePack.serializer(), packFile.readText()) }.getOrNull() else null
+
+    /** The scan check from the pack, with no signal. Null when the phone has no pack. */
+    fun offlineCheck(idNumber: String?, registration: String?, unitId: String?, cell: String? = null): ScanCheck? =
+        pack()?.let { GateOffline.check(it, idNumber, registration, unitId, cell, GateOffline.localNow(device.clock)) }
+
+    /** The numbers to dial with no signal, for the unit (or the office). Never shown to the guard. */
+    fun offlineNumbers(unitId: String?): OfflineNumbers = pack()?.let { GateOffline.numbers(it, unitId) } ?: OfflineNumbers()
+
+    /**
+     * Saves a visit the guard decided with no signal ("pass", "approved", "denied", "no_answer"
+     * or "barred"). It waits on the phone with its photos and is sent, with the time it happened,
+     * when there is signal.
+     */
+    fun createOffline(setup: GateSetup, d: VisitDraft, decision: String, contact: String?): VisitReply {
+        require(decision in GateOffline.DECISIONS) { "Choose what happened." }
+        VisitorRules.problem(setup, d)?.let { throw IllegalArgumentException(it) }
+        val body = visitBody(d) {
+            put("capturedOffline", true)
+            putJsonObject("offline") {
+                put("decision", decision)
+                put("contact", contact?.let { JsonPrimitive(it) } ?: JsonNull)
+            }
+        }
+        device.outbox.add(d.eventId, "Visitor: ${d.person.surname.trim()}", "/device/visitors", body, device.requireGuard(), visitFiles(d))
+        return GateOffline.reply(d.eventId, decision)
+    }
+
+    /** Saves a visitor leaving with no signal. The server finds the visit itself when it arrives. */
+    fun exitOffline(d: ExitDraft, found: ExitFound): ExitReply {
+        if (d.allowed != null) VisitorRules.handlingProblem(d.reason, d.note)?.let { throw IllegalArgumentException(it) }
+        val body = buildJsonObject {
+            put("eventId", d.eventId)
+            put("visitId", JsonNull)
+            d.idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", VisitorScan.idNumber(it)) }
+            d.registration?.takeIf { it.isNotBlank() }?.let { put("registration", VisitorScan.plate(it)) }
+            put("sameDriver", d.sameDriver?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("paxOut", d.paxOut?.let { JsonPrimitive(it) } ?: JsonNull)
+            if (d.allowed != null) putJsonObject("handling") {
+                put("reason", d.reason?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("note", d.note.trim())
+                put("allowed", d.allowed)
+            }
+            put("capturedOffline", true)
+            put("trustedAt", device.clock.now().toString())
+            put("deviceClock", device.clock.deviceClock().toString())
+        }
+        val photo = d.photo?.takeIf { d.allowed != null && it.isFile && it.length() > 0 }
+        device.outbox.add(d.eventId, "Visitor leaving", "/device/visitors/exit", body, device.requireGuard(), listOfNotNull(photo?.let { Upload("photo", it, "image/jpeg") }))
+        // Taken off the phone's list, so a second scan does not find them again.
+        if (found.visit != null) pack()?.let { p -> packFile.writeText(OnParJson.encodeToString(OfflinePack.serializer(), p.copy(onSite = p.onSite.filter { it.id != found.visit.id }))) }
+        val saved = "Saved on the phone. It is sent when there is signal."
+        return when {
+            found.visit != null && d.allowed != false -> ExitReply("exited", saved)
+            found.visit != null -> ExitReply("held", saved)
+            else -> ExitReply("logged", saved)
+        }
+    }
+
+    /** After a scan: a returning visitor's details, and whether the ID number or number plate is barred. With no signal, from the pack. */
+    fun check(idNumber: String?, registration: String?, unitId: String?, cell: String? = null): ScanCheck = try {
+        onlineCheck(idNumber, registration, unitId, cell)
+    } catch (e: OfflineException) {
+        offlineCheck(idNumber, registration, unitId, cell) ?: throw e
+    }
+
+    private fun onlineCheck(idNumber: String?, registration: String?, unitId: String?, cell: String?): ScanCheck {
         val body = buildJsonObject {
             cell?.takeIf { it.isNotBlank() }?.let { put("cell", it) }
             idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", it) }
@@ -480,12 +571,27 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
     }
 
     /**
-     * Saves the visitor and asks for approval. Needs signal for now (working without signal is a
-     * later step). A document's photo is sent only when its details were typed by hand.
+     * Saves the visitor and asks for approval. Needs signal: with none, the guard decides at the
+     * gate and the visit is saved with [createOffline]. A document's photo is sent only when its
+     * details were typed by hand.
      */
     fun create(setup: GateSetup, d: VisitDraft): VisitReply {
         VisitorRules.problem(setup, d)?.let { throw IllegalArgumentException(it) }
-        val body = buildJsonObject {
+        val body = visitBody(d) { }
+        val files = visitFiles(d)
+        val guard = device.requireGuard()
+        val reply = if (files.isEmpty()) device.client().post("/device/visitors", body, guard) else device.client().postMultipart("/device/visitors", body, files, guard)
+        return OnParJson.decodeFromJsonElement(VisitReply.serializer(), reply)
+    }
+
+    private fun visitFiles(d: VisitDraft): List<Upload> = buildList {
+        if (d.type == "pedestrian" && d.face != null) add(Upload("face", d.face, "image/jpeg"))
+        if (d.person.method == "manual" && d.identityPhoto != null) add(Upload("identity", d.identityPhoto, "image/jpeg"))
+        if (d.type == "vehicle" && d.vehicle?.method == "manual" && d.discPhoto != null) add(Upload("disc", d.discPhoto, "image/jpeg"))
+    }
+
+    private fun visitBody(d: VisitDraft, extra: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
+        buildJsonObject {
             put("eventId", d.eventId)
             put("type", d.type)
             putJsonObject("person") {
@@ -518,16 +624,8 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
             }
             put("trustedAt", device.clock.now().toString())
             put("deviceClock", device.clock.deviceClock().toString())
+            extra()
         }
-        val files = buildList {
-            if (d.type == "pedestrian" && d.face != null) add(Upload("face", d.face, "image/jpeg"))
-            if (d.person.method == "manual" && d.identityPhoto != null) add(Upload("identity", d.identityPhoto, "image/jpeg"))
-            if (d.type == "vehicle" && d.vehicle?.method == "manual" && d.discPhoto != null) add(Upload("disc", d.discPhoto, "image/jpeg"))
-        }
-        val guard = device.requireGuard()
-        val reply = if (files.isEmpty()) device.client().post("/device/visitors", body, guard) else device.client().postMultipart("/device/visitors", body, files, guard)
-        return OnParJson.decodeFromJsonElement(VisitReply.serializer(), reply)
-    }
 
     /** Where a visit stands. The waiting screen asks every few seconds. */
     fun state(id: String): VisitState = OnParJson.decodeFromJsonElement(VisitState.serializer(), device.client().get("/device/visitors/$id", device.requireGuard()))
@@ -559,7 +657,13 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
      * The exit scan: finds the visitor's open visit. With the guard's answers it also says what
      * the exit would raise, before anything is recorded.
      */
-    fun exitFind(idNumber: String?, registration: String?, sameDriver: Boolean? = null, paxOut: Int? = null): ExitFound {
+    fun exitFind(idNumber: String?, registration: String?, sameDriver: Boolean? = null, paxOut: Int? = null): ExitFound = try {
+        onlineExitFind(idNumber, registration, sameDriver, paxOut)
+    } catch (e: OfflineException) {
+        pack()?.let { GateOffline.exitFind(it, idNumber, registration, cached()?.on("paxCount") ?: false) } ?: throw e
+    }
+
+    private fun onlineExitFind(idNumber: String?, registration: String?, sameDriver: Boolean?, paxOut: Int?): ExitFound {
         val body = buildJsonObject {
             idNumber?.takeIf { it.isNotBlank() }?.let { put("idNumber", VisitorScan.idNumber(it)) }
             registration?.takeIf { it.isNotBlank() }?.let { put("registration", VisitorScan.plate(it)) }
@@ -693,6 +797,7 @@ class VisitorActions(private val device: OnParDevice, dataDir: File) {
 
     fun clear() {
         cache.delete()
+        packFile.delete()
     }
 
     companion object {

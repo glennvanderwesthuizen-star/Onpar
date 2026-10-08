@@ -178,6 +178,9 @@ export class VisitorSetupController {
         documentLabel: IDENTITY_DOCUMENT_LABELS[document as keyof typeof IDENTITY_DOCUMENT_LABELS],
         statusLabel: VISIT_STATUS_LABELS[r.status as VisitStatus],
         warnings: (checks?.warnings ?? []) as string[],
+        // Decided at the gate with no signal, and sent later (visitor step 7).
+        noSignal: !!checks?.offline,
+        barredLetIn: !!checks?.barredLetIn,
       }));
     });
   }
