@@ -126,7 +126,7 @@ class ProfileTest {
     }
 
     @Test
-    fun `goals and the store: a goal with its steps, kept for when there is no signal`() {
+    fun `goals and the store show a goal with its steps, kept for when there is no signal`() {
         val view = """{"storeOpen":false,"available":120,"wireTotal":400,
           "goal":{"id":"g1","itemId":"i1","name":"PSIRA Grade B course","steps":[{"label":"Grade C","done":true},{"label":"200 barbs available","done":false,"toGo":"120 of 200, about 1 month at your pace"}],"ready":false,"monthsToGo":1},
           "items":[{"id":"i1","name":"PSIRA Grade B course","category":"training","categoryLabel":"Training and grades","barbs":200,"inStore":true,"ready":false,"canHandIn":false}],"handins":[]}"""
