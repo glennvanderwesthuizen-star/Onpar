@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { bobWireMonthsTo, mergeWire } from '@onpar/rules';
 import { ErrorBanner, Field, Pill, formatDate, useLoad } from '@/components/ui';
 import { WireApprovals } from '@/components/WireApprovals';
+import { WireStore } from '@/components/WireStore';
 
 /**
  * The Wire: the guard reward programme (owner's rule book of 8 Oct 2026). For the owner this is
@@ -25,6 +26,8 @@ interface Settings {
   randPerBarb: number;
   notesPaidPerMonth: number;
   discretionaryBudgetPerSite: number;
+  storeOpen: boolean;
+  coursesPerYear: number;
   weights: Record<string, number>;
 }
 interface GuardRow {
@@ -233,7 +236,9 @@ export default function WirePage() {
         )}
       </div>
 
-      <Values data={data} saved={reload} />
+      <WireStore canManage={data.canManage} settings={data.settings as unknown as Record<string, unknown>} saved={reload} />
+
+      <Values key={JSON.stringify(data.settings)} data={data} saved={reload} />
     </>
   );
 }
@@ -337,7 +342,7 @@ function GuardDetail({ id, data, saved }: { id: string; data: Overview; saved: (
           {!g.entries.length && <p className="mute small">None yet.</p>}
           {g.entries.map((e, i) => (
             <div key={i} className="small">
-              {formatDate(e.date)} · {label(e.rule)} · <b>+{e.barbs}</b>
+              {formatDate(e.date)} · {e.kind === 'handed_in' ? 'Handed in' : e.kind === 'returned' ? 'Given back' : label(e.rule)} · <b>{e.kind === 'handed_in' ? '−' : '+'}{e.barbs}</b>
               {e.note && <span className="mute"> · {e.note}</span>}
             </div>
           ))}

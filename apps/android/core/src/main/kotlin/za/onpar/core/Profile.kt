@@ -76,6 +76,41 @@ data class WireMonth(val month: String, val barbs: Int, val award: String? = nul
 @Serializable
 data class WireRecent(val date: String, val label: String, val barbs: Int, val note: String = "")
 
+/** One step to a goal: done, or what is still to come. */
+@Serializable
+data class GoalStep(val label: String, val done: Boolean, val toGo: String? = null)
+
+@Serializable
+data class WireGoal(val id: String, val itemId: String? = null, val name: String, val ownWords: Boolean = false, val steps: List<GoalStep> = emptyList(), val ready: Boolean = false, val monthsToGo: Int? = null)
+
+/** A row of the owner's goals and store table, as it stands for this guard. Barbs only. */
+@Serializable
+data class WireItemView(
+    val id: String,
+    val name: String,
+    val category: String,
+    val categoryLabel: String,
+    val barbs: Int,
+    val inStore: Boolean,
+    val steps: List<GoalStep> = emptyList(),
+    val ready: Boolean = false,
+    val monthsToGo: Int? = null,
+    val canHandIn: Boolean = false,
+)
+
+@Serializable
+data class WireHandIn(val id: String, val itemName: String, val barbs: Int, val status: String, val date: String, val cancelReason: String? = null)
+
+@Serializable
+data class WireStoreView(
+    val storeOpen: Boolean,
+    val available: Int,
+    val wireTotal: Int,
+    val goal: WireGoal? = null,
+    val items: List<WireItemView> = emptyList(),
+    val handins: List<WireHandIn> = emptyList(),
+)
+
 /** A Thuthuka note he sent, with what became of it and why. */
 @Serializable
 data class WireNote(val id: String, val date: String, val suggestion: String, val status: String, val statusLabel: String, val reason: String = "")
@@ -125,6 +160,47 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         }
         val files = if (photo != null && photo.exists() && photo.length() > 0) listOf(Upload("photo", photo, "image/jpeg")) else emptyList()
         return device.outbox.submit(device.client(), eventId, "Thuthuka note", "/device/wire/notes", body, device.requireGuard(), files)
+    }
+
+    private val storeFile = File(dataDir, "wire-store.json")
+
+    /** His goal and the goals and store table. The last copy is kept for when there is no signal. */
+    fun wireStore(): WireStoreView? = try {
+        val v = OnParJson.decodeFromJsonElement(WireStoreView.serializer(), device.client().get("/device/wire/store", device.requireGuard()))
+        storeFile.writeText(OnParJson.encodeToString(WireStoreView.serializer(), v))
+        v
+    } catch (e: OfflineException) {
+        if (storeFile.exists()) runCatching { OnParJson.decodeFromString(WireStoreView.serializer(), storeFile.readText()) }.getOrNull() else null
+    }
+
+    private fun storeReply(r: kotlinx.serialization.json.JsonElement): WireStoreView {
+        val v = OnParJson.decodeFromJsonElement(WireStoreView.serializer(), r)
+        storeFile.writeText(OnParJson.encodeToString(WireStoreView.serializer(), v))
+        return v
+    }
+
+    /** Sets his goal: a row of the table, or his own words. Needs signal. */
+    fun setGoal(itemId: String? = null, ownWords: String? = null): WireStoreView {
+        val body = buildJsonObject {
+            when {
+                itemId != null -> put("itemId", itemId)
+                ownWords != null -> {
+                    require(ownWords.trim().length >= 3) { "Say what your goal is." }
+                    put("ownWords", ownWords.trim())
+                }
+                else -> put("clear", true)
+            }
+        }
+        return storeReply(device.client().post("/device/wire/goal", body, device.requireGuard()))
+    }
+
+    /** Hands in barbs for something in the store. Needs signal: barbs are only spent with the server's say-so. */
+    fun handIn(itemId: String): WireStoreView {
+        val body = buildJsonObject {
+            put("eventId", java.util.UUID.randomUUID().toString())
+            put("itemId", itemId)
+        }
+        return storeReply(device.client().post("/device/wire/handin", body, device.requireGuard()))
     }
 
     /** My Wire. The last copy is kept for when there is no signal. */
@@ -218,5 +294,6 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         rosterFile.delete()
         wireFile.delete()
         notesFile.delete()
+        storeFile.delete()
     }
 }

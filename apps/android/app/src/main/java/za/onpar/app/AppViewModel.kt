@@ -55,6 +55,7 @@ sealed interface Page {
     /** My Wire, the reward programme (owner, 8 Oct 2026). */
     data object Wire : Page
     data object WireNote : Page
+    data object WireGoals : Page
     data object Training : Page
     data object Roster : Page
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
@@ -115,6 +116,7 @@ data class UiState(
     val score: Score? = null,
     val wire: za.onpar.core.MyWire? = null,
     val wireNotes: List<za.onpar.core.WireNote> = emptyList(),
+    val wireStore: za.onpar.core.WireStoreView? = null,
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
@@ -382,7 +384,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Reports || page is Page.Report) loadReports()
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
         if (page == Page.Score) loadScore()
-        if (page == Page.Wire) loadWire()
+        if (page == Page.Wire || page == Page.WireGoals) loadWire()
         if (page == Page.Training) loadTraining()
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
@@ -616,7 +618,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadWire() = run {
         val w = device.profile.wire()
         val notes = runCatching { device.profile.wireNotes() }.getOrDefault(_state.value.wireNotes)
-        _state.update { it.copy(wire = w, wireNotes = notes) }
+        val store = runCatching { device.profile.wireStore() }.getOrNull()
+        _state.update { it.copy(wire = w, wireNotes = notes, wireStore = store ?: it.wireStore) }
+    }
+
+    /** His goal: a row of the owner's table, or his own words (owner, 8 Oct 2026). */
+    fun setGoal(itemId: String? = null, ownWords: String? = null) = run {
+        try {
+            val v = device.profile.setGoal(itemId, ownWords)
+            _state.update { it.copy(wireStore = v, page = Page.Wire, message = "Your goal is set.") }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
+    }
+
+    /** Hands in barbs, after the guard has confirmed on the second step. */
+    fun handIn(itemId: String) = run {
+        val v = device.profile.handIn(itemId)
+        val w = runCatching { device.profile.wire() }.getOrNull()
+        _state.update { it.copy(wireStore = v, wire = w ?: it.wire, message = "Handed in. The office will supply it and you will see it here.") }
     }
 
     /** A Thuthuka note (owner's rule book, 8 Oct 2026). */

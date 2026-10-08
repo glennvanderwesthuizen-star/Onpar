@@ -1007,3 +1007,13 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - Migration `0045_wire_notes_awards.sql`. Tests: 1 rules, 7 server (6 new, 1 extended), 1 phone-logic.
 
 **Not yet built:** the store and goals (step 3, switched off until the accountant answers on tax), the recognition board (step 4), mentoring, fast response, BOLO results as awards (can be put forward as a recognition award by hand), the 24-hour acknowledgement and 30-day decision reminders.
+
+## The Wire, step 3: goals and the store (owner, 8 Oct 2026; D-49)
+
+- **The goals and store table** on The Wire page (owner's choice: one table for all guards, like a spreadsheet). One row per goal: name, kind, barb price, company cost (never sent to a phone), months of service, barbs on the Wire, PSIRA grade needed, months in a row at the standard, in the store, in use. Starts from the rule book's list plus the silver and gold barbs; the grade each course needs is a placeholder for the owner to check against PSIRA's rules.
+- **On the phone** (My Wire → MY GOAL → Choose a goal): the guard picks a row or writes his own goal. Each step shows ✓ or what is still to come ("opens in 4 months", "120 of 200, about 1 month at your pace", "Grade C first"); never a failure.
+- **Planning view** for the owner: who is aiming at what, ready now, ready within three months, and the cost of those.
+- **The store is closed** (setting `storeOpen`, default off) until the accountant answers on tax. When open: a two-step hand-in ("Your Wire stays at …"), hand-in and ledger entry written together, one funded course in any twelve months, a fulfilment queue (Supplied, or Cancel with a reason, which gives the barbs back to available; the Wire total never changes).
+- Migration `0046_wire_goals_store.sql`. Tests: 2 rules, 7 server, 1 phone-logic.
+
+**Not yet built:** the recognition board (step 4), automatic airtime from a supplier, the monthly payroll and franchisee file of supplied hand-ins, a goal reminder when a guard becomes ready.

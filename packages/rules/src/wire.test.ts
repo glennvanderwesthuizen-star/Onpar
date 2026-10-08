@@ -16,6 +16,9 @@ import {
   shiftBarbs,
   simulateGuard,
   wireSettingsErrors,
+  goalProgress,
+  wireItemErrors,
+  DEFAULT_WIRE_ITEMS,
   noteErrors,
   awardBarbsError,
   suggestsRecognition,
@@ -130,6 +133,43 @@ describe('The Wire', () => {
     expect(awardBarbsError('discretionary', 20, s)).toMatch(/5 to 15/);
     expect(awardBarbsError('customer_praise', 0, s)).toBeNull();
     expect([1, 2, 3, 4, 6].map(suggestsRecognition)).toEqual([false, false, true, false, true]);
+  });
+
+  it('a goal is a list of steps, each done or still to come, and says when he is ready', () => {
+    const gradeB = DEFAULT_WIRE_ITEMS.find((i) => i.name === 'PSIRA Grade B course')!;
+    const guard = { grade: 'C', monthsService: 8, wireTotal: 400, available: 120, streak: 2, pace: 80, coursesThisYear: 0 };
+    const p = goalProgress({ ...gradeB, active: true }, guard, s);
+    expect(p.steps.map((x) => [x.label, x.done])).toEqual([
+      ['Grade C', true],
+      ['6 months of service', true],
+      ['Your course for this year', true],
+      ['200 barbs available', false],
+    ]);
+    expect(p.steps[3].toGo).toBe('120 of 200, about 1 month at your pace');
+    expect(p.monthsToGo).toBe(1);
+    expect(p.ready).toBe(false);
+    expect(goalProgress({ ...gradeB, active: true }, { ...guard, available: 250 }, s).ready).toBe(true);
+    // A Grade D guard needs Grade C first: no promise of a date.
+    const d = goalProgress({ ...gradeB, active: true }, { ...guard, grade: 'D' }, s);
+    expect(d.steps[0]).toEqual({ label: 'Grade C', done: false, toGo: 'Grade C first' });
+    expect(d.monthsToGo).toBeNull();
+    // Service still to come, and no wording of failure anywhere.
+    const early = goalProgress({ ...gradeB, active: true }, { ...guard, monthsService: 2 }, s);
+    expect(early.steps[1].toGo).toBe('opens in 4 months');
+    expect(early.monthsToGo).toBe(4);
+    expect(JSON.stringify(early)).not.toMatch(/fail|cannot|not allowed|refused/i);
+    // The silver barb is a goal, not bought.
+    const silver = goalProgress({ ...DEFAULT_WIRE_ITEMS.find((i) => i.name === 'Silver barb')!, active: true }, guard, s);
+    expect(silver.steps).toEqual([{ label: '1,000 barbs on your Wire', done: false, toGo: '600 to go, about 8 months at your pace' }]);
+    // One course a year.
+    expect(goalProgress({ ...gradeB, active: true }, { ...guard, available: 250, coursesThisYear: 1 }, s).ready).toBe(false);
+  });
+
+  it('checks a row of the goals and store table, and the store starts closed', () => {
+    expect(DEFAULT_WIRE_ITEMS.every((i) => Object.keys(wireItemErrors({ ...i, active: true })).length === 0)).toBe(true);
+    expect(wireItemErrors({ ...DEFAULT_WIRE_ITEMS[0], barbs: 0, active: true })).toHaveProperty('barbs');
+    expect(wireItemErrors({ ...DEFAULT_WIRE_ITEMS[0], needsGrade: 'Z', active: true })).toHaveProperty('needsGrade');
+    expect(s.storeOpen).toBe(false);
   });
 
   it('checks settings', () => {

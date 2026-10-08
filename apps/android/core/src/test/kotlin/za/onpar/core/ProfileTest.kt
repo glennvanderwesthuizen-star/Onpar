@@ -124,4 +124,22 @@ class ProfileTest {
         server.enqueue(MockResponse().setBody("""[{"id":"x","date":"2026-10-08","suggestion":"Put it on a timer","status":"adopted","statusLabel":"Adopted","reason":"Done"}]"""))
         assertEquals("Adopted", device.profile.wireNotes().single().statusLabel)
     }
+
+    @Test
+    fun `goals and the store: a goal with its steps, kept for when there is no signal`() {
+        val view = """{"storeOpen":false,"available":120,"wireTotal":400,
+          "goal":{"id":"g1","itemId":"i1","name":"PSIRA Grade B course","steps":[{"label":"Grade C","done":true},{"label":"200 barbs available","done":false,"toGo":"120 of 200, about 1 month at your pace"}],"ready":false,"monthsToGo":1},
+          "items":[{"id":"i1","name":"PSIRA Grade B course","category":"training","categoryLabel":"Training and grades","barbs":200,"inStore":true,"ready":false,"canHandIn":false}],"handins":[]}"""
+        server.enqueue(MockResponse().setBody(view))
+        val v = device.profile.wireStore()!!
+        assertEquals("PSIRA Grade B course", v.goal!!.name)
+        assertFalse(v.goal!!.steps[1].done)
+        server.enqueue(MockResponse().setBody(view))
+        device.profile.setGoal(itemId = "i1")
+        server.takeRequest()
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"itemId\":\"i1\""))
+        assertEquals("Say what your goal is.", assertThrows<IllegalArgumentException> { device.profile.setGoal(ownWords = "x") }.message)
+        server.shutdown()
+        assertEquals(1, device.profile.wireStore()!!.goal!!.monthsToGo)
+    }
 }

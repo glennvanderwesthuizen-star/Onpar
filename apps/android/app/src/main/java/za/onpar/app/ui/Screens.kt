@@ -106,6 +106,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
                     Page.Wire -> if (state.owed != null) HomeScreen(vm, state) else WireScreen(vm, state)
                     Page.WireNote -> if (state.owed != null) HomeScreen(vm, state) else WireNoteScreen(vm, state)
+                    Page.WireGoals -> if (state.owed != null) HomeScreen(vm, state) else WireGoalsScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     Page.Visitors -> if (state.owed != null) HomeScreen(vm, state) else VisitorsScreen(vm, state)

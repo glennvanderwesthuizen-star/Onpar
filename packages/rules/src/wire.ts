@@ -31,6 +31,10 @@ export interface WireSettings {
   };
   /** Thuthuka notes that earn submission barbs each month. */
   notesPaidPerMonth: number;
+  /** Whether guards may hand in barbs. Closed until the accountant has answered on tax (rule book). */
+  storeOpen: boolean;
+  /** Funded courses a guard may hand in for in any twelve months. */
+  coursesPerYear: number;
   /** Discretionary barbs each site may award in a month. */
   discretionaryBudgetPerSite: number;
   /** Monthly score (percent) that counts as the standard. */
@@ -76,6 +80,8 @@ export const DEFAULT_WIRE: WireSettings = {
   },
   notesPaidPerMonth: 2,
   discretionaryBudgetPerSite: 100,
+  storeOpen: false,
+  coursesPerYear: 1,
   standardScore: 95,
   improvementMargin: 1,
   silver: 1000,
@@ -131,6 +137,8 @@ export function wireSettingsErrors(s: WireSettings): Record<string, string> {
   if (s.barbs.standardCap < s.barbs.standardStart) e['barbs.standardCap'] = 'The cap cannot be below the starting award.';
   if (s.barbs.discretionaryMax < s.barbs.discretionaryMin) e['barbs.discretionaryMax'] = 'The most cannot be below the least.';
   if (!whole(s.notesPaidPerMonth, 0, 31)) e.notesPaidPerMonth = 'A whole number from 0 to 31.';
+  if (typeof s.storeOpen !== 'boolean') e.storeOpen = 'Open or closed.';
+  if (!whole(s.coursesPerYear, 0, 12)) e.coursesPerYear = 'A whole number from 0 to 12.';
   if (!whole(s.discretionaryBudgetPerSite, 0, 100_000)) e.discretionaryBudgetPerSite = 'A whole number of barbs.';
   if (!(typeof s.standardScore === 'number' && s.standardScore > 0 && s.standardScore <= 100)) e.standardScore = 'A percentage from 1 to 100.';
   if (!(typeof s.improvementMargin === 'number' && s.improvementMargin >= 0 && s.improvementMargin <= 50)) e.improvementMargin = 'From 0 to 50 percentage points.';
@@ -439,4 +447,152 @@ export function awardBarbsError(kind: AwardKind, barbs: number, s: WireSettings)
 /** The system suggests a recognition award every third month in a row at the standard. */
 export function suggestsRecognition(streak: number): boolean {
   return streak >= 3 && streak % 3 === 0;
+}
+
+// --- Goals and the store (step 3) ----------------------------------------------------------
+
+/**
+ * One row of the owner's goals and store table. A row is a goal a guard can choose; if it has a
+ * barb price and is "in the store", it can also be handed in for. The rand cost is the company's
+ * only and never goes to the guard's phone.
+ */
+export interface WireItem {
+  id: string;
+  name: string;
+  category: WireItemCategory;
+  /** Barbs to hand in for it; 0 for a goal that is not bought (a milestone). */
+  barbs: number;
+  /** Months of service before it opens. */
+  monthsService: number;
+  /** Barbs he must have on his Wire (not spend) before it opens. */
+  wireAtLeast: number;
+  /** PSIRA grade he must already hold, or null. A is the highest. */
+  needsGrade: string | null;
+  /** Months in a row at the standard, or 0. */
+  monthsAtStandard: number;
+  inStore: boolean;
+  active: boolean;
+}
+
+export const WIRE_ITEM_CATEGORIES = ['airtime', 'data', 'voucher', 'kit', 'training', 'milestone', 'other'] as const;
+export type WireItemCategory = (typeof WIRE_ITEM_CATEGORIES)[number];
+export const WIRE_ITEM_CATEGORY_LABELS: Record<WireItemCategory, string> = {
+  airtime: 'Airtime',
+  data: 'Data',
+  voucher: 'Vouchers',
+  kit: 'Kit upgrades',
+  training: 'Training and grades',
+  milestone: 'Milestones',
+  other: 'Other',
+};
+
+/**
+ * The rule book's store and the insignia, as a first table for the owner to change. Barb prices
+ * and costs are placeholders; the grade each course needs is a guess for the owner to check
+ * against PSIRA's rules.
+ */
+export const DEFAULT_WIRE_ITEMS: (Omit<WireItem, 'id' | 'active'> & { costRand: number | null })[] = [
+  { name: 'Airtime, own number', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Airtime, family or friends', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 100, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Data bundle, 1 GB', category: 'data', barbs: 75, costRand: 89, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Grocery voucher', category: 'voucher', barbs: 500, costRand: 500, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Tactical torch', category: 'kit', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Premium boots', category: 'kit', barbs: 300, costRand: 1400, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'First aid course', category: 'training', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'Advanced CCTV course', category: 'training', barbs: 250, costRand: null, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
+  { name: 'PSIRA Grade B course', category: 'training', barbs: 200, costRand: 1380, monthsService: 6, wireAtLeast: 0, needsGrade: 'C', monthsAtStandard: 0, inStore: true },
+  { name: 'PSIRA Grade A course', category: 'training', barbs: 300, costRand: 1500, monthsService: 12, wireAtLeast: 0, needsGrade: 'B', monthsAtStandard: 0, inStore: true },
+  { name: 'Silver barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 1000, needsGrade: null, monthsAtStandard: 0, inStore: false },
+  { name: 'Gold barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 5000, needsGrade: null, monthsAtStandard: 0, inStore: false },
+];
+
+export function wireItemErrors(i: Omit<WireItem, 'id'>): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (i.name.trim().length < 2) e.name = 'Give it a name.';
+  if (!WIRE_ITEM_CATEGORIES.includes(i.category)) e.category = 'Choose a kind.';
+  if (!whole(i.barbs, 0, 100_000)) e.barbs = 'A whole number of barbs.';
+  if (!whole(i.monthsService, 0, 600)) e.monthsService = 'A whole number of months.';
+  if (!whole(i.wireAtLeast, 0, 10_000_000)) e.wireAtLeast = 'A whole number of barbs.';
+  if (!whole(i.monthsAtStandard, 0, 120)) e.monthsAtStandard = 'A whole number of months.';
+  if (i.needsGrade !== null && !['A', 'B', 'C', 'D', 'E'].includes(i.needsGrade)) e.needsGrade = 'Grade A to E, or none.';
+  if (i.inStore && i.barbs <= 0) e.barbs = 'Something in the store needs a barb price.';
+  return e;
+}
+
+/** Where a guard stands, for working out his goal. */
+export interface GoalGuard {
+  grade: string | null;
+  monthsService: number;
+  wireTotal: number;
+  available: number;
+  streak: number;
+  /** Barbs a month at his recent pace. */
+  pace: number;
+  /** Courses he handed in for in the last twelve months. */
+  coursesThisYear: number;
+}
+
+export interface GoalStep {
+  label: string;
+  done: boolean;
+  /** What is still to come, said positively. */
+  toGo: string | null;
+}
+
+const GRADE_RANK: Record<string, number> = { A: 1, B: 2, C: 3, D: 4, E: 5 };
+
+/** 1000 as "1,000", the same on every machine. */
+function thousands(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function months(n: number): string {
+  return `${n} month${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * The steps to a goal, each done or still to come, and whether he is ready. Nothing is phrased
+ * as a failure: an unmet step says what is still to come.
+ */
+export function goalProgress(item: Omit<WireItem, 'id'>, g: GoalGuard, s: WireSettings) {
+  const steps: GoalStep[] = [];
+  const atPace = (n: number) => (g.pace > 0 ? `about ${months(Math.ceil(n / g.pace))} at your pace` : 'it comes with every shift');
+  if (item.needsGrade) {
+    const done = !!g.grade && (GRADE_RANK[g.grade] ?? 9) <= GRADE_RANK[item.needsGrade];
+    steps.push({ label: `Grade ${item.needsGrade}`, done, toGo: done ? null : `Grade ${item.needsGrade} first` });
+  }
+  if (item.monthsService > 0) {
+    const done = g.monthsService >= item.monthsService;
+    steps.push({ label: `${months(item.monthsService)} of service`, done, toGo: done ? null : `opens in ${months(item.monthsService - g.monthsService)}` });
+  }
+  if (item.monthsAtStandard > 0) {
+    const done = g.streak >= item.monthsAtStandard;
+    steps.push({ label: `${months(item.monthsAtStandard)} in a row at the standard`, done, toGo: done ? null : `${g.streak} so far` });
+  }
+  if (item.wireAtLeast > 0) {
+    const done = g.wireTotal >= item.wireAtLeast;
+    const left = item.wireAtLeast - g.wireTotal;
+    steps.push({ label: `${thousands(item.wireAtLeast)} barbs on your Wire`, done, toGo: done ? null : `${thousands(left)} to go, ${atPace(left)}` });
+  }
+  if (item.category === 'training' && item.inStore) {
+    const done = g.coursesThisYear < s.coursesPerYear;
+    steps.push({ label: 'Your course for this year', done, toGo: done ? null : 'opens again twelve months after your last course' });
+  }
+  if (item.barbs > 0) {
+    const done = g.available >= item.barbs;
+    const left = item.barbs - g.available;
+    steps.push({ label: `${thousands(item.barbs)} barbs available`, done, toGo: done ? null : `${Math.max(0, g.available)} of ${item.barbs}, ${atPace(left)}` });
+  }
+  const ready = steps.every((x) => x.done);
+  // The months still to go: the longest of the steps that time alone or earning will finish.
+  const waits: number[] = [];
+  if (!ready) {
+    if (item.monthsService > g.monthsService) waits.push(item.monthsService - g.monthsService);
+    if (item.monthsAtStandard > g.streak) waits.push(item.monthsAtStandard - g.streak);
+    const barbsLeft = Math.max(item.barbs - g.available, item.wireAtLeast - g.wireTotal, 0);
+    if (barbsLeft > 0) waits.push(g.pace > 0 ? Math.ceil(barbsLeft / g.pace) : Infinity);
+  }
+  const blockedByGrade = steps.some((x) => !x.done && x.label.startsWith('Grade'));
+  const monthsToGo = ready ? 0 : blockedByGrade || waits.some((w) => !Number.isFinite(w)) ? null : Math.max(0, ...waits);
+  return { steps, ready, monthsToGo };
 }

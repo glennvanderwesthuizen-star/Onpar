@@ -37,6 +37,7 @@ import { RosterService } from './roster/roster.service';
 import { WireService } from './wire/wire.service';
 import { GuardWireController, WireController } from './wire/wire.controller';
 import { GuardWireNotesController, WireApprovalsController } from './wire/wire-approvals.controller';
+import { GuardWireStoreController, WireStoreController, WireStoreService } from './wire/wire-store.controller';
 import { RosterController } from './roster/roster.controller';
 import { RegisterController } from './roster/register.controller';
 import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-bolo.controller';
@@ -79,6 +80,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardWireController,
       WireApprovalsController,
       GuardWireNotesController,
+      WireStoreController,
+      GuardWireStoreController,
       OfficersController,
       BadgesController,
       SelfieChecksController,
@@ -136,6 +139,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       PatrolsService,
       RosterService,
       WireService,
+      WireStoreService,
       FaceMatchService,
       NotificationsService,
       VisitorSetupService,

@@ -328,6 +328,7 @@ export class WireService implements OnModuleDestroy {
     ).rows as { date: string; kind: string; rule: WireRule; barbs: number; note: string }[];
     const earned = entries.filter((x) => x.kind === 'earned').reduce((a, x) => a + x.barbs, 0);
     const handedIn = entries.filter((x) => x.kind === 'handed_in').reduce((a, x) => a + x.barbs, 0);
+    const returned = entries.filter((x) => x.kind === 'returned').reduce((a, x) => a + x.barbs, 0);
     const launch = this.launchCredit(e.joined, startedOn, settings);
     const wireTotal = earned + launch;
     const month = monthOf(today);
@@ -350,7 +351,7 @@ export class WireService implements OnModuleDestroy {
       insignia: level,
       wireTotal,
       launchCredit: launch,
-      available: Math.max(0, earned - handedIn),
+      available: Math.max(0, earned - handedIn + returned),
       thisMonth: { total: Object.values(thisMonth).reduce((a, b) => a + (b ?? 0), 0), bySource: thisMonth },
       streak: months[0]?.streak ?? 0,
       months: months.map((m) => ({ month: m.month as string, score: m.overall === null ? null : Number(m.overall), award: m.award as string | null, barbs: byMonth.get(m.month) ?? 0 })),

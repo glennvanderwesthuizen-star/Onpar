@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -91,6 +93,7 @@ fun WireScreen(vm: AppViewModel, state: UiState) {
             )
         }
     }
+    GoalCard(vm, state)
     Button(onClick = { vm.go(Page.WireNote) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
         Text("SEND A THUTHUKA NOTE", fontSize = 18.sp)
     }
@@ -190,5 +193,95 @@ fun WireNoteScreen(vm: AppViewModel, state: UiState) {
         enabled = !state.busy && noticed.trim().length >= 5 && suggestion.trim().length >= 5 && improves.trim().length >= 3,
     ) {
         vm.sendNote(noticed, suggestion, improves, photo)
+    }
+}
+
+@Composable
+private fun StepLine(label: String, done: Boolean, toGo: String?) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (done) "✓" else "•", color = if (done) Green else Color.Gray, fontWeight = FontWeight.Bold)
+        Text(if (done || toGo == null) label else "$label: $toGo", color = if (done) Color.Unspecified else Color.DarkGray)
+    }
+}
+
+/** His goal on My Wire, each step ticked or still to come. */
+@Composable
+private fun GoalCard(vm: AppViewModel, state: UiState) {
+    val goal = state.wireStore?.goal
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("MY GOAL", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+            if (goal == null) {
+                Text("Choose something to aim for: a course, a grade, airtime, or your own goal.")
+            } else {
+                Text(goal.name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                goal.steps.forEach { StepLine(it.label, it.done, it.toGo) }
+                val m = goal.monthsToGo ?: 0
+                when {
+                    goal.ready -> Text(if (state.wireStore?.storeOpen == true) "Ready. You can hand in for it now." else "Ready. The store opens soon.", color = Green, fontWeight = FontWeight.Bold)
+                    m > 0 -> Text("About $m month${if (m == 1) "" else "s"} to go.")
+                }
+            }
+            OutlinedButton(onClick = { vm.go(Page.WireGoals) }, modifier = Modifier.fillMaxWidth()) { Text(if (goal == null) "Choose a goal" else "Change my goal or open the store") }
+        }
+    }
+}
+
+/** The owner's goals and store table, as it stands for him: choose a goal, and hand in once the store is open. */
+@Composable
+fun WireGoalsScreen(vm: AppViewModel, state: UiState) {
+    var own by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf<za.onpar.core.WireItemView?>(null) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Goals and store", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { vm.go(Page.Wire) }) { Text("Back") }
+    }
+    val v = state.wireStore
+    if (v == null) {
+        Text(if (state.busy) "Loading…" else "The goals will show when the phone has signal.")
+        return
+    }
+    Text("${v.available} barbs available", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    if (!v.storeOpen) Text("The store opens soon. Choose a goal now and watch it come closer; your barbs are safe and waiting.", color = Color.Gray)
+    OutlinedTextField(own, { own = it.take(200) }, label = { Text("Or write your own goal") }, modifier = Modifier.fillMaxWidth())
+    if (own.trim().length >= 3) OutlinedButton(onClick = { vm.setGoal(ownWords = own) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Make this my goal") }
+    v.items.groupBy { it.categoryLabel }.forEach { (label, rows) ->
+        Text(label.uppercase(), fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+        rows.forEach { i ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row {
+                        Text(i.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        if (i.barbs > 0) Text("${i.barbs} barbs", fontWeight = FontWeight.Bold)
+                    }
+                    i.steps.forEach { StepLine(it.label, it.done, it.toGo) }
+                    if (v.goal?.itemId == i.id) Text("This is your goal.", color = Green, fontWeight = FontWeight.Bold)
+                    else OutlinedButton(onClick = { vm.setGoal(itemId = i.id) }, enabled = !state.busy) { Text("Make this my goal") }
+                    if (i.canHandIn) {
+                        Button(onClick = { confirm = i }, enabled = !state.busy, colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Hand in ${i.barbs} barbs") }
+                    }
+                }
+            }
+        }
+    }
+    if (v.handins.isNotEmpty()) {
+        Text("WHAT I HANDED IN", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+        v.handins.forEach { h ->
+            val status = when (h.status) {
+                "supplied" -> "supplied"
+                "cancelled" -> "barbs given back" + (h.cancelReason?.let { ": $it" } ?: "")
+                else -> "being arranged"
+            }
+            Text("${h.date}  ${h.itemName}, ${h.barbs} barbs, $status", fontSize = 14.sp)
+        }
+    }
+    confirm?.let { i ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text("Hand in ${i.barbs} barbs?") },
+            text = { Text("For: ${i.name}. Your available barbs go from ${v.available} to ${v.available - i.barbs}. Your Wire stays at ${v.wireTotal} barbs.") },
+            confirmButton = { TextButton(onClick = { vm.handIn(i.id); confirm = null }) { Text("Yes, hand in") } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Not now") } },
+        )
     }
 }
