@@ -1026,3 +1026,10 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - Tests: 2 rules, 3 server, 1 phone-logic.
 
 **The Wire is now built to the build specification except:** mentoring, fast response (needs task acknowledgement), automatic airtime from a supplier, the monthly payroll and franchisee file of supplied hand-ins, alumni mode for guards who leave, the yearly naming of a real Bob Wire, photos on the board (POPIA), and reminders (note acknowledged in 24 hours, decided in 30 days; goal reached).
+
+## Grades and training in The Wire (owner, 8 Oct 2026)
+
+- **Grades C, B and A** (owner: in practice the three grades now, C lowest). The enrolment form, the printable enrolment form, the officer's PSIRA edit and the site's minimum grade offer C, B and A; D and E stay valid so older records still load and show. Whether D and E are still issued is PSIRA's to say.
+- **New training types** in Training: pre-employment training, SASSETA-accredited course, armed response, instructor rating (beside firearm competency, first aid, fire fighting, other). Recording one pays the New skill barbs as before.
+- **Goals can need training:** a "Needs training" column in the goals and store table; the guard's step ("Pre-employment training") is ticked once a current (not expired) record of that kind is in Training. Migration `0047_wire_needs_training.sql`.
+- Open for the owner: which SASSETA agency and accreditation details to record, and how TSF's own pre-employment training is accredited.

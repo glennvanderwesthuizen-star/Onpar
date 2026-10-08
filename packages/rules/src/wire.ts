@@ -1,3 +1,4 @@
+import { QUALIFICATION_TYPES } from './qualifications';
 /**
  * The Wire: the guard reward programme (owner's rule book and build specification of 8 Oct 2026).
  *
@@ -470,6 +471,8 @@ export interface WireItem {
   needsGrade: string | null;
   /** Months in a row at the standard, or 0. */
   monthsAtStandard: number;
+  /** A training record he must hold (a qualification type such as pre_employment), or null. */
+  needsTraining: string | null;
   inStore: boolean;
   active: boolean;
 }
@@ -492,18 +495,18 @@ export const WIRE_ITEM_CATEGORY_LABELS: Record<WireItemCategory, string> = {
  * against PSIRA's rules.
  */
 export const DEFAULT_WIRE_ITEMS: (Omit<WireItem, 'id' | 'active'> & { costRand: number | null })[] = [
-  { name: 'Airtime, own number', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Airtime, family or friends', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 100, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Data bundle, 1 GB', category: 'data', barbs: 75, costRand: 89, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Grocery voucher', category: 'voucher', barbs: 500, costRand: 500, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Tactical torch', category: 'kit', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Premium boots', category: 'kit', barbs: 300, costRand: 1400, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'First aid course', category: 'training', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'Advanced CCTV course', category: 'training', barbs: 250, costRand: null, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true },
-  { name: 'PSIRA Grade B course', category: 'training', barbs: 200, costRand: 1380, monthsService: 6, wireAtLeast: 0, needsGrade: 'C', monthsAtStandard: 0, inStore: true },
-  { name: 'PSIRA Grade A course', category: 'training', barbs: 300, costRand: 1500, monthsService: 12, wireAtLeast: 0, needsGrade: 'B', monthsAtStandard: 0, inStore: true },
-  { name: 'Silver barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 1000, needsGrade: null, monthsAtStandard: 0, inStore: false },
-  { name: 'Gold barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 5000, needsGrade: null, monthsAtStandard: 0, inStore: false },
+  { name: 'Airtime, own number', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Airtime, family or friends', category: 'airtime', barbs: 50, costRand: 50, monthsService: 3, wireAtLeast: 100, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Data bundle, 1 GB', category: 'data', barbs: 75, costRand: 89, monthsService: 3, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Grocery voucher', category: 'voucher', barbs: 500, costRand: 500, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Tactical torch', category: 'kit', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Premium boots', category: 'kit', barbs: 300, costRand: 1400, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'First aid course', category: 'training', barbs: 150, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Advanced CCTV course', category: 'training', barbs: 250, costRand: null, monthsService: 6, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'PSIRA Grade B course', category: 'training', barbs: 200, costRand: 1380, monthsService: 6, wireAtLeast: 0, needsGrade: 'C', monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'PSIRA Grade A course', category: 'training', barbs: 300, costRand: 1500, monthsService: 12, wireAtLeast: 0, needsGrade: 'B', monthsAtStandard: 0, needsTraining: null, inStore: true },
+  { name: 'Silver barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 1000, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: false },
+  { name: 'Gold barb', category: 'milestone', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 5000, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: false },
 ];
 
 export function wireItemErrors(i: Omit<WireItem, 'id'>): Record<string, string> {
@@ -514,8 +517,9 @@ export function wireItemErrors(i: Omit<WireItem, 'id'>): Record<string, string> 
   if (!whole(i.monthsService, 0, 600)) e.monthsService = 'A whole number of months.';
   if (!whole(i.wireAtLeast, 0, 10_000_000)) e.wireAtLeast = 'A whole number of barbs.';
   if (!whole(i.monthsAtStandard, 0, 120)) e.monthsAtStandard = 'A whole number of months.';
-  if (i.needsGrade !== null && !['A', 'B', 'C', 'D', 'E'].includes(i.needsGrade)) e.needsGrade = 'Grade A to E, or none.';
+  if (i.needsGrade !== null && !['A', 'B', 'C', 'D', 'E'].includes(i.needsGrade)) e.needsGrade = 'Grade C, B or A, or none.';
   if (i.inStore && i.barbs <= 0) e.barbs = 'Something in the store needs a barb price.';
+  if (i.needsTraining !== null && !(i.needsTraining in QUALIFICATION_TYPES)) e.needsTraining = 'Choose a kind of training, or none.';
   return e;
 }
 
@@ -530,6 +534,8 @@ export interface GoalGuard {
   pace: number;
   /** Courses he handed in for in the last twelve months. */
   coursesThisYear: number;
+  /** Kinds of training he holds now (not expired), such as pre_employment or armed_response. */
+  training?: string[];
 }
 
 export interface GoalStep {
@@ -560,6 +566,11 @@ export function goalProgress(item: Omit<WireItem, 'id'>, g: GoalGuard, s: WireSe
   if (item.needsGrade) {
     const done = !!g.grade && (GRADE_RANK[g.grade] ?? 9) <= GRADE_RANK[item.needsGrade];
     steps.push({ label: `Grade ${item.needsGrade}`, done, toGo: done ? null : `Grade ${item.needsGrade} first` });
+  }
+  if (item.needsTraining) {
+    const label = QUALIFICATION_TYPES[item.needsTraining as keyof typeof QUALIFICATION_TYPES] ?? item.needsTraining;
+    const done = (g.training ?? []).includes(item.needsTraining);
+    steps.push({ label, done, toGo: done ? null : `${label} first` });
   }
   if (item.monthsService > 0) {
     const done = g.monthsService >= item.monthsService;
@@ -592,7 +603,7 @@ export function goalProgress(item: Omit<WireItem, 'id'>, g: GoalGuard, s: WireSe
     const barbsLeft = Math.max(item.barbs - g.available, item.wireAtLeast - g.wireTotal, 0);
     if (barbsLeft > 0) waits.push(g.pace > 0 ? Math.ceil(barbsLeft / g.pace) : Infinity);
   }
-  const blockedByGrade = steps.some((x) => !x.done && x.label.startsWith('Grade'));
+  const blockedByGrade = steps.some((x) => !x.done && x.toGo?.endsWith(' first'));
   const monthsToGo = ready ? 0 : blockedByGrade || waits.some((w) => !Number.isFinite(w)) ? null : Math.max(0, ...waits);
   return { steps, ready, monthsToGo };
 }

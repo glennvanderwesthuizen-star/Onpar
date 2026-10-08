@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
-import { DEFAULT_WIRE_ITEMS, goalProgress, GoalGuard, sastDate, WIRE_ITEM_CATEGORIES, WIRE_ITEM_CATEGORY_LABELS, WireItem, wireItemErrors, WireSettings } from '@onpar/rules';
+import { DEFAULT_WIRE_ITEMS, goalProgress, QUALIFICATION_TYPES, GoalGuard, sastDate, WIRE_ITEM_CATEGORIES, WIRE_ITEM_CATEGORY_LABELS, WireItem, wireItemErrors, WireSettings } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentGuard, CurrentUser, GuardOrSelfAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody, throwIfErrors } from '../common/validation';
@@ -16,6 +16,7 @@ const ItemBody = z.object({
   wireAtLeast: z.number().int().default(0),
   needsGrade: z.enum(['A', 'B', 'C', 'D', 'E']).nullable().default(null),
   monthsAtStandard: z.number().int().default(0),
+  needsTraining: z.string().nullable().default(null),
   inStore: z.boolean().default(true),
   active: z.boolean().default(true),
 });
@@ -24,7 +25,7 @@ const HandInBody = z.object({ eventId: z.string().uuid(), itemId: z.string().uui
 const CancelBody = z.object({ reason: z.string().trim().min(5, 'Give the reason. The guard reads it.').max(500) });
 
 const ITEM_COLUMNS = `id, name, category, barbs, cost_rand::float AS "costRand", months_service AS "monthsService", wire_at_least AS "wireAtLeast",
-  needs_grade AS "needsGrade", months_at_standard AS "monthsAtStandard", in_store AS "inStore", active`;
+  needs_grade AS "needsGrade", months_at_standard AS "monthsAtStandard", needs_training AS "needsTraining", in_store AS "inStore", active`;
 
 type Item = WireItem & { costRand: number | null };
 
@@ -57,10 +58,14 @@ export class WireStoreService {
     const [jy, jm, jd] = g.joinedOn.split('-').map(Number);
     const [y, m, d] = today.split('-').map(Number);
     const monthsService = Math.max(0, (y - jy) * 12 + (m - jm) - (d < jd ? 1 : 0));
+    // The kinds of training he holds now: completed and not expired.
+    const training = (
+      await tx.query(`SELECT DISTINCT type FROM qualifications WHERE employee_id = $1 AND (expiry_date IS NULL OR expiry_date >= $2::date)`, [employeeId, today])
+    ).rows.map((r) => r.type as string);
     const courses = (
       await tx.query(`SELECT count(*)::int AS n FROM wire_handins WHERE employee_id = $1 AND category = 'training' AND status <> 'cancelled' AND requested_at > now() - interval '12 months'`, [employeeId])
     ).rows[0].n as number;
-    return { name: g.name, site: e?.site ?? null, grade: e?.psira_grade ?? null, monthsService, wireTotal: g.wireTotal, available: g.available, streak: g.streak, pace: g.pace, coursesThisYear: courses };
+    return { name: g.name, site: e?.site ?? null, grade: e?.psira_grade ?? null, monthsService, wireTotal: g.wireTotal, available: g.available, streak: g.streak, pace: g.pace, coursesThisYear: courses, training };
   }
 
   /** His goal with its steps; marks it reached the first time it is. */
@@ -126,7 +131,7 @@ export class WireStoreController {
           [user.siteIds],
         )
       ).rows;
-      return { storeOpen: settings.storeOpen, coursesPerYear: settings.coursesPerYear, categories: WIRE_ITEM_CATEGORY_LABELS, items, aiming, plan, handins };
+      return { storeOpen: settings.storeOpen, coursesPerYear: settings.coursesPerYear, categories: WIRE_ITEM_CATEGORY_LABELS, trainingTypes: QUALIFICATION_TYPES, items, aiming, plan, handins };
     });
   }
 
@@ -140,9 +145,9 @@ export class WireStoreController {
       if ((await tx.query('SELECT 1 FROM wire_items WHERE lower(name) = lower($1)', [b.name])).rowCount) throw new ConflictException({ message: 'There is already a row with that name.', errors: { name: 'Already in the table.' } });
       const id = (
         await tx.query(
-          `INSERT INTO wire_items (company_id, name, category, barbs, cost_rand, months_service, wire_at_least, needs_grade, months_at_standard, in_store, active, sort)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT coalesce(max(sort), 0) + 1 FROM wire_items)) RETURNING id`,
-          [b.name, b.category, b.barbs, b.costRand, b.monthsService, b.wireAtLeast, b.needsGrade, b.monthsAtStandard, b.inStore, b.active],
+          `INSERT INTO wire_items (company_id, name, category, barbs, cost_rand, months_service, wire_at_least, needs_grade, months_at_standard, in_store, active, needs_training, sort)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (SELECT coalesce(max(sort), 0) + 1 FROM wire_items)) RETURNING id`,
+          [b.name, b.category, b.barbs, b.costRand, b.monthsService, b.wireAtLeast, b.needsGrade, b.monthsAtStandard, b.inStore, b.active, b.needsTraining],
         )
       ).rows[0].id;
       await this.audit.byUser(tx, user, { action: 'wire.item_create', entityType: 'wire_item', entityId: id, after: b });
@@ -162,8 +167,8 @@ export class WireStoreController {
       if ((await tx.query('SELECT 1 FROM wire_items WHERE lower(name) = lower($1) AND id <> $2', [b.name, id])).rowCount) throw new ConflictException({ message: 'There is already a row with that name.', errors: { name: 'Already in the table.' } });
       await tx.query(
         `UPDATE wire_items SET name = $2, category = $3, barbs = $4, cost_rand = $5, months_service = $6, wire_at_least = $7, needs_grade = $8, months_at_standard = $9,
-                in_store = $10, active = $11, updated_at = now() WHERE id = $1`,
-        [id, b.name, b.category, b.barbs, b.costRand, b.monthsService, b.wireAtLeast, b.needsGrade, b.monthsAtStandard, b.inStore, b.active],
+                in_store = $10, active = $11, needs_training = $12, updated_at = now() WHERE id = $1`,
+        [id, b.name, b.category, b.barbs, b.costRand, b.monthsService, b.wireAtLeast, b.needsGrade, b.monthsAtStandard, b.inStore, b.active, b.needsTraining],
       );
       await this.audit.byUser(tx, user, { action: 'wire.item_update', entityType: 'wire_item', entityId: id, before, after: b });
       return { ok: true };

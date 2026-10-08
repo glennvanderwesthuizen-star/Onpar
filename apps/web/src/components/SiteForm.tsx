@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PROVINCES, PSIRA_GRADES, REQUIREMENT_DAYS, siteErrors, guardsNeededPerDay } from '@onpar/rules';
+import { DEFAULT_EQUIPMENT_TYPES, DEFAULT_PAYROLL_START_DAY, PROVINCES, PSIRA_GRADES_IN_USE, REQUIREMENT_DAYS, siteErrors, guardsNeededPerDay } from '@onpar/rules';
 import { ApiError } from '@/lib/api';
 import { ErrorBanner, Field } from './ui';
 
@@ -311,7 +311,7 @@ export function SiteForm({
           </Field>
           <Field label="Minimum PSIRA grade" error={errors.minimumGrade}>
             <select value={site.minimumGrade} onChange={(e) => set({ minimumGrade: e.target.value })}>
-              {PSIRA_GRADES.map((g) => (
+              {[...(PSIRA_GRADES_IN_USE as readonly string[]).includes(site.minimumGrade) ? [] : [site.minimumGrade], ...PSIRA_GRADES_IN_USE].map((g) => (
                 <option key={g} value={g}>
                   Grade {g}
                 </option>

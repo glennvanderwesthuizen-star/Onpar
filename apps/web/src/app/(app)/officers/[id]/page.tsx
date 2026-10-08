@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { PHOTO_LABELS, REQUIRED_PHOTO_KINDS, PhotoKind } from '@onpar/rules';
 import { api, imageUrl, openFile } from '@/lib/api';
-import { QUALIFICATION_TYPES, PSIRA_GRADES } from '@onpar/rules';
+import { QUALIFICATION_TYPES, PSIRA_GRADES_IN_USE } from '@onpar/rules';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, StatusPill, formatDate, useLoad } from '@/components/ui';
 import { TsfPlate } from '@/components/TsfPlate';
@@ -440,7 +440,7 @@ function UpdatePsira({ officer, onDone }: { officer: Officer; onDone: () => void
       <div className="grid g2">
         <Field label="Grade">
           <select value={f.psiraGrade} onChange={(e) => setF({ ...f, psiraGrade: e.target.value })}>
-            {PSIRA_GRADES.map((g) => (
+            {[...((PSIRA_GRADES_IN_USE as readonly string[]).includes(officer.psiraGrade) ? [] : [officer.psiraGrade]), ...PSIRA_GRADES_IN_USE].map((g) => (
               <option key={g} value={g}>
                 Grade {g}
               </option>

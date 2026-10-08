@@ -14,6 +14,7 @@ interface Item {
   wireAtLeast: number;
   needsGrade: string | null;
   monthsAtStandard: number;
+  needsTraining: string | null;
   inStore: boolean;
   active: boolean;
 }
@@ -21,6 +22,7 @@ interface Store {
   storeOpen: boolean;
   coursesPerYear: number;
   categories: Record<string, string>;
+  trainingTypes: Record<string, string>;
   items: Item[];
   aiming: { employeeId: string; name: string; site: string | null; goal: string; ready: boolean; monthsToGo: number | null; nextStep: string | null }[];
   plan: { itemId: string; name: string; aiming: number; readyNow: number; withinThreeMonths: number; costWithinThreeMonths: number | null }[];
@@ -28,7 +30,7 @@ interface Store {
 }
 
 const rand = (n: number | null) => (n === null ? 'not priced' : `R${Math.round(n).toLocaleString('en-ZA')}`);
-const blank: Omit<Item, 'id'> = { name: '', category: 'kit', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, inStore: true, active: true };
+const blank: Omit<Item, 'id'> = { name: '', category: 'kit', barbs: 0, costRand: null, monthsService: 0, wireAtLeast: 0, needsGrade: null, monthsAtStandard: 0, needsTraining: null, inStore: true, active: true };
 
 /**
  * Goals and the store (The Wire, step 3): the owner's table that guards choose their goal from,
@@ -139,6 +141,7 @@ export function WireStore({ canManage, settings, saved }: { canManage: boolean; 
               <th>Months of service</th>
               <th>Barbs on Wire</th>
               <th>Needs grade</th>
+              <th>Needs training</th>
               <th>Months at standard</th>
               <th>In the store</th>
               <th>In use</th>
@@ -147,9 +150,9 @@ export function WireStore({ canManage, settings, saved }: { canManage: boolean; 
           </thead>
           <tbody>
             {data.items.map((i) => (
-              <ItemRow key={i.id} item={i} categories={data.categories} canManage={canManage} busy={busy} run={run} />
+              <ItemRow key={i.id} item={i} categories={data.categories} trainingTypes={data.trainingTypes} canManage={canManage} busy={busy} run={run} />
             ))}
-            {canManage && <ItemRow item={{ ...blank, id: '' }} categories={data.categories} canManage busy={busy} run={run} />}
+            {canManage && <ItemRow item={{ ...blank, id: '' }} categories={data.categories} trainingTypes={data.trainingTypes} canManage busy={busy} run={run} />}
           </tbody>
         </table>
       </div>
@@ -188,7 +191,21 @@ function HandIn({ h, canManage, busy, run }: { h: Store['handins'][number]; canM
   );
 }
 
-function ItemRow({ item, categories, canManage, busy, run }: { item: Item; categories: Record<string, string>; canManage: boolean; busy: boolean; run: (w: () => Promise<unknown>) => void }) {
+function ItemRow({
+  item,
+  categories,
+  trainingTypes,
+  canManage,
+  busy,
+  run,
+}: {
+  item: Item;
+  categories: Record<string, string>;
+  trainingTypes: Record<string, string>;
+  canManage: boolean;
+  busy: boolean;
+  run: (w: () => Promise<unknown>) => void;
+}) {
   const [v, setV] = useState<Item>(item);
   const isNew = !item.id;
   const changed = JSON.stringify(v) !== JSON.stringify(item);
@@ -226,11 +243,23 @@ function ItemRow({ item, categories, canManage, busy, run }: { item: Item; categ
       <td>
         <select value={v.needsGrade ?? ''} disabled={!canManage} onChange={(e) => setV({ ...v, needsGrade: e.target.value || null })}>
           <option value="">None</option>
-          {['E', 'D', 'C', 'B', 'A'].map((g) => (
+          {['C', 'B', 'A'].map((g) => (
             <option key={g} value={g}>
               {g}
             </option>
           ))}
+        </select>
+      </td>
+      <td>
+        <select value={v.needsTraining ?? ''} disabled={!canManage} onChange={(e) => setV({ ...v, needsTraining: e.target.value || null })}>
+          <option value="">None</option>
+          {Object.entries(trainingTypes)
+            .filter(([k]) => k !== 'other')
+            .map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
         </select>
       </td>
       <td>{n('monthsAtStandard')}</td>

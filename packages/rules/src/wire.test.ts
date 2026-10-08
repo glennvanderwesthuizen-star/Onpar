@@ -168,6 +168,16 @@ describe('The Wire', () => {
     expect(goalProgress({ ...gradeB, active: true }, { ...guard, available: 250, coursesThisYear: 1 }, s).ready).toBe(false);
   });
 
+  it('a goal can need a kind of training, such as pre-employment training', () => {
+    const armed = { name: 'Armed response course', category: 'training' as const, barbs: 250, monthsService: 0, wireAtLeast: 0, needsGrade: 'B', monthsAtStandard: 0, needsTraining: 'pre_employment', inStore: true, active: true };
+    const guard = { grade: 'B', monthsService: 8, wireTotal: 400, available: 300, streak: 0, pace: 80, coursesThisYear: 0 };
+    const without = goalProgress(armed, guard, s);
+    expect(without.steps[1]).toEqual({ label: 'Pre-employment training', done: false, toGo: 'Pre-employment training first' });
+    expect(without.monthsToGo).toBeNull();
+    expect(goalProgress(armed, { ...guard, training: ['pre_employment'] }, s).ready).toBe(true);
+    expect(wireItemErrors({ ...armed, needsTraining: 'juggling' })).toHaveProperty('needsTraining');
+  });
+
   it('checks a row of the goals and store table, and the store starts closed', () => {
     expect(DEFAULT_WIRE_ITEMS.every((i) => Object.keys(wireItemErrors({ ...i, active: true })).length === 0)).toBe(true);
     expect(wireItemErrors({ ...DEFAULT_WIRE_ITEMS[0], barbs: 0, active: true })).toHaveProperty('barbs');

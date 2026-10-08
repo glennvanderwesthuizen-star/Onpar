@@ -4,6 +4,11 @@ import { qualificationStatus } from './qualifications';
 /** PSIRA grades, A is the highest. */
 export const PSIRA_GRADES = ['A', 'B', 'C', 'D', 'E'] as const;
 export type PsiraGrade = (typeof PSIRA_GRADES)[number];
+/**
+ * The grades offered in forms (owner, 8 Oct 2026: in practice C, B and A, lowest first). D and E
+ * stay valid so older records still load; whether they are still issued is PSIRA's to say.
+ */
+export const PSIRA_GRADES_IN_USE = ['C', 'B', 'A'] as const;
 
 /** The four photos enrolment requires (brief section 6.12). */
 export const REQUIRED_PHOTO_KINDS = ['face', 'full_body', 'id_document', 'psira_card'] as const;

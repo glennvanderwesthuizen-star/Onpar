@@ -116,6 +116,16 @@ describe('The Wire: goals and the store', () => {
     expect((await ownerQuery(`SELECT count(*)::int AS n FROM audit_log WHERE action LIKE 'wire.item_%'`))[0].n).toBe(2);
   });
 
+  it('a goal can need a kind of training, ticked off once it is recorded in Training', async () => {
+    const r = await w.http().post('/api/wire/items').set(auth(admin)).send({ name: 'Armed response course', category: 'training', barbs: 250, needsGrade: 'B', needsTraining: 'pre_employment' });
+    expect(r.status).toBe(201);
+    expect((await w.http().post('/api/wire/items').set(auth(admin)).send({ name: 'Juggling', category: 'other', barbs: 10, needsTraining: 'juggling' })).status).toBe(400);
+    const step = async () => item(await mine(), 'Armed response course').steps.find((x: { label: string }) => x.label === 'Pre-employment training');
+    expect(await step()).toMatchObject({ done: false, toGo: 'Pre-employment training first' });
+    await ownerQuery(`INSERT INTO qualifications (company_id, employee_id, type, name, completion_date) VALUES ($1, $2, 'pre_employment', 'TSF pre-employment training', current_date)`, [w.a.companyId, guardId]);
+    expect(await step()).toMatchObject({ done: true });
+  });
+
   it('another company sees none of it', async () => {
     const bAdmin = await w.login('admin@b.test');
     const b = (await w.http().get('/api/wire/store').set(auth(bAdmin))).body;

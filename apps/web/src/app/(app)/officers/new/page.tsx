@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { enrolmentErrors, PHOTO_LABELS, PSIRA_GRADES, REQUIRED_PHOTO_KINDS, PhotoKind } from '@onpar/rules';
+import { enrolmentErrors, PHOTO_LABELS, PSIRA_GRADES_IN_USE, REQUIRED_PHOTO_KINDS, PhotoKind } from '@onpar/rules';
 import { api, ApiError } from '@/lib/api';
 import { ErrorBanner, Field, useLoad } from '@/components/ui';
 
@@ -246,7 +246,7 @@ export default function EnrolPage() {
             <Field label="PSIRA grade" error={shown.psiraGrade}>
               <select value={p.psiraGrade} onChange={(e) => setField('psiraGrade', e.target.value)}>
                 <option value="">Choose…</option>
-                {PSIRA_GRADES.map((g) => (
+                {PSIRA_GRADES_IN_USE.map((g) => (
                   <option key={g} value={g}>
                     Grade {g}
                   </option>

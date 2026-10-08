@@ -31,6 +31,11 @@ export const QUALIFICATION_TYPES = {
   firearm_competency: 'Firearm competency',
   first_aid: 'First aid',
   fire_fighting: 'Fire fighting',
+  // Added 8 Oct 2026 (owner): specialised ratings within the grades, and accreditation.
+  pre_employment: 'Pre-employment training',
+  sasseta: 'SASSETA-accredited course',
+  armed_response: 'Armed response',
+  instructor: 'Instructor rating',
   other: 'Other',
 } as const;
 export type QualificationType = keyof typeof QUALIFICATION_TYPES;

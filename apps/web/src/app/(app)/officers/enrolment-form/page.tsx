@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { PSIRA_GRADES } from '@onpar/rules';
+import { PSIRA_GRADES_IN_USE } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useLoad } from '@/components/ui';
@@ -78,7 +78,7 @@ export default function EnrolmentFormPage() {
           <h3>3. PSIRA registration</h3>
           <div className="eform-row">
             <Line label="PSIRA number *" />
-            <Ticks label="Grade *" options={[...PSIRA_GRADES]} />
+            <Ticks label="Grade *" options={[...PSIRA_GRADES_IN_USE]} />
             <Line label="Expiry date *  (DD/MM/YYYY)" />
           </div>
         </section>
