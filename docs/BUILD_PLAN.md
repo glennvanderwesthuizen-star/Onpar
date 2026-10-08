@@ -1071,3 +1071,12 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - **The website** marks such visits "No signal at the gate", and "Barred: let in with no signal" where that happened.
 - Not built: staff of a unit with no signal (they need the photo comparison on the server; the guard lets them in as a visitor by phoning the tenant).
 - Tests: 4 rules, 7 server, 6 phone-logic.
+
+### 8 Oct 2026: visitor management, the portal (visitor specification; owner's step 5)
+
+- **Visitors page** (menu, for supervisors and managers): every gate site at a glance: on site now, past their time (red when the guard has not dealt with it), expected today, exceptions to look into, today's visits let in and turned away, waiting, and decided with no signal. Only the sites a person may see.
+- **Reports** on the same page: any period up to a year, all sites or one, counted by day, site, gate, unit, kind of visitor, guard or outcome (visits, let in, turned away, expected, passengers, with an exception, no signal). **Download every visit** as a spreadsheet: ID numbers show their last four characters only, cells cannot hold formulas, and each download is in the audit trail.
+- **Emergency roll-call** (site page, and its own phone-friendly page): Start a roll-call (with a reason) lists everyone on site: each visitor with their passengers counted as one group, staff of units, and the guards on duty. Everyone who looks after the site is alerted ("Emergency roll-call at …", cannot be switched off). Each person is ticked **Safe** or **Missing** (or undone); every tick is kept and cannot be changed. Anyone who comes in during the roll-call joins the list; anyone who scans out or goes off duty shows as having left. It cannot be closed with people unticked or missing without a note of what happened. The last ten are kept on the page.
+- **Photos on the website:** the photo a guard took with an exception, and the face photo of a visitor on foot, open on request ("Show photo"); each look is recorded.
+- **Retention for visitors** (Privacy page): visitor photos, document photos and exception photos are removed, and a visitor or vehicle not seen for the period is anonymised ("Removed under retention"); announcements that ended lose their numbers. The visit itself stays, so the counts still add up. Default 12 months; **off until switched on**, like the other photo periods, and the period is for the POPIA specialist to confirm.
+- Migration `0050_visitor_portal.sql`. Tests: 6 server.

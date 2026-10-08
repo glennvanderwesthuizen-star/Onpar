@@ -162,7 +162,7 @@ export class VisitorSetupController {
         await tx.query(
           `SELECT v.id, v.type, v.status, v.denied_reason AS "deniedReason", v.captured_at AS "at", v.late_synced AS "lateSynced", p.surname, p.names, p.id_number,
                   ve.registration, ve.make, ve.model, ve.colour, u.name AS "unitName", c.name AS "category", v.pax_in AS "pax", v.pax_out AS "paxOut", v.exit_at AS "exitAt", g.name AS "gateName",
-                  e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks,
+                  e.full_name AS "guard", v.capture_method AS "captureMethod", v.identity_document AS "document", v.checks, v.face_photo_key IS NOT NULL AS "hasFace",
                   (SELECT cu.full_name FROM visit_approvals a JOIN customers cu ON cu.id = a.customer_id WHERE a.visit_id = v.id AND a.method = 'push' ORDER BY a.at DESC LIMIT 1) AS "answeredBy",
                   (SELECT a.method FROM visit_approvals a WHERE a.visit_id = v.id AND a.outcome <> 'no_answer' ORDER BY a.at DESC LIMIT 1) AS "answeredHow"
              FROM visits v JOIN visitor_people p ON p.id = v.person_id LEFT JOIN visitor_vehicles ve ON ve.id = v.vehicle_id LEFT JOIN site_units u ON u.id = v.unit_id

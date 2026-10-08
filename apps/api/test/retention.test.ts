@@ -62,9 +62,9 @@ describe('retention', () => {
 
   it('is off until the company switches it on, so nothing is removed', async () => {
     expect(await settings()).toEqual({
-      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90 },
-      wouldRemoveNow: { selfies: 0, patrolPhotos: 0 },
-      removed: { selfies: 0, patrolPhotos: 0, last: null },
+      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90, visitorMonths: 12 },
+      wouldRemoveNow: { selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0 },
+      removed: { selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0, last: null },
     });
     expect(await retention.run(w.a.companyId, later())).toBe(0);
     expect((await storage.get(selfieKey)).equals(PNG)).toBe(true);
@@ -78,7 +78,7 @@ describe('retention', () => {
     const [a] = await ownerQuery(`SELECT reason, before->>'enabled' AS was FROM audit_log WHERE action = 'privacy.retention_update'`);
     expect(a).toEqual({ reason: 'Periods confirmed by our POPIA adviser', was: 'false' });
     // Nothing is old enough yet.
-    expect((await settings()).wouldRemoveNow).toEqual({ selfies: 0, patrolPhotos: 0 });
+    expect((await settings()).wouldRemoveNow).toEqual({ selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0 });
   });
 
   it('removes photos past their period, keeps the records, and logs each removal', async () => {

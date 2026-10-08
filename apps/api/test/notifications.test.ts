@@ -158,6 +158,7 @@ describe('alerts to a phone', () => {
       ['visitor_exception', true, true],
       ['visitor_overstay', true, true],
       ['visitor_handover', true, true],
+      ['roll_call', true, false],
     ]);
     const noPanic = await w.http().put('/api/notifications/preferences').set(auth(supervisor)).send({ off: ['panic'] });
     expect(noPanic.status).toBe(400);

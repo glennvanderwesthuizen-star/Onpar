@@ -5,9 +5,9 @@ import { api, ApiError } from '@/lib/api';
 import { ErrorBanner, Field, formatDateTime, useLoad } from '@/components/ui';
 
 interface Retention {
-  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number; boloMediaDays: number };
-  wouldRemoveNow: { selfies: number; patrolPhotos: number };
-  removed: { selfies: number; patrolPhotos: number; last: string | null };
+  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number; boloMediaDays: number; visitorMonths?: number };
+  wouldRemoveNow: { selfies: number; patrolPhotos: number; visitorPhotos?: number; visitorRecords?: number };
+  removed: { selfies: number; patrolPhotos: number; visitorPhotos?: number; visitorRecords?: number; last: string | null };
 }
 
 export default function PrivacyPage() {
@@ -74,6 +74,9 @@ export default function PrivacyPage() {
               <Field label="BOLO photos, videos and voice notes (days)" error={errors.boloMediaDays} hint="They record members of the public. 90 days proposed; confirm with the POPIA specialist.">
                 <input type="number" min={7} max={3650} value={v.boloMediaDays ?? 90} onChange={(e) => setV({ ...v, boloMediaDays: Number(e.target.value) })} />
               </Field>
+              <Field label="Visitors at the gates (months)" error={errors.visitorMonths} hint="Visitor and document photos are removed, and a visitor not seen for this long is anonymised; the visit still counts. 12 months proposed; confirm with the POPIA specialist.">
+                <input type="number" min={1} max={120} value={v.visitorMonths ?? 12} onChange={(e) => setV({ ...v, visitorMonths: Number(e.target.value) })} />
+              </Field>
             </div>
             <Field label="Why the change (kept in the audit log)" error={errors.reason}>
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: periods confirmed by our POPIA adviser" />
@@ -89,11 +92,13 @@ export default function PrivacyPage() {
             </p>
             <p className="mute small">With the saved periods, removal would take away now:</p>
             <p>
-              <b>{data.wouldRemoveNow.selfies}</b> selfies and <b>{data.wouldRemoveNow.patrolPhotos}</b> patrol photos.
+              <b>{data.wouldRemoveNow.selfies}</b> selfies, <b>{data.wouldRemoveNow.patrolPhotos}</b> patrol photos, <b>{data.wouldRemoveNow.visitorPhotos ?? 0}</b> visitor photos and{' '}
+              <b>{data.wouldRemoveNow.visitorRecords ?? 0}</b> visitor details to anonymise.
             </p>
             <p className="mute small">Removed so far:</p>
             <p>
-              <b>{data.removed.selfies}</b> selfies and <b>{data.removed.patrolPhotos}</b> patrol photos
+              <b>{data.removed.selfies}</b> selfies, <b>{data.removed.patrolPhotos}</b> patrol photos, <b>{data.removed.visitorPhotos ?? 0}</b> visitor photos and{' '}
+              <b>{data.removed.visitorRecords ?? 0}</b> visitor details
               {data.removed.last ? `, last on ${formatDateTime(data.removed.last)}` : ''}.
             </p>
             <p className="mute small">

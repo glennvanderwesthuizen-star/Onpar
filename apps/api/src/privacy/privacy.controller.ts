@@ -11,6 +11,7 @@ const RetentionBody = z.object({
   selfieMonths: z.number().int().min(1, 'At least 1 month.').max(120),
   patrolPhotoMonths: z.number().int().min(1, 'At least 1 month.').max(120),
   boloMediaDays: z.number().int().min(7, 'At least 7 days.').max(3650).default(90),
+  visitorMonths: z.number().int().min(1, 'At least 1 month.').max(120).default(12),
   reason: z.string().trim().min(3, 'Say why, for example "periods confirmed by our POPIA adviser".'),
 });
 
@@ -40,10 +41,17 @@ export class PrivacyController {
       const count = (rows: { kind: string }[], kind: string) => rows.filter((r) => r.kind === kind).length;
       return {
         settings,
-        wouldRemoveNow: { selfies: count(due, 'selfie'), patrolPhotos: count(due, 'patrol_photo') },
+        wouldRemoveNow: {
+          selfies: count(due, 'selfie'),
+          patrolPhotos: count(due, 'patrol_photo'),
+          visitorPhotos: due.filter((r) => ['visit_photo', 'visit_document', 'visit_exception_photo'].includes(r.kind)).length,
+          visitorRecords: due.filter((r) => ['visitor_person', 'visitor_vehicle', 'visitor_pass'].includes(r.kind)).length,
+        },
         removed: {
           selfies: removed.find((r) => r.kind === 'selfie')?.n ?? 0,
           patrolPhotos: removed.find((r) => r.kind === 'patrol_photo')?.n ?? 0,
+          visitorPhotos: removed.filter((r) => ['visit_photo', 'visit_document', 'visit_exception_photo'].includes(r.kind)).reduce((n, r) => n + r.n, 0),
+          visitorRecords: removed.filter((r) => ['visitor_person', 'visitor_vehicle', 'visitor_pass'].includes(r.kind)).reduce((n, r) => n + r.n, 0),
           last: removed.reduce<string | null>((m, r) => (!m || r.last > m ? r.last : m), null),
         },
       };
@@ -91,10 +99,10 @@ export class PrivacyController {
     return this.db.withTenant(user.companyId, async (tx) => {
       const before = await this.retention.settings(tx);
       await tx.query(
-        `INSERT INTO retention_settings (company_id, enabled, selfie_months, patrol_photo_months, bolo_media_days, updated_by, updated_at)
-         VALUES (app_company_id(), $1, $2, $3, $5, $4, now())
-         ON CONFLICT (company_id) DO UPDATE SET enabled = $1, selfie_months = $2, patrol_photo_months = $3, bolo_media_days = $5, updated_by = $4, updated_at = now()`,
-        [b.enabled, b.selfieMonths, b.patrolPhotoMonths, user.userId, b.boloMediaDays],
+        `INSERT INTO retention_settings (company_id, enabled, selfie_months, patrol_photo_months, bolo_media_days, visitor_months, updated_by, updated_at)
+         VALUES (app_company_id(), $1, $2, $3, $5, $6, $4, now())
+         ON CONFLICT (company_id) DO UPDATE SET enabled = $1, selfie_months = $2, patrol_photo_months = $3, bolo_media_days = $5, visitor_months = $6, updated_by = $4, updated_at = now()`,
+        [b.enabled, b.selfieMonths, b.patrolPhotoMonths, user.userId, b.boloMediaDays, b.visitorMonths],
       );
       const { reason, ...after } = b;
       await this.audit.byUser(tx, user, { action: 'privacy.retention_update', entityType: 'company', entityId: user.companyId, before, after, reason });

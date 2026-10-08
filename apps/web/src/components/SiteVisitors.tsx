@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BARRED_KIND_LABELS, BARRED_KINDS, BarredKind, CategoryKind, categoryLimitText, VisitorCheck, VisitorSettings } from '@onpar/rules';
 import { api, ApiError } from '@/lib/api';
+import { AuthPhoto } from './AuthPhoto';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDate, formatDateTime, useLoad } from './ui';
 
@@ -64,6 +65,7 @@ interface Visit {
   warnings: string[];
   answered: string | null;
   noSignal?: boolean;
+  hasFace?: boolean;
   barredLetIn?: boolean;
 }
 interface Setup {
@@ -544,7 +546,10 @@ export function SiteVisits({ siteId }: { siteId: string }) {
                   </td>
                   <td>
                     {v.type === 'pedestrian' ? (
-                      <span className="mute">On foot</span>
+                      <>
+                        <span className="mute">On foot</span>
+                        {v.hasFace && <PhotoToggle path={`/sites/${siteId}/visits/${v.id}/face`} alt="The visitor at the gate" />}
+                      </>
                     ) : (
                       <>
                         <b>{v.registration}</b>
@@ -674,8 +679,8 @@ export function SiteVisitExceptions({ siteId }: { siteId: string }) {
         {x.note && <div>“{x.note}”</div>}
         <div className="mute small">
           {x.guard}
-          {x.hasPhoto ? ' · photo kept' : ''}
         </div>
+        {x.hasPhoto && <PhotoToggle path={`/sites/${siteId}/visit-exceptions/${x.id}/photo`} alt="Photo taken with the exception" />}
       </td>
       <td>
         {x.clearedAt ? (
@@ -947,5 +952,17 @@ export function SiteVisitHandovers({ siteId }: { siteId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A photo shown only when asked for: every look is recorded. */
+function PhotoToggle({ path, alt }: { path: string; alt: string }) {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AuthPhoto path={path} alt={alt} width={180} />
+  ) : (
+    <button type="button" className="btn ghost sm" onClick={() => setOpen(true)}>
+      Show photo
+    </button>
   );
 }
