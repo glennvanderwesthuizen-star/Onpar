@@ -51,6 +51,11 @@ export default function SitePage({ params }: { params: Promise<{ id: string }> }
           <Link href={`/roster?site=${id}`}>Roster</Link> page for who works which day.
         </div>
       )}
+      {can('eob.view') && (
+        <p>
+          <Link href={`/occurrence-book?site=${id}`}>Open this site&apos;s Occurrence Book</Link>
+        </p>
+      )}
       {can('sites.edit') ? (
         <SiteForm
           autosave

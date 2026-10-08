@@ -95,6 +95,9 @@ export const PERMISSIONS = {
   // Customers (phase 3, D-39): units, the client and tenants of a site. Only the administrator creates them.
   'customers.view': ['system_admin', 'company_manager'],
   'customers.manage': ['system_admin'],
+  // The Electronic Occurrence Book (brief section 27): read, and add a written entry.
+  'eob.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'eob.write': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

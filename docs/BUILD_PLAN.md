@@ -1080,3 +1080,13 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - **Photos on the website:** the photo a guard took with an exception, and the face photo of a visitor on foot, open on request ("Show photo"); each look is recorded.
 - **Retention for visitors** (Privacy page): visitor photos, document photos and exception photos are removed, and a visitor or vehicle not seen for the period is anonymised ("Removed under retention"); announcements that ended lose their numbers. The visit itself stays, so the counts still add up. Default 12 months; **off until switched on**, like the other photo periods, and the period is for the POPIA specialist to confirm.
 - Migration `0050_visitor_portal.sql`. Tests: 6 server.
+
+## Electronic Occurrence Book (brief section 27, milestone 17; owner's step 6, 8 Oct 2026)
+
+- **Occurrence Book** in the menu (supervisors, site managers, managers, administrators), and a link on each site's page. One site, one day, in time order, put together from what On Par already records; nothing is typed twice: Duty On and Duty From (with lateness, the comment and the selfie), tasks (done, could not be done, missed, the review), patrols (started, finished, missed, every checkpoint scan and refused scan), every stage of every report (with its colour badge and number, and the priority as a small traffic light), re-orders, PANIC and BOLO, emergency numbers phoned, visitors in and out and their exceptions, shift handovers and emergency roll-calls. Entries sent late by a phone without signal say so.
+- **The banner** "This is not the official Occurrence Book…" is always shown, and printed.
+- **Photo column:** the photo taken with the entry opens on request; each look is in the audit trail; photos removed under retention say so.
+- **Filters:** by kind of entry, a search box, day before and after, and Print (the menus are left off the paper). On a phone the table scrolls sideways.
+- **Written entries:** for anything On Par did not record by itself, with the time it happened. An entry can never be changed or removed (the database refuses); a correction is a new entry marked "Correction".
+- **Not yet:** firearm entries (they come with firearm allocation, step 8), notices and queries (step 7), PDF export, and entries written by guards on the phone. Retention: the book is assembled from the records, so it is kept as long as they are; the legal retention period of an OB is for the owner's advisers (D-51).
+- Migration `0051_occurrence_book.sql`; rules `packages/rules/src/eob.ts`. Tests: 4 server.

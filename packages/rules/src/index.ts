@@ -21,3 +21,4 @@ export * from './visitors';
 export * from './emergency';
 export * from './wire';
 export * from './handover';
+export * from './eob';

@@ -51,6 +51,7 @@ import { CustomersController } from './customers/customers.controller';
 import { CustomerAppController } from './customers/customer-app.controller';
 import { VisitorSetupController } from './visitors/visitor-setup.controller';
 import { VisitorPortalController } from './visitors/visitor-portal.controller';
+import { EobController } from './eob/eob.controller';
 import { GateController } from './visitors/gate.controller';
 import { CustomerVisitsController } from './visitors/customer-visits.controller';
 import { CustomerPassesController } from './visitors/customer-passes.controller';
@@ -124,6 +125,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       CustomerAppController,
       VisitorSetupController,
       VisitorPortalController,
+      EobController,
       PostingsController,
       CustomerStaffController,
       SiteStaffController,
