@@ -48,9 +48,17 @@ describe('coming on duty: who is due, and lock or roam', () => {
   afterAll(() => w.app.close());
 
   describe('the sign-in list', () => {
-    it('is empty when nobody is rostered at the site about now', async () => {
-      expect(await expected(gate)).toEqual([]);
+    it('needs the phone’s key', async () => {
       expect((await w.http().get('/api/device/expected-guards')).status).toBe(401);
+    });
+
+    it('with nobody rostered now, lists the site’s guards so a name can still be tapped', async () => {
+      const list = await expected(gate);
+      expect(list.map((g) => [g.name, g.shift])).toEqual([
+        ['Abram Komapi', 'Not on the roster now'],
+        ['Michael Themba', 'Not on the roster now'],
+      ]);
+      expect(JSON.stringify(list)).not.toMatch(/8001015009087|pin/i);
     });
 
     it('lists the guards whose shift at this site is starting or running, by name, and drops one who is on duty', async () => {

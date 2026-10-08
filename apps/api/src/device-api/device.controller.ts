@@ -133,7 +133,14 @@ export class DeviceController {
           break;
         }
       }
-      return out.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.name.localeCompare(b.name));
+      if (out.length) return out.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.name.localeCompare(b.name));
+      // Nobody on the roster here now (no roster yet, a relief, testing): list the site's guards, so
+      // the guard can still tap his name. The PIN is still needed (owner, 8 Oct 2026).
+      return people
+        .filter((p) => p.tsfNumber ?? p.employeeNumber)
+        .map((p) => ({ login: (p.tsfNumber ?? p.employeeNumber)!, name: p.name, shift: 'Not on the roster now' }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 40);
     });
   }
 
