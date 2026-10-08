@@ -975,3 +975,25 @@ The owner corrected the flow. This replaces the automatic control room call of D
 - **The panel after PANIC has five buttons:** Control room first, then Police, Fire brigade, Ambulance, Armed response. The guard taps who he needs. On the Call screen the control room stays in the ordinary contacts list above the four emergency buttons.
 - A tap on Control room is recorded like the others (migration `0043_control_room_call.sql`).
 - The website no longer says "The phone could not start a call"; it lists who the guard phoned from the panel, or that he has phoned nobody yet.
+
+## The Wire, first part (owner's rule book and build specification, 8 Oct 2026; D-49)
+
+The guard reward programme, built so the owner can run it through the pilot (about 10 sites and 50 guards for three months) and tune its values on real shifts before the store opens. Source documents: "The Wire rule book" and "My Wire build specification" (Claude Docs, linked from the project note `the-wire-decisions.md`).
+
+**What it does now**
+- **Engine** (`apps/api/src/wire/`, rules in `packages/rules/src/wire.ts`). Every 15 minutes, and on demand, it pays barbs from what On Par already records:
+  - per worked shift: ready for duty (on duty 15 minutes before the scheduled start), duties complete (no task of his, or of his post in his shift, left open or missed; an accepted "could not complete" counts as done), clean handover (every report he raised in the shift closed or assigned);
+  - at month end: the monthly score (attendance and job performance pillars, weights as in the specification, measures with nothing to count left out), the standard award (95% or more; 20, +5 a month in a row, up to 40; one short month in twelve keeps the run) or else the improvement award (1 point above his own three-month average), long service (2 a month worked), anniversaries (25), new skill (25 per course or grade recorded in Training);
+  - entry barbs from a recruitment score the owner enters (once).
+- **Launch credit** for service before The Wire (50 a completed year) is worked out from the joining date the owner enters. It counts on the Wire and toward insignia, never as available barbs, and can be corrected by changing the date.
+- **Ledger** `wire_entries`: append-only, one row per rule per shift or month, so re-runs and late corrections only add what is newly due. Month snapshots `wire_months` are locked.
+- **The Wire page** on the website (menu "The Wire"; managers see it, only the administrator changes it): each guard's Wire, available barbs, this month, pace, and months to silver and gold at that pace; barbs issued by month and source with the rand cost; Bob Wire's fastest silver and gold, with a warning if gold could come in under three years; every value editable; **Try these values** replays the real months under changed values and compares, writing nothing; **Save as the values in force** applies them from then on; each guard's every barb, months, joining date and recruitment score; the day The Wire started (settings).
+- **My Wire on the post phone** (home screen button next to Score): insignia, Wire total and drawing, available barbs, this month by source, months in a row at the standard, barbs to the next insignia and months at his pace, his months, latest barbs. Nothing negative, no rand, no other guards.
+- Migration `0044_the_wire.sql`; permissions `wire.view`, `wire.manage`. Tests: 12 rules, 10 server, 1 phone-logic.
+
+**Not yet built (later phases of the specification):** store and hand-ins with fulfilment, goals, Thuthuka notes, approvals queue (customer praise, discretionary awards, BOLO results), mentoring, fast response, recognition board and milestones, alumni mode, the programme report per franchisee.
+
+**For the owner to know**
+- The Wire starts on the day the page is first opened. To count shifts already worked, set **The Wire started on** in the values and save.
+- Joining date defaults to the day the guard was enrolled in On Par; set the real date on The Wire page for long service and launch credit.
+- Patrols are not yet part of "duties complete"; tasks are.

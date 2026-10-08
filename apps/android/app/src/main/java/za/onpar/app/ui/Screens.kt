@@ -104,6 +104,7 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.Uniform -> if (state.owed != null) HomeScreen(vm, state) else UniformScreen(vm, state)
                     Page.NewReorder -> if (state.owed != null) HomeScreen(vm, state) else NewReorderScreen(vm, state)
                     Page.Score -> if (state.owed != null) HomeScreen(vm, state) else ScoreScreen(vm, state)
+                    Page.Wire -> if (state.owed != null) HomeScreen(vm, state) else WireScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     Page.Visitors -> if (state.owed != null) HomeScreen(vm, state) else VisitorsScreen(vm, state)
@@ -406,9 +407,12 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { vm.go(Page.Score) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Score", fontSize = 18.sp) }
-            OutlinedButton(onClick = { vm.go(Page.Training) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Training", fontSize = 18.sp) }
+            OutlinedButton(onClick = { vm.go(Page.Wire) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("My Wire", fontSize = 18.sp) }
         }
-        OutlinedButton(onClick = { vm.go(Page.Roster) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("My roster", fontSize = 18.sp) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { vm.go(Page.Training) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Training", fontSize = 18.sp) }
+            OutlinedButton(onClick = { vm.go(Page.Roster) }, modifier = Modifier.weight(1f).height(56.dp)) { Text("My roster", fontSize = 18.sp) }
+        }
     }
     Button(onClick = { vm.go(Page.Call) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Call", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.refresh() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }

@@ -21,6 +21,7 @@ const NAV = [
   { href: '/uniform', label: 'Uniform', permission: 'uniform.view' },
   { href: '/reorders', label: 'Re-orders', permission: 'reorders.view' },
   { href: '/scores', label: 'Scores', permission: 'scores.view' },
+  { href: '/wire', label: 'The Wire', permission: 'wire.view' },
   { href: '/sites', label: 'Sites', permission: 'sites.view' },
   { href: '/officers', label: 'Officers', permission: 'officers.view' },
   { href: '/training', label: 'Training', permission: 'training.view' },

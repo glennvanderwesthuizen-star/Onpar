@@ -50,6 +50,9 @@ export const PERMISSIONS = {
   'scores.answer': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'scores.reverse': ['system_admin', 'company_manager'],
   'scores.rules': ['system_admin', 'company_manager'],
+  // The Wire, the reward programme (owner, 8 Oct 2026): managers look, the owner (administrator) sets the values.
+  'wire.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  'wire.manage': ['system_admin'],
   'reports.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'reports.manage': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'reports.close': ['system_admin', 'company_manager'],

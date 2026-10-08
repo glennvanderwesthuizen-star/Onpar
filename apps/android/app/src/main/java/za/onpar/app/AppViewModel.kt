@@ -52,6 +52,8 @@ sealed interface Page {
     data object Reorders : Page
     data object NewReorder : Page
     data object Score : Page
+    /** My Wire, the reward programme (owner, 8 Oct 2026). */
+    data object Wire : Page
     data object Training : Page
     data object Roster : Page
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
@@ -110,6 +112,7 @@ data class UiState(
     /** Actions waiting on the phone to be sent, by label. */
     val waitingLabels: List<String> = emptyList(),
     val score: Score? = null,
+    val wire: za.onpar.core.MyWire? = null,
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
@@ -377,6 +380,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Reports || page is Page.Report) loadReports()
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
         if (page == Page.Score) loadScore()
+        if (page == Page.Wire) loadWire()
         if (page == Page.Training) loadTraining()
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
@@ -606,6 +610,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // --- Score, training, calls ----------------------------------------------
+
+    fun loadWire() = run {
+        val w = device.profile.wire()
+        _state.update { it.copy(wire = w) }
+    }
 
     fun loadScore() = run {
         val s = device.profile.score()

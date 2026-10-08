@@ -60,11 +60,53 @@ fun List<Contact>.emergencyButtons(withControlRoom: Boolean = false): List<Emerg
     listOfNotNull(firstOrNull { it.kind == "control_room" }?.takeIf { withControlRoom }?.let { EmergencyButton("control_room", "CONTROL ROOM", listOf(it)) }) +
         EMERGENCY_ORDER.mapNotNull { (service, title) -> filter { it.emergency == service }.takeIf { it.isNotEmpty() }?.let { EmergencyButton(service, title, it) } }
 
+/** My Wire (owner's rule book, 8 Oct 2026): only what he earned and what is still open to him. */
+@Serializable
+data class WireSource(val rule: String, val label: String, val barbs: Int)
+
+@Serializable
+data class WireMonthTotal(val total: Int = 0, val bySource: List<WireSource> = emptyList())
+
+@Serializable
+data class WireNext(val name: String, val toGo: Int, val months: Int? = null)
+
+@Serializable
+data class WireMonth(val month: String, val barbs: Int, val award: String? = null)
+
+@Serializable
+data class WireRecent(val date: String, val label: String, val barbs: Int)
+
+@Serializable
+data class MyWire(
+    val insignia: String,
+    val insigniaLabel: String,
+    val wireTotal: Int,
+    val available: Int,
+    val barbsDrawn: Int = 0,
+    val thisMonth: WireMonthTotal = WireMonthTotal(),
+    val streak: Int = 0,
+    val next: WireNext,
+    val months: List<WireMonth> = emptyList(),
+    val perShift: Int = 3,
+    val readyLeadMinutes: Int = 15,
+    val recent: List<WireRecent> = emptyList(),
+)
+
 /** The guard's own score, training, and the site's approved contacts. */
 class ProfileActions(private val device: OnParDevice, dataDir: File) {
     private val scoreFile = File(dataDir, "score.json")
     private val trainingFile = File(dataDir, "training.json")
     private val rosterFile = File(dataDir, "roster.json")
+    private val wireFile = File(dataDir, "wire.json")
+
+    /** My Wire. The last copy is kept for when there is no signal. */
+    fun wire(): MyWire? = try {
+        val w = OnParJson.decodeFromJsonElement(MyWire.serializer(), device.client().get("/device/wire", device.requireGuard()))
+        wireFile.writeText(OnParJson.encodeToString(MyWire.serializer(), w))
+        w
+    } catch (e: OfflineException) {
+        if (wireFile.exists()) runCatching { OnParJson.decodeFromString(MyWire.serializer(), wireFile.readText()) }.getOrNull() else null
+    }
     /** My roster: today and the working days of the next four weeks. The last copy is kept for when there is no signal. */
     fun roster(): GuardRoster? = try {
         val r = OnParJson.decodeFromJsonElement(GuardRoster.serializer(), device.client().get("/device/roster", device.requireGuard()))
@@ -146,5 +188,6 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         scoreFile.delete()
         trainingFile.delete()
         rosterFile.delete()
+        wireFile.delete()
     }
 }

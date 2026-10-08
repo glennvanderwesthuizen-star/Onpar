@@ -34,6 +34,8 @@ import { UsersController } from './users/users.controller';
 import { PrivacyController } from './privacy/privacy.controller';
 import { RetentionService } from './privacy/retention.service';
 import { RosterService } from './roster/roster.service';
+import { WireService } from './wire/wire.service';
+import { GuardWireController, WireController } from './wire/wire.controller';
 import { RosterController } from './roster/roster.controller';
 import { RegisterController } from './roster/register.controller';
 import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-bolo.controller';
@@ -72,6 +74,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       AuthController,
       SitesController,
       TestSiteController,
+      WireController,
+      GuardWireController,
       OfficersController,
       BadgesController,
       SelfieChecksController,
@@ -128,6 +132,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       ReportsService,
       PatrolsService,
       RosterService,
+      WireService,
       FaceMatchService,
       NotificationsService,
       VisitorSetupService,

@@ -98,4 +98,18 @@ class ProfileTest {
         assertEquals(4, device.profile.contacts().emergencyButtons().size)
         assertEquals("LOGO", device.profile.armedLogo()?.decodeToString())
     }
+
+    @Test
+    fun `My Wire shows what he earned and is kept for when there is no signal`() {
+        server.enqueue(MockResponse().setBody("""{"insignia":"black","insigniaLabel":"Black barb","wireTotal":261,"available":261,"barbsDrawn":2,
+          "thisMonth":{"total":9,"bySource":[{"rule":"ready_for_duty","label":"Ready for duty","barbs":3}]},"streak":3,
+          "next":{"name":"Silver barb","toGo":739,"months":9},"months":[{"month":"2026-09","barbs":92,"award":"standard"}],"perShift":3,"readyLeadMinutes":15,
+          "recent":[{"date":"2026-10-05","label":"Ready for duty","barbs":1}]}"""))
+        val w = device.profile.wire()!!
+        assertEquals(261, w.wireTotal)
+        assertEquals("Silver barb", w.next.name)
+        assertEquals("/api/device/wire", server.takeRequest().path)
+        server.shutdown()
+        assertEquals(3, device.profile.wire()!!.streak)
+    }
 }
