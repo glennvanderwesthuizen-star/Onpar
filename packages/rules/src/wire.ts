@@ -23,7 +23,16 @@ export interface WireSettings {
     newSkill: number;
     longServiceMonthly: number;
     anniversary: number;
+    thuthukaSent: number;
+    thuthukaAdopted: number;
+    customerPraise: number;
+    discretionaryMin: number;
+    discretionaryMax: number;
   };
+  /** Thuthuka notes that earn submission barbs each month. */
+  notesPaidPerMonth: number;
+  /** Discretionary barbs each site may award in a month. */
+  discretionaryBudgetPerSite: number;
   /** Monthly score (percent) that counts as the standard. */
   standardScore: number;
   /** Percentage points above his own three-month average for the improvement award. */
@@ -59,7 +68,14 @@ export const DEFAULT_WIRE: WireSettings = {
     newSkill: 25,
     longServiceMonthly: 2,
     anniversary: 25,
+    thuthukaSent: 2,
+    thuthukaAdopted: 25,
+    customerPraise: 25,
+    discretionaryMin: 5,
+    discretionaryMax: 15,
   },
+  notesPaidPerMonth: 2,
+  discretionaryBudgetPerSite: 100,
   standardScore: 95,
   improvementMargin: 1,
   silver: 1000,
@@ -85,6 +101,10 @@ export const WIRE_RULES = {
   long_service: 'Long service',
   anniversary: 'Anniversary',
   entry: 'Entry barbs',
+  thuthuka_sent: 'Thuthuka note sent',
+  thuthuka_adopted: 'Thuthuka note adopted',
+  customer_praise: 'Customer praise',
+  discretionary: 'Recognition award',
   launch_credit: 'Service before The Wire',
 } as const;
 export type WireRule = keyof typeof WIRE_RULES;
@@ -109,6 +129,9 @@ export function wireSettingsErrors(s: WireSettings): Record<string, string> {
   if (!whole(s.readyLeadMinutes, 0, 120)) e.readyLeadMinutes = 'Between 0 and 120 minutes.';
   for (const [k, v] of Object.entries(s.barbs)) if (!whole(v, 0, 1000)) e[`barbs.${k}`] = 'A whole number of barbs from 0 to 1,000.';
   if (s.barbs.standardCap < s.barbs.standardStart) e['barbs.standardCap'] = 'The cap cannot be below the starting award.';
+  if (s.barbs.discretionaryMax < s.barbs.discretionaryMin) e['barbs.discretionaryMax'] = 'The most cannot be below the least.';
+  if (!whole(s.notesPaidPerMonth, 0, 31)) e.notesPaidPerMonth = 'A whole number from 0 to 31.';
+  if (!whole(s.discretionaryBudgetPerSite, 0, 100_000)) e.discretionaryBudgetPerSite = 'A whole number of barbs.';
   if (!(typeof s.standardScore === 'number' && s.standardScore > 0 && s.standardScore <= 100)) e.standardScore = 'A percentage from 1 to 100.';
   if (!(typeof s.improvementMargin === 'number' && s.improvementMargin >= 0 && s.improvementMargin <= 50)) e.improvementMargin = 'From 0 to 50 percentage points.';
   if (!whole(s.silver, 1, 1_000_000)) e.silver = 'A whole number of barbs.';
@@ -376,4 +399,44 @@ export function simulateGuard(g: SimGuard, s: WireSettings) {
     monthsToSilver: monthsTo(s.silver, total, pace),
     monthsToGold: monthsTo(s.gold, total, pace),
   };
+}
+
+// --- Thuthuka notes and awards approved by a person ----------------------------------------
+
+/** A Thuthuka note's journey (rule book): sent, looked at, then adopted or declined with a reason. */
+export const NOTE_STATUSES = ['sent', 'under_review', 'adopted', 'declined'] as const;
+export type NoteStatus = (typeof NOTE_STATUSES)[number];
+export const NOTE_STATUS_LABELS: Record<NoteStatus, string> = { sent: 'Sent', under_review: 'Being looked at', adopted: 'Adopted', declined: 'Not taken up' };
+
+export interface NoteInput {
+  noticed: string;
+  suggestion: string;
+  improves: string;
+}
+
+export function noteErrors(n: NoteInput): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (n.noticed.trim().length < 5) e.noticed = 'Say what you noticed.';
+  if (n.suggestion.trim().length < 5) e.suggestion = 'Say what you suggest.';
+  if (n.improves.trim().length < 3) e.improves = 'Say what it would make better.';
+  return e;
+}
+
+/** Kinds of award that wait for a person's approval (rule book). */
+export const AWARD_KINDS = ['customer_praise', 'discretionary'] as const;
+export type AwardKind = (typeof AWARD_KINDS)[number];
+export const AWARD_KIND_LABELS: Record<AwardKind, string> = { customer_praise: 'Customer praise', discretionary: 'Recognition award' };
+
+/** The barbs an award pays: praise is fixed; a recognition award must sit inside the allowed range. */
+export function awardBarbsError(kind: AwardKind, barbs: number, s: WireSettings): string | null {
+  if (kind === 'customer_praise') return null;
+  if (!Number.isInteger(barbs) || barbs < s.barbs.discretionaryMin || barbs > s.barbs.discretionaryMax) {
+    return `A recognition award is ${s.barbs.discretionaryMin} to ${s.barbs.discretionaryMax} barbs.`;
+  }
+  return null;
+}
+
+/** The system suggests a recognition award every third month in a row at the standard. */
+export function suggestsRecognition(streak: number): boolean {
+  return streak >= 3 && streak % 3 === 0;
 }

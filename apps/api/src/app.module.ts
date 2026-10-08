@@ -36,6 +36,7 @@ import { RetentionService } from './privacy/retention.service';
 import { RosterService } from './roster/roster.service';
 import { WireService } from './wire/wire.service';
 import { GuardWireController, WireController } from './wire/wire.controller';
+import { GuardWireNotesController, WireApprovalsController } from './wire/wire-approvals.controller';
 import { RosterController } from './roster/roster.controller';
 import { RegisterController } from './roster/register.controller';
 import { DevicePanicBoloController, PanicBoloController } from './alerts/panic-bolo.controller';
@@ -76,6 +77,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       TestSiteController,
       WireController,
       GuardWireController,
+      WireApprovalsController,
+      GuardWireNotesController,
       OfficersController,
       BadgesController,
       SelfieChecksController,

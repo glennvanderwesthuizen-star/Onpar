@@ -14,6 +14,7 @@ import {
   shiftBarbs,
   ShiftFacts,
   simulateGuard,
+  suggestsRecognition,
   WireRule,
   WireRun,
   WireSettings,
@@ -198,7 +199,7 @@ export class WireService implements OnModuleDestroy {
 
   // --- Writing barbs ------------------------------------------------------------------------
 
-  private async earn(tx: Tx, e: { employeeId: string; siteId: string | null; date: string; rule: WireRule; barbs: number; key: string; note?: string; by?: string | null }) {
+  async earn(tx: Tx, e: { employeeId: string; siteId: string | null; date: string; rule: WireRule; barbs: number; key: string; note?: string; by?: string | null }) {
     if (e.barbs <= 0) return false;
     const r = await tx.query(
       `INSERT INTO wire_entries (company_id, employee_id, site_id, entry_date, rule, barbs, source_key, note, created_by)
@@ -239,6 +240,14 @@ export class WireService implements OnModuleDestroy {
         const run = await this.runBefore(tx, g.employeeId, month);
         const r = monthBarbs(month, g.facts, run, settings);
         for (const e of r.entries) await this.earn(tx, { employeeId: g.employeeId, siteId: g.siteId, date: lastDay(month), rule: e.rule, barbs: e.barbs, key: `month:${month}` });
+        // Every third month in a row at the standard, the system suggests a recognition award to the owner.
+        if (r.award?.award === 'standard' && suggestsRecognition(r.run.streak)) {
+          await tx.query(
+            `INSERT INTO wire_awards (company_id, employee_id, site_id, kind, barbs, why, source_key) VALUES (app_company_id(), $1, $2, 'discretionary', $3, $4, $5)
+             ON CONFLICT (employee_id, source_key) DO NOTHING`,
+            [g.employeeId, g.siteId, Math.round((settings.barbs.discretionaryMin + settings.barbs.discretionaryMax) / 2), `${r.run.streak} months in a row at the standard`, `streak:${month}`],
+          );
+        }
         await tx.query(
           `INSERT INTO wire_months (employee_id, month, company_id, site_id, attendance, job, overall, average, award, streak, grace_month, facts)
            VALUES ($1, $2, app_company_id(), $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING`,

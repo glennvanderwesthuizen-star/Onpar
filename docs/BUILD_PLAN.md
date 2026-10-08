@@ -997,3 +997,13 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - The Wire starts on the day the page is first opened. To count shifts already worked, set **The Wire started on** in the values and save.
 - Joining date defaults to the day the guard was enrolled in On Par; set the real date on The Wire page for long service and launch credit.
 - Patrols are not yet part of "duties complete"; tasks are.
+
+## The Wire, step 2: Thuthuka notes and approvals (owner, 8 Oct 2026; D-49)
+
+- **Thuthuka notes from the phone** (My Wire → SEND A THUTHUKA NOTE): what he noticed, what he suggests, what it improves, optional photo; works with no signal. 2 barbs for each of the first two notes a month; 25 when adopted. His notes list shows what became of each and why.
+- **Waiting for a decision** card on The Wire page: notes (a supervisor or manager marks "Looking at it"; only the owner adopts or declines, always with a reason the guard reads), customer praise (entered by a manager until the customer app sends it; 25 barbs, one a month) and recognition awards (5 to 15 barbs, inside a monthly budget per site, default 100). Anyone with access to The Wire can put a guard forward; only the owner approves. On Par itself suggests a recognition award every third month in a row at the standard.
+- The reason for an adoption or an award shows under the barbs on the guard's My Wire.
+- All new values are on the page (note barbs and monthly limit, praise, recognition range and site budget). Every proposal and decision is audited.
+- Migration `0045_wire_notes_awards.sql`. Tests: 1 rules, 7 server (6 new, 1 extended), 1 phone-logic.
+
+**Not yet built:** the store and goals (step 3, switched off until the accountant answers on tax), the recognition board (step 4), mentoring, fast response, BOLO results as awards (can be put forward as a recognition award by hand), the 24-hour acknowledgement and 30-day decision reminders.

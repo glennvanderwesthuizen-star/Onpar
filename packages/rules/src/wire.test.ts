@@ -16,6 +16,9 @@ import {
   shiftBarbs,
   simulateGuard,
   wireSettingsErrors,
+  noteErrors,
+  awardBarbsError,
+  suggestsRecognition,
   WireRun,
 } from './wire';
 
@@ -118,6 +121,15 @@ describe('The Wire', () => {
     const doubled = simulateGuard(g, mergeWire({ barbs: { readyForDuty: 2 } }));
     expect(doubled.months[0].barbs).toBe(102);
     expect(doubled.months[0].bySource.ready_for_duty).toBe(40);
+  });
+
+  it('Thuthuka notes need three answers; recognition awards stay inside the range; suggested every third month at the standard', () => {
+    expect(noteErrors({ noticed: 'Gate 3 light is out at night', suggestion: 'Put it on a timer', improves: 'Safety' })).toEqual({});
+    expect(Object.keys(noteErrors({ noticed: '', suggestion: 'x', improves: '' }))).toEqual(['noticed', 'suggestion', 'improves']);
+    expect(awardBarbsError('discretionary', 10, s)).toBeNull();
+    expect(awardBarbsError('discretionary', 20, s)).toMatch(/5 to 15/);
+    expect(awardBarbsError('customer_praise', 0, s)).toBeNull();
+    expect([1, 2, 3, 4, 6].map(suggestsRecognition)).toEqual([false, false, true, false, true]);
   });
 
   it('checks settings', () => {

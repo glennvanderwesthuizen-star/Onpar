@@ -190,7 +190,7 @@ export class GuardWireController {
         months: g.months.slice(0, 6).map((m) => ({ month: m.month, barbs: m.barbs, award: m.award })),
         perShift: settings.barbs.readyForDuty + settings.barbs.dutiesComplete + settings.barbs.cleanHandover,
         readyLeadMinutes: settings.readyLeadMinutes,
-        recent: g.entries.slice(0, 15).filter((e) => e.kind === 'earned').map((e) => ({ date: e.date, label: WIRE_RULES[e.rule] ?? e.rule, barbs: e.barbs })),
+        recent: g.entries.slice(0, 15).filter((e) => e.kind === 'earned').map((e) => ({ date: e.date, label: WIRE_RULES[e.rule] ?? e.rule, barbs: e.barbs, note: ['thuthuka_adopted', 'customer_praise', 'discretionary'].includes(e.rule) ? e.note : '' })),
       };
     });
   }

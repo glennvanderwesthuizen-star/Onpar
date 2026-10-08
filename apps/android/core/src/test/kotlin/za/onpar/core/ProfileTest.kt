@@ -112,4 +112,16 @@ class ProfileTest {
         server.shutdown()
         assertEquals(3, device.profile.wire()!!.streak)
     }
+
+    @Test
+    fun `a Thuthuka note needs its three answers and goes to the server`() {
+        assertEquals("Say what you noticed.", assertThrows<IllegalArgumentException> { device.profile.sendNote("", "Put it on a timer", "Safety", null) }.message)
+        server.enqueue(MockResponse().setBody("""{"id":"x","barbs":2}"""))
+        assertTrue(device.profile.sendNote("Gate 3 light is off", "Put it on a timer", "Safety", null) is Submitted.Sent)
+        val r = server.takeRequest()
+        assertEquals("/api/device/wire/notes", r.path)
+        assertTrue(r.body.readUtf8().contains("Put it on a timer"))
+        server.enqueue(MockResponse().setBody("""[{"id":"x","date":"2026-10-08","suggestion":"Put it on a timer","status":"adopted","statusLabel":"Adopted","reason":"Done"}]"""))
+        assertEquals("Adopted", device.profile.wireNotes().single().statusLabel)
+    }
 }

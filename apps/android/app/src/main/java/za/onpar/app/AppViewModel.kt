@@ -54,6 +54,7 @@ sealed interface Page {
     data object Score : Page
     /** My Wire, the reward programme (owner, 8 Oct 2026). */
     data object Wire : Page
+    data object WireNote : Page
     data object Training : Page
     data object Roster : Page
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
@@ -113,6 +114,7 @@ data class UiState(
     val waitingLabels: List<String> = emptyList(),
     val score: Score? = null,
     val wire: za.onpar.core.MyWire? = null,
+    val wireNotes: List<za.onpar.core.WireNote> = emptyList(),
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
@@ -613,7 +615,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadWire() = run {
         val w = device.profile.wire()
-        _state.update { it.copy(wire = w) }
+        val notes = runCatching { device.profile.wireNotes() }.getOrDefault(_state.value.wireNotes)
+        _state.update { it.copy(wire = w, wireNotes = notes) }
+    }
+
+    /** A Thuthuka note (owner's rule book, 8 Oct 2026). */
+    fun sendNote(noticed: String, suggestion: String, improves: String, photo: File?) = run {
+        try {
+            val r = device.profile.sendNote(noticed, suggestion, improves, photo)
+            if (r !is Submitted.Refused) photo?.delete()
+            done(r, "Thuthuka note sent. Thank you. You will see here what becomes of it.", Page.Wire)
+            if (r !is Submitted.Refused) {
+                val w = runCatching { device.profile.wire() }.getOrNull()
+                val notes = runCatching { device.profile.wireNotes() }.getOrDefault(_state.value.wireNotes)
+                _state.update { it.copy(wire = w ?: it.wire, wireNotes = notes) }
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
+        }
     }
 
     fun loadScore() = run {

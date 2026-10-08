@@ -74,7 +74,11 @@ data class WireNext(val name: String, val toGo: Int, val months: Int? = null)
 data class WireMonth(val month: String, val barbs: Int, val award: String? = null)
 
 @Serializable
-data class WireRecent(val date: String, val label: String, val barbs: Int)
+data class WireRecent(val date: String, val label: String, val barbs: Int, val note: String = "")
+
+/** A Thuthuka note he sent, with what became of it and why. */
+@Serializable
+data class WireNote(val id: String, val date: String, val suggestion: String, val status: String, val statusLabel: String, val reason: String = "")
 
 @Serializable
 data class MyWire(
@@ -98,6 +102,30 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
     private val trainingFile = File(dataDir, "training.json")
     private val rosterFile = File(dataDir, "roster.json")
     private val wireFile = File(dataDir, "wire.json")
+
+    private val notesFile = File(dataDir, "wire-notes.json")
+
+    /** His Thuthuka notes. The last copy is kept for when there is no signal. */
+    fun wireNotes(): List<WireNote> = fetch("/device/wire/notes", notesFile, device.requireGuard())
+
+    /**
+     * Sends a Thuthuka note: what he noticed, what he suggests, what it improves, and a photo if
+     * he took one. With no signal it waits on the phone and goes when signal returns.
+     */
+    fun sendNote(noticed: String, suggestion: String, improves: String, photo: File?): Submitted {
+        require(noticed.trim().length >= 5) { "Say what you noticed." }
+        require(suggestion.trim().length >= 5) { "Say what you suggest." }
+        require(improves.trim().length >= 3) { "Say what it would make better." }
+        val eventId = java.util.UUID.randomUUID().toString()
+        val body = buildJsonObject {
+            put("eventId", eventId)
+            put("noticed", noticed.trim())
+            put("suggestion", suggestion.trim())
+            put("improves", improves.trim())
+        }
+        val files = if (photo != null && photo.exists() && photo.length() > 0) listOf(Upload("photo", photo, "image/jpeg")) else emptyList()
+        return device.outbox.submit(device.client(), eventId, "Thuthuka note", "/device/wire/notes", body, device.requireGuard(), files)
+    }
 
     /** My Wire. The last copy is kept for when there is no signal. */
     fun wire(): MyWire? = try {
@@ -189,5 +217,6 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         trainingFile.delete()
         rosterFile.delete()
         wireFile.delete()
+        notesFile.delete()
     }
 }

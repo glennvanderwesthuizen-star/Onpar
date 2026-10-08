@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { bobWireMonthsTo, mergeWire } from '@onpar/rules';
 import { ErrorBanner, Field, Pill, formatDate, useLoad } from '@/components/ui';
+import { WireApprovals } from '@/components/WireApprovals';
 
 /**
  * The Wire: the guard reward programme (owner's rule book of 8 Oct 2026). For the owner this is
@@ -22,6 +23,8 @@ interface Settings {
   entryBands: { from: number; barbs: number }[];
   launchCreditPerYear: number;
   randPerBarb: number;
+  notesPaidPerMonth: number;
+  discretionaryBudgetPerSite: number;
   weights: Record<string, number>;
 }
 interface GuardRow {
@@ -96,6 +99,11 @@ const BARB_FIELDS: { key: string; label: string }[] = [
   { key: 'longServiceMonthly', label: 'Long service, per month worked' },
   { key: 'anniversary', label: 'Anniversary, each year' },
   { key: 'newSkill', label: 'New skill (course or grade)' },
+  { key: 'thuthukaSent', label: 'Thuthuka note sent' },
+  { key: 'thuthukaAdopted', label: 'Thuthuka note adopted' },
+  { key: 'customerPraise', label: 'Customer praise' },
+  { key: 'discretionaryMin', label: 'Recognition award, least' },
+  { key: 'discretionaryMax', label: 'Recognition award, most' },
 ];
 
 export default function WirePage() {
@@ -148,6 +156,8 @@ export default function WirePage() {
         <b>Bob Wire</b>, earning every barb on {data.bob.shifts} shifts a month, would reach silver in {inMonths(data.bob.monthsToSilver)} and gold in {inMonths(data.bob.monthsToGold)}.
         {goldTooSoon ? ' That is under three years: raise the gold threshold or lower some values.' : ' Nobody can reach gold sooner than that.'}
       </div>
+
+      <WireApprovals guards={data.guards.filter((g) => g.active)} changed={reload} />
 
       <div className="card scroll">
         <h2>Guards</h2>
@@ -395,7 +405,7 @@ function Values({ data, saved }: { data: Overview; saved: () => void }) {
     <div className="card">
       <h2>Values, and what if they were different</h2>
       <p className="mute small">
-        Change any value, then tap <b>Try these values</b> to replay the real months under them and compare with what was paid. Trying writes nothing.
+        Change any value, then tap <b>Try these values</b> to replay the real months under them and compare with what was paid. Trying writes nothing. The replay covers the barbs paid automatically, not notes and awards decided by a person.
         {data.canManage && ' Saving makes them the values in force from the next shift and month end; barbs already earned stay as they are.'}
       </p>
       <ErrorBanner error={err} />
@@ -417,6 +427,8 @@ function Values({ data, saved }: { data: Overview; saved: () => void }) {
         <Field label="Ready for duty: minutes before the start">{intIn(v.readyLeadMinutes, (n) => setV({ ...v, readyLeadMinutes: n }))}</Field>
         <Field label="Service before The Wire, barbs per year">{intIn(v.launchCreditPerYear, (n) => setV({ ...v, launchCreditPerYear: n }))}</Field>
         <Field label="Company cost of one barb (R)">{intIn(v.randPerBarb, (n) => setV({ ...v, randPerBarb: n }))}</Field>
+        <Field label="Thuthuka notes paid each month">{intIn(v.notesPaidPerMonth, (n) => setV({ ...v, notesPaidPerMonth: n }))}</Field>
+        <Field label="Recognition barbs per site per month">{intIn(v.discretionaryBudgetPerSite, (n) => setV({ ...v, discretionaryBudgetPerSite: n }))}</Field>
         {data.canManage && (
           <Field label="The Wire started on" hint="Shifts from this day earn barbs. Set it earlier to count shifts already worked; barbs already paid stay.">
             <input type="date" value={started} max={data.today} onChange={(e) => setStarted(e.target.value)} />

@@ -71,6 +71,10 @@ describe('The Wire', () => {
     await w.http().post('/api/wire/run').set(auth(admin));
     expect(await entries(ready.id)).toHaveLength(mine.length);
     const months = await ownerQuery(`SELECT month, overall::float, award, streak FROM wire_months WHERE employee_id = $1 ORDER BY month`, [ready.id]);
+    // Three months in a row at the standard: the system suggests a recognition award to the owner, once.
+    expect(await ownerQuery(`SELECT kind, status, why, source_key FROM wire_awards WHERE employee_id = $1`, [ready.id])).toEqual([
+      { kind: 'discretionary', status: 'pending', why: '3 months in a row at the standard', source_key: 'streak:2026-09' },
+    ]);
     expect(months.map((m) => [m.month, m.overall, m.award, m.streak])).toEqual([
       ['2026-07', 100, 'standard', 1],
       ['2026-08', 100, 'standard', 2],
