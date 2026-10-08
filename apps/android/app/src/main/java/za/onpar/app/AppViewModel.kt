@@ -57,6 +57,9 @@ sealed interface Page {
     data object WireNote : Page
     data object WireGoals : Page
     data object WireBoard : Page
+    /** The shift handover (D-45): equipment and note out, and received by the next guard. */
+    data object ShiftHandover : Page
+    data object ReceiveHandover : Page
     data object Training : Page
     data object Roster : Page
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
@@ -159,6 +162,7 @@ data class UiState(
     /** The outgoing guard's handover while he works through it, and whether he has signed it off. */
     val handover: za.onpar.core.HandoverView? = null,
     val handoverDone: Boolean = false,
+    val shiftHandover: za.onpar.core.ShiftHandoverState? = null,
     /** Goes up each time a new overstay needs the guard, so the phone sounds once for it. */
     val overstayAlarm: Int = 0,
     val panic: PanicStatus? = null,
@@ -388,6 +392,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Score) loadScore()
         if (page == Page.Wire || page == Page.WireGoals) loadWire()
         if (page == Page.WireBoard) loadBoard()
+        if (page == Page.ShiftHandover || page == Page.ReceiveHandover) loadShiftHandover()
         if (page == Page.Training) loadTraining()
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
@@ -623,6 +628,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val notes = runCatching { device.profile.wireNotes() }.getOrDefault(_state.value.wireNotes)
         val store = runCatching { device.profile.wireStore() }.getOrNull()
         _state.update { it.copy(wire = w, wireNotes = notes, wireStore = store ?: it.wireStore) }
+    }
+
+    /** Quietly fetches the shift handover, so the home screen can show one waiting to be received. */
+    fun loadShiftHandover() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { device.handover.state() }.getOrNull()?.let { h -> _state.update { it.copy(shiftHandover = h) } }
+        }
+    }
+
+    fun handOverShift(items: List<za.onpar.core.HandoverLine>, note: String) = run {
+        val h = device.handover.handOver(items, note)
+        val problems = za.onpar.core.HandoverActions.problems(items)
+        _state.update { it.copy(shiftHandover = h, page = Page.Home, message = if (problems.isEmpty()) "Handed over. The next guard checks it and receives it." else "Handed over. An equipment report was raised for: ${problems.joinToString("; ")}.") }
+    }
+
+    fun receiveHandover(id: String, items: List<za.onpar.core.HandoverLine>, note: String) = run {
+        val h = device.handover.receive(id, items, note)
+        _state.update { it.copy(shiftHandover = h, page = Page.Home, message = "Handover received.") }
     }
 
     fun loadBoard() = run {

@@ -164,4 +164,15 @@ class ProfileTest {
         assertEquals(null, device.tasks.seen(task))
         assertEquals(null, device.tasks.seen(task.copy(id = "t2", state = "completed")))
     }
+
+    @Test
+    fun `the shift handover lists what is missing or damaged and goes to the server`() {
+        val lines = listOf(HandoverLine("Radio", 2, 2), HandoverLine("Torch", 2, 1), HandoverLine("Handheld device", 1, 1, damaged = true))
+        assertEquals(listOf("Torch: 1 of 2", "Handheld device: damaged"), HandoverActions.problems(lines))
+        server.enqueue(MockResponse().setBody("""{"onDuty":true,"equipment":[{"name":"Radio","count":2}],"mine":{"id":"h1","from":"Me","signedAt":"2026-10-08T16:00:00Z","items":[]},"incoming":null}"""))
+        val s = device.handover.handOver(lines, "Gate 2 lock sticks")
+        assertEquals("h1", s.mine!!.id)
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("Gate 2 lock sticks") && body.contains("\"present\":1"))
+    }
 }

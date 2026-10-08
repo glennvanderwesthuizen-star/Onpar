@@ -11,6 +11,7 @@ import { SiteCustomers } from '@/components/SiteCustomers';
 import { SiteUnitStaff } from '@/components/UnitStaff';
 import { SitePostings } from '@/components/SitePostings';
 import { SiteArmedLogo } from '@/components/SiteArmedLogo';
+import { SiteShiftHandovers } from '@/components/SiteShiftHandovers';
 import { SiteVisitExceptions, SiteVisitHandovers, SiteVisitors, SiteVisitorsOnSite, SiteVisits } from '@/components/SiteVisitors';
 
 type Site = SiteValue & { id: string; armedResponseLogo?: boolean; coverage: { officers: number; neededPerDay: number } };
@@ -64,6 +65,7 @@ export default function SitePage({ params }: { params: Promise<{ id: string }> }
       )}
       <SiteArmedLogo siteId={id} initial={!!data.armedResponseLogo} />
       <SitePostings siteId={id} />
+      <SiteShiftHandovers siteId={id} />
       <SiteCustomers siteId={id} />
       <SiteUnitStaff siteId={id} />
       <SiteVisitorsOnSite siteId={id} />

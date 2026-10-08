@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,6 +109,8 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.WireNote -> if (state.owed != null) HomeScreen(vm, state) else WireNoteScreen(vm, state)
                     Page.WireGoals -> if (state.owed != null) HomeScreen(vm, state) else WireGoalsScreen(vm, state)
                     Page.WireBoard -> if (state.owed != null) HomeScreen(vm, state) else WireBoardScreen(vm, state)
+                    Page.ShiftHandover -> if (state.owed != null) HomeScreen(vm, state) else ShiftHandoverScreen(vm, state)
+                    Page.ReceiveHandover -> if (state.owed != null) HomeScreen(vm, state) else ReceiveHandoverScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
                     Page.Visitors -> if (state.owed != null) HomeScreen(vm, state) else VisitorsScreen(vm, state)
@@ -377,12 +380,24 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
             }
             // On a gate phone the visitors on site are handed over first (owner, 7 Oct 2026). Without signal the phone lets him try.
             val handoverFirst = shift.visitorHandoverOwed && state.gate?.gate != null && state.online
+            LaunchedEffect(shift.dutyOnAt) { vm.loadShiftHandover() }
+            val sh = state.shiftHandover
+            // A handover from the guard before him, waiting to be checked and received (D-45).
+            sh?.incoming?.let { inc ->
+                Card(Modifier.fillMaxWidth()) {
+                    Text("Handover from ${inc.from} is waiting: check it and receive it.", Modifier.background(Color(0xFFFFF4D6)).padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
+                }
+                BigButton("RECEIVE THE HANDOVER", enabled = !state.busy) { vm.go(Page.ReceiveHandover) }
+            }
             if (handoverFirst && !blocked) {
                 Card(Modifier.fillMaxWidth()) {
                     Text("Before Duty From, hand over the visitors on site.", Modifier.background(Color(0xFFFFF4D6)).padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
                 }
-                BigButton("HAND OVER SHIFT", enabled = !state.busy) { vm.go(Page.Handover) }
             }
+            if (sh?.mine == null) {
+                if (handoverFirst && !blocked) BigButton("HAND OVER SHIFT", enabled = !state.busy) { vm.go(Page.ShiftHandover) }
+                else OutlinedButton(onClick = { vm.go(Page.ShiftHandover) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("HAND OVER SHIFT", fontSize = 18.sp) }
+            } else Text("Shift handed over at ${time(sh!!.mine!!.signedAt)}.", color = Green, fontWeight = FontWeight.Bold)
             BigButton(if (blocked) "DUTY FROM (wait for relief)" else if (handoverFirst) "DUTY FROM (hand over first)" else "DUTY FROM", enabled = !state.busy && !blocked && !handoverFirst) { askPin = DutyKind.FROM }
             if (relief?.canGiveTurn == true) {
                 OutlinedButton(onClick = { askTurnPin = true }, modifier = Modifier.fillMaxWidth()) { Text("Let my partner go first") }

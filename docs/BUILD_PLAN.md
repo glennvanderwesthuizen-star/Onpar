@@ -1044,3 +1044,14 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - **Reminders:** the owner gets a "The Wire: waiting for you" alert, once, for a Thuthuka note not looked at within a day, and for an award or hand-in waiting a week.
 - Migration `0048_wire_finish.sql`. Tests: 1 rules, 6 server, 1 phone-logic.
 - "Try these values" now includes fast response; mentor awards are not replayed.
+
+## Full shift handover (owner, 7 Oct 2026; D-45), built 8 Oct 2026 with defaults
+
+- **The equipment list is per shift of the site**: the "Equipment for this shift" already set up on the site (Radio 2, Torch 2 and so on).
+- **One handover screen** on the post phone (HAND OVER SHIFT on the home screen while on duty): on a gate phone the visitors first (the existing visitor handover), then each item counted with − and + and a "Damaged" tick, then a note for the next guard, then SIGN. Once per shift.
+- **The next guard** on duty at that post sees "Handover from … is waiting" on his home screen, opens RECEIVE THE HANDOVER, counts what is really there (starting from what was handed over), adds a note if he likes, and receives it.
+- **Anything missing or damaged** when handing over, and **any difference** found when receiving, becomes an amber equipment report in the normal report workflow, raised in the guard's name.
+- **The website** shows the site's last 30 handovers (who to whom, counts, notes, report numbers, received or not) on the site page.
+- **Defaults chosen, for the owner to change:** the list is per shift (not per post); missing or damaged items raise an equipment report; the handover does **not** stop Duty From or the incoming guard's work (warn, not block, as with lock or roam) — supervisors see any handover not received. The visitor handover still has to be done before Duty From on gate phones.
+- **Not built:** a voice note with the handover (nice-to-have); signing by both guards on one phone at the same moment.
+- Migration `0049_shift_handovers.sql`; rules `packages/rules/src/handover.ts`. Tests: 3 rules, 4 server, 1 phone-logic.

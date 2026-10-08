@@ -35,6 +35,7 @@ import { PrivacyController } from './privacy/privacy.controller';
 import { RetentionService } from './privacy/retention.service';
 import { RosterService } from './roster/roster.service';
 import { WireService } from './wire/wire.service';
+import { GuardShiftHandoverController, SiteShiftHandoverController } from './attendance/shift-handover.controller';
 import { GuardWireController, WireController } from './wire/wire.controller';
 import { GuardWireNotesController, WireApprovalsController } from './wire/wire-approvals.controller';
 import { GuardWireStoreController, WireStoreController, WireStoreService } from './wire/wire-store.controller';
@@ -78,6 +79,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       SitesController,
       TestSiteController,
       WireController,
+      GuardShiftHandoverController,
+      SiteShiftHandoverController,
       GuardWireController,
       WireApprovalsController,
       GuardWireNotesController,
