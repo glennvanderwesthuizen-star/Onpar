@@ -6,6 +6,7 @@ import { bobWireMonthsTo, mergeWire } from '@onpar/rules';
 import { ErrorBanner, Field, Pill, formatDate, useLoad } from '@/components/ui';
 import { WireApprovals } from '@/components/WireApprovals';
 import { WireStore } from '@/components/WireStore';
+import { WireBoard } from '@/components/WireBoard';
 
 /**
  * The Wire: the guard reward programme (owner's rule book of 8 Oct 2026). For the owner this is
@@ -235,6 +236,8 @@ export default function WirePage() {
           </table>
         )}
       </div>
+
+      <WireBoard />
 
       <WireStore canManage={data.canManage} settings={data.settings as unknown as Record<string, unknown>} saved={reload} />
 

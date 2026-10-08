@@ -596,3 +596,37 @@ export function goalProgress(item: Omit<WireItem, 'id'>, g: GoalGuard, s: WireSe
   const monthsToGo = ready ? 0 : blockedByGrade || waits.some((w) => !Number.isFinite(w)) ? null : Math.max(0, ...waits);
   return { steps, ready, monthsToGo };
 }
+
+// --- The recognition board (step 4) --------------------------------------------------------
+
+/**
+ * The most improved guards of a month, each measured against his own three-month average. Only
+ * guards who improved are listed, so the board never has a last place.
+ */
+export function mostImproved<T extends { overall: number; average: number | null }>(rows: T[], n = 5): (T & { improvedBy: number })[] {
+  return rows
+    .filter((r) => r.average !== null && r.overall - r.average > 0)
+    .map((r) => ({ ...r, improvedBy: round1(r.overall - (r.average as number)) }))
+    .sort((a, b) => b.improvedBy - a.improvedBy)
+    .slice(0, n);
+}
+
+/** Wire milestones passed going from one total to another: silver, gold and every further 1,000. */
+export function milestonesCrossed(before: number, after: number, s: WireSettings): { at: number; label: string }[] {
+  const marks = new Set<number>([s.silver, s.gold]);
+  for (let t = 1000; t <= after; t += 1000) if (t > s.silver) marks.add(t);
+  return [...marks]
+    .filter((t) => before < t && t <= after)
+    .sort((a, b) => a - b)
+    .map((t) => ({ at: t, label: t === s.gold ? 'Gold barb' : t === s.silver ? 'Silver barb' : `${thousands(t)} barbs on the Wire` }));
+}
+
+/**
+ * How a guard appears on the board (rule book): by name only if he chose to be shown, and with his
+ * site only to guards of the same site; everyone else sees his region.
+ */
+export function boardName(g: { name: string; showName: boolean; siteName: string | null; region: string | null }, sameSite: boolean): string {
+  const where = sameSite ? g.siteName : g.region;
+  const who = g.showName ? g.name : 'A guard';
+  return where ? `${who}, ${where}` : who;
+}

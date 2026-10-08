@@ -111,6 +111,22 @@ data class WireStoreView(
     val handins: List<WireHandIn> = emptyList(),
 )
 
+/** The recognition board: most improved guards and Wire milestones. Never a ranking. */
+@Serializable
+data class BoardImproved(val display: String, val improvedBy: Double)
+
+@Serializable
+data class BoardMilestone(val display: String, val label: String, val date: String)
+
+@Serializable
+data class WireBoard(
+    val month: String? = null,
+    val improved: List<BoardImproved> = emptyList(),
+    val milestones: List<BoardMilestone> = emptyList(),
+    val ownLine: String? = null,
+    val showMyName: Boolean = false,
+)
+
 /** A Thuthuka note he sent, with what became of it and why. */
 @Serializable
 data class WireNote(val id: String, val date: String, val suggestion: String, val status: String, val statusLabel: String, val reason: String = "")
@@ -201,6 +217,21 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
             put("itemId", itemId)
         }
         return storeReply(device.client().post("/device/wire/handin", body, device.requireGuard()))
+    }
+
+    private val boardFile = File(dataDir, "wire-board.json")
+
+    fun wireBoard(): WireBoard? = try {
+        val b = OnParJson.decodeFromJsonElement(WireBoard.serializer(), device.client().get("/device/wire/board", device.requireGuard()))
+        boardFile.writeText(OnParJson.encodeToString(WireBoard.serializer(), b))
+        b
+    } catch (e: OfflineException) {
+        if (boardFile.exists()) runCatching { OnParJson.decodeFromString(WireBoard.serializer(), boardFile.readText()) }.getOrNull() else null
+    }
+
+    /** His choice whether his name shows on the board. */
+    fun showMyName(show: Boolean) {
+        device.client().post("/device/wire/show-name", buildJsonObject { put("show", show) }, device.requireGuard())
     }
 
     /** My Wire. The last copy is kept for when there is no signal. */
@@ -295,5 +326,6 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         wireFile.delete()
         notesFile.delete()
         storeFile.delete()
+        boardFile.delete()
     }
 }

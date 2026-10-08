@@ -142,4 +142,16 @@ class ProfileTest {
         server.shutdown()
         assertEquals(1, device.profile.wireStore()!!.goal!!.monthsToGo)
     }
+
+    @Test
+    fun `the recognition board and the choice to show his name`() {
+        server.enqueue(MockResponse().setBody("""{"month":"2026-09","improved":[{"display":"A guard, Estate ABC","improvedBy":8.5}],"milestones":[{"display":"A guard, Gauteng","label":"Silver barb","date":"2026-10-08"}],"ownLine":"Last month you earned 92 barbs.","showMyName":false}"""))
+        val b = device.profile.wireBoard()!!
+        assertEquals(8.5, b.improved.single().improvedBy)
+        assertEquals("Silver barb", b.milestones.single().label)
+        server.takeRequest()
+        server.enqueue(MockResponse().setBody("""{"showMyName":true}"""))
+        device.profile.showMyName(true)
+        assertTrue(server.takeRequest().body.readUtf8().contains("true"))
+    }
 }

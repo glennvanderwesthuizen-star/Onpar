@@ -16,6 +16,9 @@ import {
   shiftBarbs,
   simulateGuard,
   wireSettingsErrors,
+  mostImproved,
+  milestonesCrossed,
+  boardName,
   goalProgress,
   wireItemErrors,
   DEFAULT_WIRE_ITEMS,
@@ -170,6 +173,29 @@ describe('The Wire', () => {
     expect(wireItemErrors({ ...DEFAULT_WIRE_ITEMS[0], barbs: 0, active: true })).toHaveProperty('barbs');
     expect(wireItemErrors({ ...DEFAULT_WIRE_ITEMS[0], needsGrade: 'Z', active: true })).toHaveProperty('needsGrade');
     expect(s.storeOpen).toBe(false);
+  });
+
+  it('the board lists only guards who improved, best first, and never a last place', () => {
+    const rows = [
+      { id: 'a', overall: 90, average: 80 },
+      { id: 'b', overall: 70, average: 75 },
+      { id: 'c', overall: 85, average: null },
+      { id: 'd', overall: 96, average: 95 },
+    ];
+    expect(mostImproved(rows).map((r) => [r.id, r.improvedBy])).toEqual([
+      ['a', 10],
+      ['d', 1],
+    ]);
+  });
+
+  it('milestones: silver, gold and every further 1,000; names only when chosen; region outside his site', () => {
+    expect(milestonesCrossed(950, 1010, s)).toEqual([{ at: 1000, label: 'Silver barb' }]);
+    expect(milestonesCrossed(1990, 2010, s)).toEqual([{ at: 2000, label: '2,000 barbs on the Wire' }]);
+    expect(milestonesCrossed(4990, 6010, s).map((m) => m.label)).toEqual(['Gold barb', '6,000 barbs on the Wire']);
+    expect(milestonesCrossed(100, 200, s)).toEqual([]);
+    const g = { name: 'Sipho Dlamini', showName: false, siteName: 'Estate ABC', region: 'Gauteng' };
+    expect(boardName(g, true)).toBe('A guard, Estate ABC');
+    expect(boardName({ ...g, showName: true }, false)).toBe('Sipho Dlamini, Gauteng');
   });
 
   it('checks settings', () => {

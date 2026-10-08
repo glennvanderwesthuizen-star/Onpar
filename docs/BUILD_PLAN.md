@@ -1017,3 +1017,12 @@ The guard reward programme, built so the owner can run it through the pilot (abo
 - Migration `0046_wire_goals_store.sql`. Tests: 2 rules, 7 server, 1 phone-logic.
 
 **Not yet built:** the recognition board (step 4), automatic airtime from a supplier, the monthly payroll and franchisee file of supplied hand-ins, a goal reminder when a guard becomes ready.
+
+## The Wire, step 4: recognition board (owner, 8 Oct 2026; D-49)
+
+- **On the phone** (My Wire → Recognition board): his own last month in one positive sentence; the five most improved guards of the last finished month, each measured against his own three-month average (only guards who improved, so no last place, never a full ranking); Wire milestones of the last 60 days (silver, gold and every further 1,000).
+- **Names by choice:** a guard shows as "A guard" until he switches on "Show my name on the board". Guards at his own site see his site; everyone else sees his region (province). No photos on the board until the POPIA answer.
+- **On the website:** a Recognition board card on The Wire page with real names, marked where the guard has chosen not to be named.
+- Tests: 2 rules, 3 server, 1 phone-logic.
+
+**The Wire is now built to the build specification except:** mentoring, fast response (needs task acknowledgement), automatic airtime from a supplier, the monthly payroll and franchisee file of supplied hand-ins, alumni mode for guards who leave, the yearly naming of a real Bob Wire, photos on the board (POPIA), and reminders (note acknowledged in 24 hours, decided in 30 days; goal reached).

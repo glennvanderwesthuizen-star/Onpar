@@ -56,6 +56,7 @@ sealed interface Page {
     data object Wire : Page
     data object WireNote : Page
     data object WireGoals : Page
+    data object WireBoard : Page
     data object Training : Page
     data object Roster : Page
     /** The gate's visitors (visitor management). Only on a phone set up as a gate phone. */
@@ -117,6 +118,7 @@ data class UiState(
     val wire: za.onpar.core.MyWire? = null,
     val wireNotes: List<za.onpar.core.WireNote> = emptyList(),
     val wireStore: za.onpar.core.WireStoreView? = null,
+    val wireBoard: za.onpar.core.WireBoard? = null,
     val training: List<Qualification> = emptyList(),
     val roster: za.onpar.core.GuardRoster? = null,
     val uniform: za.onpar.core.UniformState? = null,
@@ -385,6 +387,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
         if (page == Page.Score) loadScore()
         if (page == Page.Wire || page == Page.WireGoals) loadWire()
+        if (page == Page.WireBoard) loadBoard()
         if (page == Page.Training) loadTraining()
         if (page == Page.Roster) loadRoster()
         if (page == Page.Uniform) loadUniform()
@@ -620,6 +623,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val notes = runCatching { device.profile.wireNotes() }.getOrDefault(_state.value.wireNotes)
         val store = runCatching { device.profile.wireStore() }.getOrNull()
         _state.update { it.copy(wire = w, wireNotes = notes, wireStore = store ?: it.wireStore) }
+    }
+
+    fun loadBoard() = run {
+        val b = device.profile.wireBoard()
+        _state.update { it.copy(wireBoard = b) }
+    }
+
+    /** His choice whether his name shows on the recognition board. */
+    fun showMyName(show: Boolean) = run {
+        device.profile.showMyName(show)
+        val b = device.profile.wireBoard()
+        _state.update { it.copy(wireBoard = b) }
     }
 
     /** His goal: a row of the owner's table, or his own words (owner, 8 Oct 2026). */

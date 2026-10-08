@@ -12,6 +12,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -94,6 +95,7 @@ fun WireScreen(vm: AppViewModel, state: UiState) {
         }
     }
     GoalCard(vm, state)
+    OutlinedButton(onClick = { vm.go(Page.WireBoard) }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Recognition board", fontSize = 17.sp) }
     Button(onClick = { vm.go(Page.WireNote) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
         Text("SEND A THUTHUKA NOTE", fontSize = 18.sp)
     }
@@ -283,5 +285,46 @@ fun WireGoalsScreen(vm: AppViewModel, state: UiState) {
             confirmButton = { TextButton(onClick = { vm.handIn(i.id); confirm = null }) { Text("Yes, hand in") } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Not now") } },
         )
+    }
+}
+
+/** The recognition board: the most improved guards and Wire milestones. Never a ranking, never a last place. */
+@Composable
+fun WireBoardScreen(vm: AppViewModel, state: UiState) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Recognition board", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { vm.go(Page.Wire) }) { Text("Back") }
+    }
+    val b = state.wireBoard
+    if (b == null) {
+        Text(if (state.busy) "Loading…" else "The board will show when the phone has signal.")
+        return
+    }
+    b.ownLine?.let {
+        Card(Modifier.fillMaxWidth()) { Text(it, modifier = Modifier.padding(16.dp), fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("MOST IMPROVED" + (b.month?.let { ", ${monthLabel(it)}" } ?: ""), fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+            if (b.improved.isEmpty()) Text("This fills in after the month end.", color = Color.Gray)
+            b.improved.forEach {
+                val pts = if (it.improvedBy % 1.0 == 0.0) it.improvedBy.toInt().toString() else it.improvedBy.toString()
+                Text("${it.display}: up $pts points on his own record")
+            }
+        }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("WIRE MILESTONES", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+            if (b.milestones.isEmpty()) Text("None lately. Yours could be next.", color = Color.Gray)
+            b.milestones.forEach { Text("${it.date}  ${it.display}: ${it.label}") }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            Text("Show my name on the board", fontWeight = FontWeight.Bold)
+            Text("Off: you show as \"A guard\".", color = Color.Gray, fontSize = 14.sp)
+        }
+        Switch(checked = b.showMyName, onCheckedChange = { vm.showMyName(it) }, enabled = !state.busy)
     }
 }
