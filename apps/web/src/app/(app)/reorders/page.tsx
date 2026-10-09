@@ -1,5 +1,6 @@
 'use client';
 
+import { StoresTabs } from '@/components/StoresTabs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -15,6 +16,7 @@ export default function ReordersPage() {
   const { data, error } = useLoad(() => api<{ rows: Reorder[]; counts: { open: number; waiting: number; received: number } }>(`/reorders?status=${status}`), [status]);
   return (
     <>
+      <StoresTabs />
       <div className="head">
         <div>
           <h1>Re-orders</h1>

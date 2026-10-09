@@ -1,5 +1,6 @@
 'use client';
 
+import { StoresTabs } from '@/components/StoresTabs';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { formatRand, sastDate, UNIFORM_CONDITIONS } from '@onpar/rules';
@@ -66,6 +67,7 @@ export default function UniformPage() {
   }, []);
   return (
     <>
+      <StoresTabs />
       <div className="head">
         <div>
           <h1>Uniform</h1>

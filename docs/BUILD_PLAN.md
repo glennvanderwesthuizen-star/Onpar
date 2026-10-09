@@ -1186,3 +1186,16 @@ The owner approved phase 0 of the optimisation review ("start with zero"). Built
 - **Uploads:** a file stored during a database step is removed again if that step fails, everywhere (`common/tx-files.ts`). The report photo is stored before the report-number lock, so a slow upload no longer holds up other reports.
 - **One look-up instead of many:** the visitors dashboard (all sites at once) and The Wire board (one sum per guard plus recent entries). The HR attention list only loops over the few employees at the warning threshold, so it is left as it is.
 - **Later:** loading long lists page by page.
+
+## Optimisation review, phase 3: menu and colour (owner, 9 Oct 2026)
+
+- **The menu:** 24 links are grouped down the left under six headings: On duty now, Shifts, Sites and gates, People, Stores, Company. The headings live in one list in `apps/web/src/app/(app)/layout.tsx`, so they are easy to change as the owner adjusts them. On a narrow screen the menu folds into a Menu button. Alerts sits top right of the page.
+- **Colour (owner: "put some colour onto our website"):**
+  - The menu is in the wine of the TSF shield.
+  - Buttons and "on par" are fairway green.
+  - The background is a cool chalk.
+  - Alarm red is kept for panic and danger only, so it is never confused with the brand.
+  - Dark mode has its own matching colours.
+  - The typeface is Barlow (drawn from road signage), stored with the site rather than fetched.
+- **Stores, one place (owner: one uniform and re-order setup; design left to us):** one menu entry, "Uniform and re-orders", opens a page with two tabs: Uniform orders (what guards order on the post phone) and Re-orders (replacement kit and site supplies). Someone who may see only one of the two sees just that one.
+- **Not done yet:** the site page in tabs, and shared building blocks across website, phone and server.

@@ -1,11 +1,22 @@
+/*
+ * Colour (phase 3, owner: "put some colour onto our website"). The wine of the TSF shield for the
+ * menu, fairway green for actions and "on par", a cool chalk ground. Alarm red stays for panic
+ * and danger only, so it is never mistaken for the brand colour.
+ */
 :root {
-  --bg: #eef2f4;
+  --bg: #edf0ef;
   --card: #fff;
-  --ink: #16232b;
-  --mute: #5d6b73;
-  --line: #d3dde2;
-  --acc: #0c4a34;
+  --ink: #18221f;
+  --mute: #56645f;
+  --line: #d3dbd8;
+  --acc: #1e6b48;
   --acc-ink: #fff;
+  --wine: #5c1219;
+  --wine-2: #78202a;
+  --wine-ink: #f8eeee;
+  --wine-mute: #dcb4b9;
+  --wine-line: rgba(255, 255, 255, .14);
+  --fairway-light: #9fdcb9;
   --green: #1b7a4e;
   --green-bg: #dff3e7;
   --amber: #b86e00;
@@ -20,13 +31,19 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f171b;
-    --card: #18242a;
-    --ink: #e6eef1;
-    --mute: #93a3ab;
-    --line: #2b3b43;
+    --bg: #111715;
+    --card: #1a2321;
+    --ink: #e7eeeb;
+    --mute: #98a6a1;
+    --line: #2c3a36;
     --acc: #4cc38a;
     --acc-ink: #08130e;
+    --wine: #2b0b10;
+    --wine-2: #47141b;
+    --wine-ink: #f1e4e5;
+    --wine-mute: #bf959a;
+    --wine-line: rgba(255, 255, 255, .1);
+    --fairway-light: #7fd1a6;
     --green: #4cc38a;
     --green-bg: #173427;
     --amber: #f2b45a;
@@ -41,25 +58,60 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
-body { font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+body { font: 15.5px/1.5 Barlow, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 a { color: inherit; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 17px; margin: 0 0 10px; }
-h3 { font-size: 15px; margin: 0 0 8px; }
+h1, h2, h3, .logo { font-family: 'Barlow Semi Condensed', Barlow, system-ui, sans-serif; text-wrap: balance; }
+h1 { font-size: 28px; line-height: 1.15; font-weight: 700; margin: 0 0 6px; }
+h2 { font-size: 19px; font-weight: 700; margin: 0 0 10px; }
+h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
 p { margin: 0 0 8px; }
 .mute { color: var(--mute); }
 .small { font-size: 13px; }
 
-/* Header */
-.top { display: flex; align-items: center; gap: 8px 12px; padding: 8px 20px 0; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+/* Brand */
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand img { height: 36px; width: 36px; border-radius: 6px; }
-.logo { font-weight: 800; font-size: 20px; letter-spacing: .02em; }
+.logo { font-weight: 700; font-size: 21px; letter-spacing: .01em; }
 .logo i { font-style: normal; color: var(--green); }
-.nav { display: flex; gap: 2px; flex-wrap: wrap; order: 3; flex-basis: 100%; margin: 0 -9px; }
-.nav a { padding: 8px 9px; font-size: 14px; text-decoration: none; color: var(--mute); border-bottom: 2px solid transparent; }
-.nav a.on { color: var(--ink); font-weight: 700; border-color: var(--green); }
-.who { margin-left: auto; text-align: right; font-size: 12px; line-height: 1.35; }
+
+/* The frame: the menu down the left in TSF wine, grouped under headings (phase 3) */
+.shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+.side { background: var(--wine); color: var(--wine-ink); position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
+.side-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 8px; }
+.side .brand img { background: #fff; padding: 2px; border-radius: 8px; }
+.side .logo { color: var(--wine-ink); font-size: 25px; }
+.side .logo i { color: var(--fairway-light); }
+.menu-toggle { display: none; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--wine-line); border-radius: 8px; background: var(--wine-2); color: var(--wine-ink); font: 600 15px Barlow, system-ui, sans-serif; cursor: pointer; }
+.side-body { display: flex; flex-direction: column; flex: 1; padding: 0 10px 18px; }
+.menu-group { padding: 9px 0 6px; border-top: 1px solid var(--wine-line); }
+.menu-group:first-child { border-top: 0; padding-top: 4px; }
+.menu-group h2 { font-size: 14px; font-weight: 600; color: var(--wine-mute); margin: 0 8px 4px; }
+.menu a { display: block; padding: 4px 10px; margin: 1px 0; border-radius: 7px; color: var(--wine-ink); text-decoration: none; font-size: 15px; line-height: 1.45; }
+.menu a:hover { background: var(--wine-2); }
+.menu a.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: inset 4px 0 0 var(--green); }
+.side a:focus-visible, .side button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.who { margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--wine-line); font-size: 13.5px; line-height: 1.35; display: flex; flex-direction: column; gap: 2px; }
+.who > span { color: var(--wine-mute); }
+.who-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.who-links a, .who-links button { color: var(--wine-ink); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--wine-mute); }
+.main { min-width: 0; display: flex; flex-direction: column; }
+.main-bar { display: flex; justify-content: flex-end; padding: 12px 20px 0; }
+.main-bar a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-weight: 600; padding: 5px 14px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); }
+.main-bar a.on { border-color: var(--green); color: var(--green); }
+/* Tabs that join two related pages into one place (Stores: uniform orders and re-orders). */
+.section-tabs { display: flex; gap: 6px; margin: 0 0 14px; flex-wrap: wrap; }
+.section-tabs a { padding: 6px 14px; border-radius: 99px; text-decoration: none; font-weight: 600; color: var(--mute); border: 1px solid var(--line); background: var(--card); }
+.section-tabs a.on { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { height: auto; z-index: 20; }
+  .side-top { padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+  .side .logo { font-size: 22px; }
+  .menu-toggle { display: inline-flex; }
+  .side-body { display: none; }
+  .menu-open .side-body { display: flex; max-height: calc(100vh - 64px); overflow-y: auto; }
+  .main-bar { padding: 10px 16px 0; }
+}
 
 .page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
 .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -177,10 +229,6 @@ a.line:hover { background: var(--bg); }
 .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 12px; }
 .dgrid .card { margin: 0; }
 
-@media (max-width: 640px) {
-  .top { padding: 8px 16px 0; }
-  .who { margin-left: auto; }
-}
 
 /* Reports (section 24): colour badge and flat traffic light */
 .rbadge { display: inline-block; min-width: 42px; text-align: center; padding: 2px 8px; border-radius: 6px; color: #fff; font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -269,7 +317,8 @@ a.line:hover { background: var(--bg); }
 .eform-list li { margin-bottom: 4px; }
 .eform-office { border: 2px dashed #777; border-radius: 6px; padding: 8px 10px; }
 @media print {
-  .top, .no-print, .panic-banner { display: none !important; }
+  .side, .main-bar, .no-print, .panic-banner { display: none !important; }
+  .shell { display: block; }
   .page { max-width: none; padding: 0; margin: 0; }
   @page { size: A4; margin: 8mm; }
   .qr-sheet { display: grid; grid-template-columns: 95mm 95mm; gap: 4mm; justify-content: center; }
@@ -342,8 +391,8 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .linkish { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 
 /* Alerts (plan of 6 Oct 2026, phase 1) */
-.nav a .count { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 99px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: 1px; }
-@media (prefers-color-scheme: dark) { .nav a .count { color: #1a0d0c; } }
+.main-bar a .count { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 99px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: 1px; }
+@media (prefers-color-scheme: dark) { .main-bar a .count { color: #1a0d0c; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .alerts-list { padding: 4px 0; }
 .alert-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 12px 16px; border: 0; border-top: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; min-height: 44px; }
@@ -361,10 +410,6 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .steps li { margin-bottom: 6px; }
 
 /* Supervisor app: the phone layout (plan of 6 Oct 2026, phase 2) */
-.m-switch { display: none; }
-@media (max-width: 640px) {
-  .m-switch { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--acc); color: var(--acc-ink); font-weight: 700; text-decoration: none; }
-}
 .m-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .m-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; padding-top: calc(8px + env(safe-area-inset-top)); background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .m-who { display: flex; flex-direction: column; align-items: flex-end; text-decoration: none; font-weight: 700; line-height: 1.25; min-height: 44px; justify-content: center; }

@@ -1,4 +1,11 @@
 import type { Metadata, Viewport } from 'next';
+// Barlow: drawn from road and highway signage. Plain, sturdy and easy to read on a long shift.
+import '@fontsource/barlow/latin-400.css';
+import '@fontsource/barlow/latin-500.css';
+import '@fontsource/barlow/latin-600.css';
+import '@fontsource/barlow/latin-700.css';
+import '@fontsource/barlow-semi-condensed/latin-600.css';
+import '@fontsource/barlow-semi-condensed/latin-700.css';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,8 +21,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#18242a' },
+    { media: '(prefers-color-scheme: light)', color: '#5c1219' },
+    { media: '(prefers-color-scheme: dark)', color: '#2a0a0e' },
   ],
 };
 
