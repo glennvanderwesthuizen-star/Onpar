@@ -147,7 +147,8 @@ describe('visitor management: on-site list, overstays and handover', () => {
     // A phone call alone does not deal with it.
     expect((await onSite()).visitors.find((v: { id: string }) => v.id === late.id)).toMatchObject({ needsAction: true, action: { action: 'dialled' } });
     const [audit] = await ownerQuery(`SELECT after FROM audit_log WHERE action = 'visit.overstay_dialled' AND entity_id = $1`, [late.id]);
-    expect(JSON.stringify(audit.after)).not.toMatch(/082|0140/);
+    // Random IDs can contain these digits by chance, so they are taken out before looking for the number.
+    expect(JSON.stringify(audit.after).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '')).not.toMatch(/082|0140/);
   });
 
   it('marks a visitor as left without scan-out, as an exception for the supervisor', async () => {
