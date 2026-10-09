@@ -80,6 +80,11 @@ describe('repeated warnings and the disciplinary inquiry', () => {
     const tooSoon = await w.http().post('/api/hr/cases').set(auth(admin)).send(body(day(2)));
     expect(tooSoon.status).toBe(400);
     expect(tooSoon.body.message).toMatch(/at least 3 days/);
+    // The plain notice form cannot set an inquiry for tomorrow either.
+    const plain = (date: string) =>
+      w.http().post('/api/hr/notices').set(auth(admin)).send({ employeeId, type: 'notice_to_appear', subject: 'Notice to appear', body: 'You are required to attend a disciplinary inquiry at Head office.', details: { charge: 'Misconduct', hearingDate: date, hearingTime: '10:00', venue: 'Head office' } });
+    expect((await plain(day(1))).status).toBe(400);
+    expect((await plain(day(1))).body.message).toMatch(/at least 3 days/);
     const r = await w.http().post('/api/hr/cases').set(auth(admin)).send(body(day(3)));
     expect(r.status).toBe(201);
     caseId = r.body.id;

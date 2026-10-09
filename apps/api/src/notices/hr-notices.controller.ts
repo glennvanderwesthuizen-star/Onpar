@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { randomBytes } from 'node:crypto';
-import { NOTICE_TYPES, NoticeEventKind, noticeErrors, NoticeType, suggestedActions, WARNING_LADDER } from '@onpar/rules';
+import { hearingDateError, NOTICE_TYPES, NoticeEventKind, noticeErrors, NoticeType, suggestedActions, WARNING_LADDER } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { hashToken } from '../common/crypto';
@@ -150,6 +150,7 @@ export class HrNoticesController {
         // Recent negative performance events HR may cite as evidence. Never a trigger.
         evidence: events,
         ackHours: await this.notices.ackHours(tx),
+        hearingMinDays: (await this.notices.discipline(tx)).hearingMinDays,
       };
     });
   }
@@ -163,6 +164,12 @@ export class HrNoticesController {
     if (problems) throw new BadRequestException({ message: Object.values(problems)[0], errors: problems });
     return this.db.withTenant(user.companyId, async (tx) => {
       if (!(await tx.query(`SELECT 1 FROM employees WHERE id = $1`, [b.employeeId])).rowCount) throw new NotFoundException('Employee not found.');
+      // An inquiry needs the set notice (3 days by default) however the notice is sent (owner, 9 Oct 2026).
+      if (b.type === 'notice_to_appear') {
+        const today = (await tx.query(`SELECT to_char(now() AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD') AS d`)).rows[0].d as string;
+        const tooSoon = hearingDateError(b.details.hearingDate, today, (await this.notices.discipline(tx)).hearingMinDays);
+        if (tooSoon) throw new BadRequestException({ message: tooSoon, errors: { hearingDate: tooSoon } });
+      }
       const id = (
         await tx.query(
           `INSERT INTO notices (company_id, employee_id, type, subject, body, details, evidence, ack_hours, issued_by) VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,

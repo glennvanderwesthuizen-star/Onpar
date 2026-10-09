@@ -71,6 +71,7 @@ interface Context {
   prior: Record<NoticeType, number>;
   evidence: { id: string; label: string; points: number; date: string }[];
   ackHours: number;
+  hearingMinDays: number;
 }
 
 const TONE: Record<NoticeRow['status'], 'green' | 'amber' | 'red' | 'blue' | 'grey'> = {
@@ -352,8 +353,8 @@ function NewNotice({ employees, start, done }: { employees: Employee[]; start: S
           {hearing && (
             <>
               <div className="grid g4">
-                <Field label="Inquiry date" error={problems?.hearingDate}>
-                  <input type="date" value={d.hearingDate ?? ''} min={today()} onChange={(e) => set('hearingDate', e.target.value)} />
+                <Field label={`Inquiry date (at least ${ctx.data.hearingMinDays} days ahead)`} error={problems?.hearingDate}>
+                  <input type="date" value={d.hearingDate ?? ''} min={new Date(Date.now() + 2 * 3600_000 + ctx.data.hearingMinDays * 86_400_000).toISOString().slice(0, 10)} onChange={(e) => set('hearingDate', e.target.value)} />
                 </Field>
                 <Field label="Time" error={problems?.hearingTime}>
                   <input type="time" value={d.hearingTime ?? ''} onChange={(e) => set('hearingTime', e.target.value)} />
