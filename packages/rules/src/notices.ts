@@ -46,6 +46,8 @@ export const ACK_TEXT = 'I acknowledge that I have received this notice. This do
 
 /** The one line the shared post phone may show. Never the content (brief section 6.14). */
 export const POST_DEVICE_LINE = 'You have a personal message. Open it on your own phone or see your supervisor.';
+/** The same line when the company lets the signed-in guard open his notices on the post phone (owner, 9 Oct 2026, D-52). */
+export const POST_PHONE_LINE = 'You have a message from HR. Open MY MESSAGES to read it.';
 
 export const DEFAULT_ACK_HOURS = 48;
 

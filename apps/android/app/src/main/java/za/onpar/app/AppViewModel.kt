@@ -73,6 +73,9 @@ sealed interface Page {
     data object ExpectedVisitor : Page
     /** One visitor: waiting for the customer's answer, the phone call, and how it ended. */
     data class Visit(val id: String) : Page
+    /** MY MESSAGES: the guard's own HR notices, for the guard holding the phone (owner, 9 Oct 2026, D-52). */
+    data object Messages : Page
+    data class Message(val id: String) : Page
     /** A visitor leaving: the exit scan, the entry record, and any exception. */
     data object VisitorExit : Page
     /** Staff of a unit: found by the last six digits of their cell number, let in against their photo, and scanned out. */
@@ -174,6 +177,10 @@ data class UiState(
     val shiftHandover: za.onpar.core.ShiftHandoverState? = null,
     /** "You have a personal message…": the generic line only (brief section 6.14). */
     val personalMessage: String? = null,
+    /** Whether the guard holding the phone may open his notices here. */
+    val personalCanOpen: Boolean = false,
+    val notices: za.onpar.core.NoticeList? = null,
+    val notice: za.onpar.core.NoticeOpen? = null,
     /** Goes up each time a new overstay needs the guard, so the phone sounds once for it. */
     val overstayAlarm: Int = 0,
     val panic: PanicStatus? = null,
@@ -369,13 +376,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         device.signOut()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, personalCanOpen = false, notices = null, notice = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
     }
 
     /** Lock: the guard stays on duty; the phone goes back to the front screen (D-33). */
     fun lock() {
         device.lock()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, personalCanOpen = false, notices = null, notice = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
     }
 
     /** Unlocks a locked guard with his PIN (works without signal). */
@@ -399,6 +406,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun go(page: Page) {
         _state.update { it.copy(page = page, error = null, message = null) }
         if (page == Page.Tasks) loadTasks()
+        if (page == Page.Messages) loadNotices()
+        if (page is Page.Message) openNotice(page.id)
         if (page == Page.Patrols) loadPatrols()
         if (page == Page.Reports || page is Page.Report) loadReports()
         if (page == Page.Reorders || page == Page.NewReorder) loadReorders()
@@ -704,8 +713,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadShiftHandover() {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { device.handover.state() }.getOrNull()?.let { h -> _state.update { it.copy(shiftHandover = h) } }
-            runCatching { device.profile.personalMessage() }.getOrNull()?.let { m -> _state.update { it.copy(personalMessage = m.text) } }
+            runCatching { device.profile.personalMessage() }.getOrNull()?.let { m -> _state.update { it.copy(personalMessage = m.text, personalCanOpen = m.canOpen) } }
         }
+    }
+
+    /** His own notices; seeing the list counts as delivered. */
+    fun loadNotices() = run {
+        _state.update { it.copy(notice = null) }
+        val list = device.notices.list()
+        _state.update { it.copy(notices = list) }
+    }
+
+    /** Opening a notice is recorded. */
+    fun openNotice(id: String) = run {
+        _state.update { it.copy(notice = null) }
+        val n = device.notices.open(id)
+        _state.update { if ((it.page as? Page.Message)?.id == id) it.copy(notice = n) else it }
+    }
+
+    fun acknowledgeNotice(id: String) = run {
+        val r = device.notices.acknowledge(id)
+        _state.update { it.copy(notice = it.notice?.copy(acknowledged = r.acknowledged), message = "Receipt acknowledged.") }
+        runCatching { device.profile.personalMessage() }.getOrNull()?.let { m -> _state.update { it.copy(personalMessage = m.text, personalCanOpen = m.canOpen) } }
     }
 
     /** An Occurrence Book entry; with no signal it waits on the phone. */

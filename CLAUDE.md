@@ -23,7 +23,7 @@ The owner is not a developer. Explain in plain language, work in small steps, sh
 - Scores never trigger discipline, deductions or warnings automatically. HR "suggested actions" only pre-fill a form.
 - No hardware-brand-specific logic in the core app. The requirement is "managed Android device".
 - Location is captured only at the moment of a scan (and the optional Duty On site check), never continuously.
-- Personal, pay and disciplinary data sits in separate tables with its own roles and audit trail, and is never shown on the shared post device.
+- Personal, pay and disciplinary data sits in separate tables with its own roles and audit trail, and is never shown on the shared post device. One owner exception (9 Oct 2026, D-52): a guard signed in with his own PIN and holding the post phone may open his own HR notices there (a company switch, on by default).
 - Time is server time in Africa/Johannesburg.
 - Never commit secrets or personal data. Use migration scripts for all database changes.
 - Do not build anything on the brief's excluded list (section 3).

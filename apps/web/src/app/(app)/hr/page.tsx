@@ -355,7 +355,7 @@ function NewNotice({ employees, start, done }: { employees: Employee[]; start: {
             </button>
           )}
           <p className="mute small">
-            It goes to the employee&apos;s own page (the post phone shows only &quot;You have a personal message&quot;). If it is not acknowledged within {ctx.data.ackHours} hours, you are asked to
+            The guard reads it under MY MESSAGES on the post phone when he is signed in with his own PIN (or on his own page, if he has one). If it is not acknowledged within {ctx.data.ackHours} hours, you are asked to
             deliver it by hand. It cannot be changed once sent.
           </p>
           <div className="row">
@@ -500,15 +500,29 @@ function PortalAccess({ employees, changed }: { employees: Employee[]; changed: 
 }
 
 function Settings() {
-  const { data, reload } = useLoad(() => api<{ noticeAckHours: number }>('/hr/settings'));
+  const { data, reload } = useLoad(() => api<{ noticeAckHours: number; noticesOnPostPhone: boolean }>('/hr/settings'));
   const [hours, setHours] = useState('');
+  const [onPhone, setOnPhone] = useState<boolean | null>(null);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<unknown>(null);
   if (!data) return null;
+  const phone = onPhone ?? data.noticesOnPostPhone;
+  const changed = !!hours || phone !== data.noticesOnPostPhone;
   return (
     <div className="card">
       <h2>Settings</h2>
       <ErrorBanner error={err} />
+      <label className="row" style={{ gap: 6, marginBottom: 8 }}>
+        <input type="checkbox" style={{ width: 'auto' }} checked={phone} onChange={(e) => setOnPhone(e.target.checked)} />
+        <span>
+          <b>Guards read their notices on the post phone</b>
+          <span className="mute small">
+            {' '}
+            (MY MESSAGES, for the guard signed in with his own PIN and holding the phone; with two guards on one phone, only the one holding it sees his). Off: the post phone shows only
+            &quot;You have a personal message&quot;.
+          </span>
+        </span>
+      </label>
       <div className="row">
         <Field label={`Hours to acknowledge before hand delivery (now ${data.noticeAckHours})`}>
           <input inputMode="numeric" value={hours} onChange={(e) => setHours(e.target.value.replace(/\D/g, ''))} placeholder={String(data.noticeAckHours)} />
@@ -518,12 +532,13 @@ function Settings() {
         </Field>
         <button
           className="btn ghost"
-          disabled={!hours || reason.trim().length < 3}
+          disabled={!changed || reason.trim().length < 3}
           onClick={async () => {
             setErr(null);
             try {
-              await api('/hr/settings', { method: 'PUT', json: { noticeAckHours: Number(hours), reason } });
+              await api('/hr/settings', { method: 'PUT', json: { noticeAckHours: Number(hours || data.noticeAckHours), noticesOnPostPhone: phone, reason } });
               setHours('');
+              setOnPhone(null);
               setReason('');
               reload();
             } catch (e) {

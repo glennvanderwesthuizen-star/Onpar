@@ -1,7 +1,7 @@
-import { BadRequestException, Body, CanActivate, Controller, createParamDecorator, ExecutionContext, Get, HttpCode, HttpException, HttpStatus, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, CanActivate, ForbiddenException, Controller, createParamDecorator, ExecutionContext, Get, HttpCode, HttpException, HttpStatus, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
-import { ACK_TEXT, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeEventKind, noticeStatus, NoticeType, POST_DEVICE_LINE } from '@onpar/rules';
+import { POST_DEVICE_LINE, POST_PHONE_LINE } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentGuard, GuardAuthGuard, GuardPrincipal } from '../common/auth';
 import { hashSecret, hashToken, verifySecret } from '../common/crypto';
@@ -155,46 +155,18 @@ export class PortalController {
     });
   }
 
-  private async mine(tx: Tx, employeeId: string, id?: string) {
-    const rows = (await tx.query(`SELECT n.id, n.type, n.subject, n.body, n.issued_at, n.ack_hours FROM notices n WHERE n.employee_id = $1 AND ($2::uuid IS NULL OR n.id = $2::uuid) ORDER BY n.issued_at DESC`, [employeeId, id ?? null])).rows;
-    const events = rows.length ? (await tx.query(`SELECT notice_id, kind, at FROM notice_events WHERE notice_id = ANY($1::uuid[])`, [rows.map((r) => r.id)])).rows : [];
-    return rows.map((n) => {
-      const ev = events.filter((e) => e.notice_id === n.id) as { kind: NoticeEventKind; at: Date }[];
-      const status = noticeStatus(ev);
-      return {
-        id: n.id as string,
-        typeLabel: NOTICE_TYPE_LABELS[n.type as NoticeType],
-        subject: n.subject as string,
-        body: n.body as string,
-        issuedAt: n.issued_at as Date,
-        acknowledged: ev.find((e) => e.kind === 'acknowledged')?.at ?? null,
-        status,
-        statusLabel: NOTICE_EVENT_LABELS[status],
-      };
-    });
-  }
-
   /** His notices. Seeing the list counts as delivered. */
   @Get('notices')
   @UseGuards(PortalAuthGuard)
   list(@CurrentPortal() me: PortalPrincipal) {
-    return this.db.withTenant(me.companyId, async (tx) => {
-      for (const n of await this.mine(tx, me.employeeId)) await this.notices.event(tx, n.id, 'delivered', { type: 'employee', id: me.employeeId, label: me.name });
-      const list = await this.mine(tx, me.employeeId);
-      return { ackText: ACK_TEXT, notices: list.map(({ body: _b, ...n }) => n) };
-    });
+    return this.db.withTenant(me.companyId, (tx) => this.notices.employeeList(tx, { employeeId: me.employeeId, name: me.name }, 'On his own page'));
   }
 
   /** One notice. Opening it is recorded. */
   @Get('notices/:id')
   @UseGuards(PortalAuthGuard)
   open(@CurrentPortal() me: PortalPrincipal, @Param('id', ParseUUIDPipe) id: string) {
-    return this.db.withTenant(me.companyId, async (tx) => {
-      if (!(await this.mine(tx, me.employeeId, id)).length) throw new NotFoundException('Notice not found.');
-      await this.notices.event(tx, id, 'delivered', { type: 'employee', id: me.employeeId, label: me.name });
-      await this.notices.event(tx, id, 'opened', { type: 'employee', id: me.employeeId, label: me.name });
-      return { ...(await this.mine(tx, me.employeeId, id))[0], ackText: ACK_TEXT };
-    });
+    return this.db.withTenant(me.companyId, (tx) => this.notices.employeeOpen(tx, { employeeId: me.employeeId, name: me.name }, id, 'On his own page'));
   }
 
   /** "I acknowledge receipt." It does not mean he agrees or admits anything. */
@@ -202,24 +174,34 @@ export class PortalController {
   @HttpCode(200)
   @UseGuards(PortalAuthGuard)
   acknowledge(@CurrentPortal() me: PortalPrincipal, @Param('id', ParseUUIDPipe) id: string) {
-    return this.db.withTenant(me.companyId, async (tx) => {
-      const [n] = await this.mine(tx, me.employeeId, id);
-      if (!n) throw new NotFoundException('Notice not found.');
-      await this.notices.event(tx, id, 'opened', { type: 'employee', id: me.employeeId, label: me.name });
-      await this.notices.event(tx, id, 'acknowledged', { type: 'employee', id: me.employeeId, label: me.name }, ACK_TEXT);
-      await this.audit.record(tx, { actorType: 'employee', actorId: me.employeeId, actorLabel: me.name, action: 'notice.acknowledge', entityType: 'notice', entityId: id });
-      return (await this.mine(tx, me.employeeId, id))[0];
-    });
+    return this.db.withTenant(me.companyId, (tx) => this.notices.employeeAcknowledge(tx, { employeeId: me.employeeId, name: me.name }, id, 'On his own page'));
   }
 }
 
-/** The shared post phone: only the one generic line, never what the message says (brief section 6.14). */
-@Controller('device/personal-message')
+/**
+ * Notices on the post phone (owner, 9 Oct 2026, D-52): the guard signed in with his own PIN, and
+ * holding the phone at that moment, sees his own notices. With two guards on one phone, only the
+ * one holding it sees his. The home screen line stays generic. A company can switch this off on
+ * the HR page; then only the generic line shows (brief section 6.14).
+ */
+@Controller('device')
 @UseGuards(GuardAuthGuard)
 export class PersonalMessageController {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly notices: NoticesService,
+  ) {}
 
-  @Get()
+  private async who(tx: Tx, guard: GuardPrincipal) {
+    const name = ((await tx.query('SELECT full_name FROM employees WHERE id = $1', [guard.employeeId])).rows[0]?.full_name ?? '') as string;
+    return { employeeId: guard.employeeId, name };
+  }
+
+  private async allowed(tx: Tx) {
+    if (!(await this.notices.onPostPhone(tx))) throw new ForbiddenException('Notices are not shown on the post phone. Open them on your own phone or see your supervisor.');
+  }
+
+  @Get('personal-message')
   get(@CurrentGuard() guard: GuardPrincipal) {
     return this.db.withTenant(guard.companyId, async (tx) => {
       const n = (
@@ -229,7 +211,33 @@ export class PersonalMessageController {
           [guard.employeeId],
         )
       ).rows[0].n as number;
-      return { waiting: n > 0, text: n > 0 ? POST_DEVICE_LINE : null };
+      const here = await this.notices.onPostPhone(tx);
+      return { waiting: n > 0, text: n > 0 ? (here ? POST_PHONE_LINE : POST_DEVICE_LINE) : null, canOpen: here };
+    });
+  }
+
+  @Get('notices')
+  list(@CurrentGuard() guard: GuardPrincipal) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      await this.allowed(tx);
+      return this.notices.employeeList(tx, await this.who(tx, guard), 'On the post phone');
+    });
+  }
+
+  @Get('notices/:id')
+  open(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      await this.allowed(tx);
+      return this.notices.employeeOpen(tx, await this.who(tx, guard), id, 'On the post phone');
+    });
+  }
+
+  @Post('notices/:id/acknowledge')
+  @HttpCode(200)
+  acknowledge(@CurrentGuard() guard: GuardPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.db.withTenant(guard.companyId, async (tx) => {
+      await this.allowed(tx);
+      return this.notices.employeeAcknowledge(tx, await this.who(tx, guard), id, 'On the post phone');
     });
   }
 }

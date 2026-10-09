@@ -64,10 +64,32 @@ describe('HR notices and the employee portal', () => {
     await expect(ownerQuery(`DELETE FROM notice_events`)).rejects.toThrow();
   });
 
-  it('shows the post phone only a generic line, never the notice', async () => {
+  it('shows the home screen only a generic line, never the notice', async () => {
     const r = await w.http().get('/api/device/personal-message').set(g());
-    expect(r.body).toEqual({ waiting: true, text: 'You have a personal message. Open it on your own phone or see your supervisor.' });
+    expect(r.body).toEqual({ waiting: true, text: 'You have a message from HR. Open MY MESSAGES to read it.', canOpen: true });
     expect(JSON.stringify(r.body)).not.toContain('Late');
+  });
+
+  it('lets the guard holding the post phone open his own notices, and only his (owner, D-52)', async () => {
+    // A second guard comes on duty on the same phone.
+    const o2 = await enrol(w, admin, enrolmentData(w.a.siteId, { idNumber: '8606065009082', fullName: 'Other Guard' }));
+    const l2 = await w.http().post('/api/device/login').set('X-Device-Token', deviceToken).send({ employeeNumber: o2.body.officer.employeeNumber, pin: o2.body.initialPin });
+    const other = { 'X-Device-Token': deviceToken, Authorization: `Bearer ${l2.body.token}` };
+    expect((await w.http().get('/api/device/notices').set(other)).body.notices).toEqual([]);
+    expect((await w.http().get(`/api/device/notices/${noticeId}`).set(other)).status).toBe(404);
+    expect((await w.http().get('/api/device/personal-message').set(other)).body.waiting).toBe(false);
+    // His own: the list (delivered), then the notice (opened), on the post phone.
+    const list = await w.http().get('/api/device/notices').set(g());
+    expect(list.body.notices).toEqual([expect.objectContaining({ id: noticeId, status: 'delivered' })]);
+    const open = await w.http().get(`/api/device/notices/${noticeId}`).set(g());
+    expect(open.body).toMatchObject({ status: 'opened', body: expect.stringContaining('six months') });
+    const [ev] = await ownerQuery(`SELECT note FROM notice_events WHERE notice_id = $1 AND kind = 'opened'`, [noticeId]);
+    expect(ev.note).toBe('On the post phone');
+    // Switched off by the company: only the generic line, nothing opens.
+    await w.http().put('/api/hr/settings').set(auth(admin)).send({ noticeAckHours: 48, noticesOnPostPhone: false, reason: 'Testing the switch' });
+    expect((await w.http().get('/api/device/personal-message').set(g())).body).toMatchObject({ text: 'You have a personal message. Open it on your own phone or see your supervisor.', canOpen: false });
+    expect((await w.http().get('/api/device/notices').set(g())).status).toBe(403);
+    await w.http().put('/api/hr/settings').set(auth(admin)).send({ noticeAckHours: 48, noticesOnPostPhone: true, reason: 'Back on' });
   });
 
   it('opens the portal with a one-time code from HR, then a password of his own', async () => {
@@ -92,7 +114,7 @@ describe('HR notices and the employee portal', () => {
 
   it('tracks the notice: sent, delivered, opened, acknowledged, each with a time', async () => {
     const list = await w.http().get('/api/portal/notices').set(auth(portal));
-    expect(list.body.notices).toEqual([expect.objectContaining({ id: noticeId, typeLabel: 'Written warning', status: 'delivered' })]);
+    expect(list.body.notices).toEqual([expect.objectContaining({ id: noticeId, typeLabel: 'Written warning', status: 'opened' })]);
     expect(list.body.notices[0].body).toBeUndefined();
     const open = await w.http().get(`/api/portal/notices/${noticeId}`).set(auth(portal));
     expect(open.body).toMatchObject({ status: 'opened', body: expect.stringContaining('six months') });

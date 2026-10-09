@@ -156,7 +156,7 @@ data class StandardBearer(val name: String, val year: Int)
 /** The guard's own score, training, and the site's approved contacts. */
 /** A personal message is waiting: the generic line to show, never the content. */
 @Serializable
-data class PersonalMessage(val waiting: Boolean = false, val text: String? = null)
+data class PersonalMessage(val waiting: Boolean = false, val text: String? = null, val canOpen: Boolean = false)
 
 class ProfileActions(private val device: OnParDevice, dataDir: File) {
     private val scoreFile = File(dataDir, "score.json")

@@ -1108,3 +1108,10 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - **The employee portal ("My messages")** at `/p`, on the guard's own phone or any browser. HR gives a **one-time code** (shown once, valid 7 days; there is no SMS yet). The guard opens the page with the code and chooses his own password; after that he signs in with his TSF number. A new code stops the old password. Five wrong tries lock sign-in for 15 minutes. The session lasts a week.
 - Migration `0052_notices_portal.sql`; rules `packages/rules/src/notices.ts`. Tests: 5 rules, 8 server.
 - **Not yet:** queries (section 6.15), his roster and score on the portal, notifications to his own phone, the later stages (investigation, hearing record, appeal, warning expiry).
+
+### 9 Oct 2026: notices on the post phone (owner, D-52)
+
+- The owner changed the delivery: a guard signed in on the post phone with his own PIN, and holding it, opens his notices under **MY MESSAGES** (list, the full notice, I ACKNOWLEDGE RECEIPT). With two guards on one phone, only the one holding it sees his own; locking or signing out closes them. Events say "On the post phone". Needs signal; nothing is kept on the phone.
+- The home screen line stays generic: "You have a message from HR. Open MY MESSAGES to read it."
+- **HR → Settings:** "Guards read their notices on the post phone" (on by default). Off: only "You have a personal message…" shows, as in brief section 6.14. The own-phone page (`/p`) stays as it is for later.
+- Migration `0054_notices_on_post_phone.sql`. Tests: 1 server.

@@ -35,7 +35,7 @@ const IssueBody = z.object({
   evidence: z.array(z.string().uuid()).max(50).default([]),
 });
 const HandBody = z.object({ note: z.string().trim().min(3, 'Say who delivered it, where, and whether the employee signed.').max(1000) });
-const SettingsBody = z.object({ noticeAckHours: z.number().int().min(1).max(720), reason: z.string().trim().min(3, 'Say why.') });
+const SettingsBody = z.object({ noticeAckHours: z.number().int().min(1).max(720), noticesOnPostPhone: z.boolean().default(true), reason: z.string().trim().min(3, 'Say why.') });
 
 /** One-time portal codes: no confusable letters, 10 characters. */
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -225,7 +225,7 @@ export class HrNoticesController {
   @Get('settings')
   @RequirePermission('notices.view')
   settings(@CurrentUser() user: UserPrincipal) {
-    return this.db.withTenant(user.companyId, async (tx) => ({ noticeAckHours: await this.notices.ackHours(tx) }));
+    return this.db.withTenant(user.companyId, async (tx) => ({ noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx) }));
   }
 
   @Put('settings')
@@ -233,14 +233,15 @@ export class HrNoticesController {
   saveSettings(@CurrentUser() user: UserPrincipal, @Body() body: unknown) {
     const b = parseBody(SettingsBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
-      const before = await this.notices.ackHours(tx);
+      const before = { noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx) };
       await tx.query(
-        `INSERT INTO hr_settings (company_id, notice_ack_hours, updated_by, updated_at) VALUES (app_company_id(), $1, $2, now())
-         ON CONFLICT (company_id) DO UPDATE SET notice_ack_hours = $1, updated_by = $2, updated_at = now()`,
-        [b.noticeAckHours, user.userId],
+        `INSERT INTO hr_settings (company_id, notice_ack_hours, notices_on_post_phone, updated_by, updated_at) VALUES (app_company_id(), $1, $3, $2, now())
+         ON CONFLICT (company_id) DO UPDATE SET notice_ack_hours = $1, notices_on_post_phone = $3, updated_by = $2, updated_at = now()`,
+        [b.noticeAckHours, user.userId, b.noticesOnPostPhone],
       );
-      await this.audit.byUser(tx, user, { action: 'hr.settings', entityType: 'company', entityId: user.companyId, before: { noticeAckHours: before }, after: { noticeAckHours: b.noticeAckHours }, reason: b.reason });
-      return { noticeAckHours: b.noticeAckHours };
+      const after = { noticeAckHours: b.noticeAckHours, noticesOnPostPhone: b.noticesOnPostPhone };
+      await this.audit.byUser(tx, user, { action: 'hr.settings', entityType: 'company', entityId: user.companyId, before, after, reason: b.reason });
+      return after;
     });
   }
 

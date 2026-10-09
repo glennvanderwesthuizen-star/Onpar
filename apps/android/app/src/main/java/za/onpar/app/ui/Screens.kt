@@ -111,6 +111,8 @@ fun OnParScreens(state: UiState, vm: AppViewModel) {
                     Page.WireBoard -> if (state.owed != null) HomeScreen(vm, state) else WireBoardScreen(vm, state)
                     Page.ShiftHandover -> if (state.owed != null) HomeScreen(vm, state) else ShiftHandoverScreen(vm, state)
                     Page.BookEntry -> if (state.owed != null) HomeScreen(vm, state) else BookEntryScreen(vm, state)
+                    Page.Messages -> MessagesScreen(vm, state)
+                    is Page.Message -> MessageScreen(vm, state, page.id)
                     Page.ReceiveHandover -> if (state.owed != null) HomeScreen(vm, state) else ReceiveHandoverScreen(vm, state)
                     Page.Training -> if (state.owed != null) HomeScreen(vm, state) else TrainingScreen(vm, state)
                     Page.Roster -> if (state.owed != null) HomeScreen(vm, state) else RosterScreen(vm, state)
@@ -388,6 +390,7 @@ private fun HomeScreen(vm: AppViewModel, state: UiState) {
                     Text(line, Modifier.background(Color(0xFFE8EEF7)).padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
                 }
             }
+            if (state.personalCanOpen) OutlinedButton(onClick = { vm.go(Page.Messages) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("MY MESSAGES", fontSize = 16.sp) }
             val sh = state.shiftHandover
             // A handover from the guard before him, waiting to be checked and received (D-45).
             sh?.incoming?.let { inc ->

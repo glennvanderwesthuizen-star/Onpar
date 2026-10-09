@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { DEFAULT_ACK_HOURS, needsHandDelivery, NoticeEventKind, noticeStatus, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeType } from '@onpar/rules';
+import { NotFoundException } from '@nestjs/common';
+import { ACK_TEXT, DEFAULT_ACK_HOURS, needsHandDelivery, NoticeEventKind, noticeStatus, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeType } from '@onpar/rules';
+import { AuditService } from '../audit/audit.service';
 import { DbService, Tx } from '../db/db.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -26,7 +28,55 @@ export class NoticesService implements OnModuleDestroy {
   constructor(
     private readonly db: DbService,
     private readonly notifications: NotificationsService,
+    private readonly audit: AuditService,
   ) {}
+
+  /** Whether a guard signed in on the post phone may open his own notices there (owner, 9 Oct 2026; on unless switched off). */
+  async onPostPhone(tx: Tx): Promise<boolean> {
+    return ((await tx.query('SELECT notices_on_post_phone AS v FROM hr_settings')).rows[0]?.v as boolean | undefined) ?? true;
+  }
+
+  /** An employee's own notices, newest first. */
+  async forEmployee(tx: Tx, employeeId: string, id?: string) {
+    const rows = (await tx.query(`SELECT n.id, n.type, n.subject, n.body, n.issued_at FROM notices n WHERE n.employee_id = $1 AND ($2::uuid IS NULL OR n.id = $2::uuid) ORDER BY n.issued_at DESC`, [employeeId, id ?? null])).rows;
+    const events = rows.length ? (await tx.query(`SELECT notice_id, kind, at FROM notice_events WHERE notice_id = ANY($1::uuid[])`, [rows.map((r) => r.id)])).rows : [];
+    return rows.map((n) => {
+      const ev = events.filter((e) => e.notice_id === n.id) as { kind: NoticeEventKind; at: Date }[];
+      const status = noticeStatus(ev);
+      return {
+        id: n.id as string,
+        typeLabel: NOTICE_TYPE_LABELS[n.type as NoticeType],
+        subject: n.subject as string,
+        body: n.body as string,
+        issuedAt: n.issued_at as Date,
+        acknowledged: ev.find((e) => e.kind === 'acknowledged')?.at ?? null,
+        status,
+        statusLabel: NOTICE_EVENT_LABELS[status],
+      };
+    });
+  }
+
+  /** His list (without the text). Seeing it counts as delivered. `where` says how: his own page or the post phone. */
+  async employeeList(tx: Tx, who: { employeeId: string; name: string }, where: string) {
+    for (const n of await this.forEmployee(tx, who.employeeId)) await this.event(tx, n.id, 'delivered', { type: 'employee', id: who.employeeId, label: who.name }, where);
+    return { ackText: ACK_TEXT, notices: (await this.forEmployee(tx, who.employeeId)).map(({ body: _b, ...n }) => n) };
+  }
+
+  async employeeOpen(tx: Tx, who: { employeeId: string; name: string }, id: string, where: string) {
+    if (!(await this.forEmployee(tx, who.employeeId, id)).length) throw new NotFoundException('Notice not found.');
+    await this.event(tx, id, 'delivered', { type: 'employee', id: who.employeeId, label: who.name }, where);
+    await this.event(tx, id, 'opened', { type: 'employee', id: who.employeeId, label: who.name }, where);
+    return { ...(await this.forEmployee(tx, who.employeeId, id))[0], ackText: ACK_TEXT };
+  }
+
+  async employeeAcknowledge(tx: Tx, who: { employeeId: string; name: string }, id: string, where: string) {
+    if (!(await this.forEmployee(tx, who.employeeId, id)).length) throw new NotFoundException('Notice not found.');
+    await this.event(tx, id, 'delivered', { type: 'employee', id: who.employeeId, label: who.name }, where);
+    await this.event(tx, id, 'opened', { type: 'employee', id: who.employeeId, label: who.name }, where);
+    await this.event(tx, id, 'acknowledged', { type: 'employee', id: who.employeeId, label: who.name }, `${where}. ${ACK_TEXT}`);
+    await this.audit.record(tx, { actorType: 'employee', actorId: who.employeeId, actorLabel: who.name, action: 'notice.acknowledge', entityType: 'notice', entityId: id, after: { where } });
+    return (await this.forEmployee(tx, who.employeeId, id))[0];
+  }
 
   startTimer(everyMs = 15 * 60_000) {
     const tick = () => this.sweepAll(new Date()).catch((e) => this.log.error(`Notice sweep failed: ${e.message}`));
