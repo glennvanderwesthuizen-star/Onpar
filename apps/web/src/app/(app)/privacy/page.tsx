@@ -4,10 +4,27 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { ErrorBanner, Field, formatDateTime, useLoad } from '@/components/ui';
 
+type Counts = { selfies: number; patrolPhotos: number; visitorPhotos: number; visitorRecords: number; recordPhotos: number; staffSnapshots: number; boloMedia: number };
 interface Retention {
-  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number; boloMediaDays: number; visitorMonths?: number };
-  wouldRemoveNow: { selfies: number; patrolPhotos: number; visitorPhotos?: number; visitorRecords?: number };
-  removed: { selfies: number; patrolPhotos: number; visitorPhotos?: number; visitorRecords?: number; last: string | null };
+  settings: { enabled: boolean; selfieMonths: number; patrolPhotoMonths: number; boloMediaDays: number; visitorMonths: number; recordPhotoMonths: number; staffSnapshotDays: number };
+  wouldRemoveNow: Counts;
+  removed: Counts & { last: string | null };
+}
+
+/** The counts in words, leaving out what is nil. */
+function countsText(c: Counts) {
+  const parts = (
+    [
+      [c.selfies, 'selfies'],
+      [c.patrolPhotos, 'patrol photos'],
+      [c.visitorPhotos, 'visitor photos'],
+      [c.staffSnapshots, 'domestic staff snapshots'],
+      [c.recordPhotos, 'task, report and Wire photos'],
+      [c.boloMedia, 'BOLO photos, videos and voice notes'],
+      [c.visitorRecords, 'visitor details to anonymise'],
+    ] as [number, string][]
+  ).filter(([n]) => n > 0);
+  return parts.length ? parts.map(([n, w]) => `${n} ${w}`).join(', ') : 'nothing';
 }
 
 export default function PrivacyPage() {
@@ -51,8 +68,8 @@ export default function PrivacyPage() {
       </div>
       <ErrorBanner error={error} />
       <div className="banner warn">
-        The periods below are the brief&apos;s <b>proposals</b>, not legal advice. Confirm them with your POPIA adviser before switching removal on. Removed photos
-        cannot be brought back, except from a backup.
+        The periods below are set as you decided (9 Oct 2026: 12 months, domestic staff snapshots 30 days). They are not legal advice: have your POPIA adviser
+        confirm them. Removed photos cannot be brought back, except from a backup.
       </div>
       {data && v && (
         <div className="grid g2">
@@ -74,8 +91,14 @@ export default function PrivacyPage() {
               <Field label="BOLO photos, videos and voice notes (days)" error={errors.boloMediaDays} hint="They record members of the public. 90 days proposed; confirm with the POPIA specialist.">
                 <input type="number" min={7} max={3650} value={v.boloMediaDays ?? 90} onChange={(e) => setV({ ...v, boloMediaDays: Number(e.target.value) })} />
               </Field>
-              <Field label="Visitors at the gates (months)" error={errors.visitorMonths} hint="Visitor and document photos are removed, and a visitor not seen for this long is anonymised; the visit still counts. 12 months proposed; confirm with the POPIA specialist.">
-                <input type="number" min={1} max={120} value={v.visitorMonths ?? 12} onChange={(e) => setV({ ...v, visitorMonths: Number(e.target.value) })} />
+              <Field label="Visitors at the gates (months)" error={errors.visitorMonths} hint="Visitor and document photos are removed, and a visitor not seen for this long is anonymised; the visit still counts.">
+                <input type="number" min={1} max={120} value={v.visitorMonths} onChange={(e) => setV({ ...v, visitorMonths: Number(e.target.value) })} />
+              </Field>
+              <Field label="Domestic staff entry snapshots (days)" error={errors.staffSnapshotDays} hint="When the photos clearly matched. A snapshot that was in doubt is kept with the visitor photos; the first-day reference photo is kept.">
+                <input type="number" min={1} max={3650} value={v.staffSnapshotDays} onChange={(e) => setV({ ...v, staffSnapshotDays: Number(e.target.value) })} />
+              </Field>
+              <Field label="Photos on tasks, reports and Wire notes (months)" error={errors.recordPhotoMonths} hint="Only once the report is closed or the note decided. Certificates, HR notices and disciplinary files are never removed.">
+                <input type="number" min={1} max={120} value={v.recordPhotoMonths} onChange={(e) => setV({ ...v, recordPhotoMonths: Number(e.target.value) })} />
               </Field>
             </div>
             <Field label="Why the change (kept in the audit log)" error={errors.reason}>
@@ -92,13 +115,11 @@ export default function PrivacyPage() {
             </p>
             <p className="mute small">With the saved periods, removal would take away now:</p>
             <p>
-              <b>{data.wouldRemoveNow.selfies}</b> selfies, <b>{data.wouldRemoveNow.patrolPhotos}</b> patrol photos, <b>{data.wouldRemoveNow.visitorPhotos ?? 0}</b> visitor photos and{' '}
-              <b>{data.wouldRemoveNow.visitorRecords ?? 0}</b> visitor details to anonymise.
+              <b>{countsText(data.wouldRemoveNow)}</b>.
             </p>
             <p className="mute small">Removed so far:</p>
             <p>
-              <b>{data.removed.selfies}</b> selfies, <b>{data.removed.patrolPhotos}</b> patrol photos, <b>{data.removed.visitorPhotos ?? 0}</b> visitor photos and{' '}
-              <b>{data.removed.visitorRecords ?? 0}</b> visitor details
+              <b>{countsText(data.removed)}</b>
               {data.removed.last ? `, last on ${formatDateTime(data.removed.last)}` : ''}.
             </p>
             <p className="mute small">

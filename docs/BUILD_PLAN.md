@@ -1147,3 +1147,24 @@ The owner approved phase 0 of the optimisation review ("start with zero"). Built
   - A password change or reset ends every other sign-in. This applies to users, customers and the employee portal (migration 0057, `sessions_from`).
 - **Safe exports:** every CSV cell that a spreadsheet could run as a formula is made inert (`common/csv.ts`).
 - **Deferred by the owner:** off-site backups (cost). Before real data: switch off the demo account.
+
+## Optimisation review, phase 1: storage and data (owner, 9 Oct 2026; D-54)
+
+- **Retention (still switched on by the company on the Privacy page):**
+  - New: photos on tasks, closed reports and decided Wire notes, 12 months.
+  - New: domestic staff entry snapshots that nobody doubted, 30 days. A doubted snapshot is kept with the visitor photos.
+  - Fixed: a domestic worker's first-day reference photo is never removed while it is the reference.
+  - Certificates, HR notices and disciplinary files are never removed.
+  - A removed photo answers "no longer kept" everywhere.
+- **Smaller photos:** website photos larger than 1600 pixels are stored at 1600 pixels, upright, with hidden details (such as where they were taken) removed. HR notices and disciplinary files keep their original size (our call). Phone photos are already small and stored as sent.
+- **Nightly clean-up (`housekeeping()`, migration 0058):**
+  - alerts older than a year
+  - their delivery records older than 30 days
+  - sign-in counters older than a week
+- **Audit log:** the gate phone's list download is recorded once a day per guard and phone, instead of every 10 minutes.
+- **Removed:** the per-site "months visitor records are kept" field, which did nothing.
+- **Phones:**
+  - Visitor lists are cleared when a phone is set up again or leaves.
+  - Refused actions and their photos are removed after 7 days.
+  - Camera files left behind are removed after a day.
+- **Not done (cost):** moving files to Amazon S3, and small preview copies for lists.

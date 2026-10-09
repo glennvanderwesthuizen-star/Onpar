@@ -166,7 +166,7 @@ describe('security hardening', () => {
           throw new Error('database rolled back');
         }),
       ).rejects.toThrow('database rolled back');
-      await expect(storage.get(key)).rejects.toThrow(/ENOENT/);
+      await expect(storage.get(key)).rejects.toThrow(/no longer kept/);
     });
 
     it('writes to S3 with server-side encryption on top, when configured', async () => {

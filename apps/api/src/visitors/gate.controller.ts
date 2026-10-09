@@ -605,7 +605,15 @@ export class GateController {
           [gate.siteId],
         )
       ).rows;
-      await this.audit.record(tx, { ...(await this.actor(tx, guard)), action: 'visitor.offline_pack', entityType: 'site_gate', entityId: gate.id, after: { deviceId: guard.deviceId } });
+      // Recorded once a day per guard, gate and phone: the phone fetches it every 10 minutes (phase 1).
+      const recordedToday = (
+        await tx.query(
+          `SELECT 1 FROM audit_log WHERE entity_type = 'site_gate' AND entity_id = $1 AND action = 'visitor.offline_pack' AND actor_id = $2 AND after->>'deviceId' = $3
+              AND at >= (date_trunc('day', now() AT TIME ZONE 'Africa/Johannesburg') AT TIME ZONE 'Africa/Johannesburg') LIMIT 1`,
+          [gate.id, guard.employeeId, guard.deviceId],
+        )
+      ).rowCount;
+      if (!recordedToday) await this.audit.record(tx, { ...(await this.actor(tx, guard)), action: 'visitor.offline_pack', entityType: 'site_gate', entityId: gate.id, after: { deviceId: guard.deviceId } });
       return {
         at: new Date().toISOString(),
         today: await this.today(tx),

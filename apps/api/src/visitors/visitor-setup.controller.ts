@@ -35,7 +35,6 @@ const SettingsBody = z.object({
   noResponseSeconds: z.number(),
   secondContact: z.boolean(),
   overstayEscalationMinutes: z.number(),
-  retentionMonths: z.number(),
 });
 const CategoryBody = z.object({
   name: z.string().trim().max(60),
@@ -280,11 +279,11 @@ export class VisitorSetupController {
       await this.site(tx, user, siteId);
       const { saved, ...before } = await this.setup.settings(tx, siteId);
       await tx.query(
-        `INSERT INTO site_visitor_settings (site_id, company_id, checks, no_response_seconds, second_contact, overstay_escalation_minutes, retention_months, updated_by)
-         VALUES ($1, app_company_id(), $2, $3, $4, $5, $6, $7)
+        `INSERT INTO site_visitor_settings (site_id, company_id, checks, no_response_seconds, second_contact, overstay_escalation_minutes, updated_by)
+         VALUES ($1, app_company_id(), $2, $3, $4, $5, $6)
          ON CONFLICT (site_id) DO UPDATE SET checks = excluded.checks, no_response_seconds = excluded.no_response_seconds, second_contact = excluded.second_contact,
-           overstay_escalation_minutes = excluded.overstay_escalation_minutes, retention_months = excluded.retention_months, updated_by = excluded.updated_by, updated_at = now()`,
-        [siteId, JSON.stringify(b.checks), b.noResponseSeconds, b.secondContact, b.overstayEscalationMinutes, b.retentionMonths, user.userId],
+           overstay_escalation_minutes = excluded.overstay_escalation_minutes, updated_by = excluded.updated_by, updated_at = now()`,
+        [siteId, JSON.stringify(b.checks), b.noResponseSeconds, b.secondContact, b.overstayEscalationMinutes, user.userId],
       );
       await this.audit.byUser(tx, user, { action: 'visitor_settings.update', entityType: 'site', entityId: siteId, before: { ...before, usingDefaults: !saved }, after: b });
       return { ok: true };

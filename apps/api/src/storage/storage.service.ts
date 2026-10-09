@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, GoneException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -112,12 +112,20 @@ export class StorageService {
   async put(companyId: string, folder: string, data: Buffer, ext: string): Promise<string> {
     if (!matchesType(data, ext)) throw new BadRequestException('This file is not the kind it claims to be. Please choose the original file.');
     const key = `${companyId}/${folder}/${randomUUID()}${ext}`;
-    await this.driver.write(key, this.seal(data));
+    const stored = KEEP_ORIGINAL.test(folder) ? data : await shrinkImage(data, ext);
+    await this.driver.write(key, this.seal(stored));
     return key;
   }
 
   async get(key: string): Promise<Buffer> {
-    const raw = await this.driver.read(key);
+    let raw: Buffer;
+    try {
+      raw = await this.driver.read(key);
+    } catch (e) {
+      const err = e as { code?: string; name?: string };
+      if (err.code === 'ENOENT' || err.name === 'NoSuchKey') throw new GoneException('This photo is no longer kept (removed under the retention policy). The record itself is kept.');
+      throw e;
+    }
     // Files stored before encryption was added (development only) are returned as they are.
     return raw.subarray(0, 4).equals(MAGIC) ? this.open(raw) : raw;
   }
@@ -156,6 +164,38 @@ export class StorageService {
     const decipher = createDecipheriv('aes-256-gcm', this.key, blob.subarray(4, 16));
     decipher.setAuthTag(blob.subarray(16, 32));
     return Buffer.concat([decipher.update(blob.subarray(32)), decipher.final()]);
+  }
+}
+
+/**
+ * HR notices and disciplinary files are kept exactly as uploaded: they may be evidence (owner's
+ * decision left to us, 9 Oct 2026). Every other photo is made smaller when it is large.
+ */
+export const KEEP_ORIGINAL = /^(discipline|notices|hr)(\/|$)/;
+/** The longest side a stored photo keeps; readable on any screen, a fraction of a camera photo. */
+export const MAX_IMAGE_SIDE = 1600;
+const shrinkLog = new Logger('Photos');
+
+/**
+ * A photo larger than 1600 pixels, or carrying hidden details such as where it was taken, is
+ * stored at most 1600 pixels on its longest side, in the same format, upright, with those details
+ * removed. Phone photos are already small and are stored as they are. If anything goes wrong the
+ * original is kept: an upload never fails because of this.
+ */
+export async function shrinkImage(data: Buffer, ext: string): Promise<Buffer> {
+  if (!['.jpg', '.png', '.webp'].includes(ext)) return data;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const sharp = require('sharp');
+    const meta = await sharp(data).metadata();
+    const big = Math.max(meta.width ?? 0, meta.height ?? 0) > MAX_IMAGE_SIDE;
+    if (!big && !meta.exif) return data;
+    let img = sharp(data).rotate().resize({ width: MAX_IMAGE_SIDE, height: MAX_IMAGE_SIDE, fit: 'inside', withoutEnlargement: true });
+    img = ext === '.jpg' ? img.jpeg({ quality: 82, mozjpeg: true }) : ext === '.png' ? img.png({ compressionLevel: 9 }) : img.webp({ quality: 80 });
+    return await img.toBuffer();
+  } catch (e) {
+    shrinkLog.warn(`Kept a photo at its original size: ${(e as Error).message}`);
+    return data;
   }
 }
 

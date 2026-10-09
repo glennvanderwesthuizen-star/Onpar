@@ -43,7 +43,7 @@ describe('visitor management: the groundwork', () => {
       rollCall: true,
       staffFaceMatch: true,
     });
-    expect(DEFAULT_VISITOR_SETTINGS).toMatchObject({ noResponseSeconds: 120, secondContact: true, overstayEscalationMinutes: 30, retentionMonths: 12 });
+    expect(DEFAULT_VISITOR_SETTINGS).toMatchObject({ noResponseSeconds: 120, secondContact: true, overstayEscalationMinutes: 30 });
     expect(visitorSettingsErrors(DEFAULT_VISITOR_SETTINGS)).toEqual({});
   });
 
@@ -58,9 +58,8 @@ describe('visitor management: the groundwork', () => {
 
   it('keeps the waiting times within sensible limits', () => {
     expect(visitorSettingsErrors({ ...DEFAULT_VISITOR_SETTINGS, noResponseSeconds: 10 })).toEqual({ noResponseSeconds: 'Enter a whole number from 30 to 600 seconds.' });
-    expect(visitorSettingsErrors({ ...DEFAULT_VISITOR_SETTINGS, overstayEscalationMinutes: 0, retentionMonths: 1.5 })).toEqual({
+    expect(visitorSettingsErrors({ ...DEFAULT_VISITOR_SETTINGS, overstayEscalationMinutes: 0 })).toEqual({
       overstayEscalationMinutes: 'Enter a whole number from 5 to 240 minutes.',
-      retentionMonths: 'Enter a whole number from 1 to 120 months.',
     });
   });
 

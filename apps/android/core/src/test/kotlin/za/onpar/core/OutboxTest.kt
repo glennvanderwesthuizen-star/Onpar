@@ -119,4 +119,31 @@ class OutboxTest {
         assertFalse(e.retryable)
         assertEquals(Instant.EPOCH, Instant.EPOCH)
     }
+
+    @Test
+    fun `removes refused actions and their photos after a week, keeping newer ones`() {
+        server.enqueue(MockResponse().setResponseCode(409).setBody("""{"message":"Refused."}"""))
+        val photo = File(dir, "p.jpg").apply { writeBytes(byteArrayOf(-1, -40, -1, 1)) }
+        val outbox = Outbox(File(dir, "outbox"), clock)
+        outbox.add("e1", "Report", "/device/reports", body, "g", listOf(Upload("photo", photo, "image/jpeg")))
+        outbox.flush(api())
+        val kept = File(outbox.failed().single().files.single().path)
+        assertTrue(kept.exists())
+        assertEquals(0, outbox.purgeFailed(Instant.now().plusSeconds(6L * 24 * 3600)))
+        assertEquals(1, outbox.failed().size)
+        assertEquals(1, outbox.purgeFailed(Instant.now().plusSeconds(8L * 24 * 3600)))
+        assertTrue(outbox.failed().isEmpty())
+        assertFalse(kept.exists())
+    }
+
+    @Test
+    fun `clears camera files left behind for more than a day, and nothing else`() {
+        val old = File(dir, "report-new.jpg").apply { writeText("x"); setLastModified(System.currentTimeMillis() - 2L * 24 * 3600 * 1000) }
+        val fresh = File(dir, "task-1.jpg").apply { writeText("x") }
+        val other = File(dir, "settings.json").apply { writeText("{}"); setLastModified(System.currentTimeMillis() - 5L * 24 * 3600 * 1000) }
+        assertEquals(1, TempFiles.purge(dir))
+        assertFalse(old.exists())
+        assertTrue(fresh.exists())
+        assertTrue(other.exists())
+    }
 }

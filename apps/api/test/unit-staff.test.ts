@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { DEFAULT_VISITOR_SETTINGS } from '@onpar/rules';
 import { NotificationsService, PushResult, PushSender } from '../src/notifications/notifications.service';
 import { enrol, enrolmentData, ownerQuery, setupWorld, World } from './helpers';
+import { RetentionService } from '../src/privacy/retention.service';
+import { StorageService } from '../src/storage/storage.service';
 
 class QuietSender implements PushSender {
   async send(): Promise<PushResult> {
@@ -238,5 +240,34 @@ describe('visitor management: staff of a unit', () => {
     const r = await enter(made.body.id, { enrol: idCard });
     expect(r.status).toBe(409);
     expect(r.body.message).toBe('This ID is not the one registered for this staff member. Scan them in as a visitor, and the customer will be asked.');
+  });
+
+  it('keeps clear snapshots 30 days, but the reference photo and any snapshot in doubt for as long as the visitor photos (owner, 9 Oct 2026)', async () => {
+    const storage = w.app.get(StorageService);
+    const on = await w.http().put('/api/privacy/retention').set(auth(admin)).send({ enabled: true, selfieMonths: 12, patrolPhotoMonths: 12, visitorMonths: 12, recordPhotoMonths: 12, staffSnapshotDays: 30, reason: 'Owner decided 9 Oct 2026' });
+    expect(on.status).toBe(200);
+    const [{ ref }] = await ownerQuery('SELECT ref_photo_key AS ref FROM unit_staff WHERE id = $1', [graceId]);
+    const visits = (await ownerQuery(
+      `SELECT v.face_photo_key AS key, EXISTS (SELECT 1 FROM visit_exceptions x WHERE x.photo_key = v.face_photo_key) AS doubt FROM visits v WHERE v.staff_id = $1 AND v.face_photo_key <> $2`,
+      [graceId, ref],
+    )) as { key: string; doubt: boolean }[];
+    const clear = visits.filter((v) => !v.doubt).map((v) => v.key);
+    const doubted = (await ownerQuery('SELECT photo_key AS key FROM visit_exceptions WHERE staff_id = $1 AND photo_key IS NOT NULL', [graceId])).map((x) => x.key);
+    expect(clear.length).toBeGreaterThan(0);
+    expect(doubted.length).toBeGreaterThan(0);
+    // Everyone has left, so nothing is held back as "on site".
+    await ownerQuery(`UPDATE visits SET status = 'exited', exit_at = now() WHERE staff_id IS NOT NULL AND status = 'on_site'`).catch(() => undefined);
+    const retention = w.app.get(RetentionService);
+    // 20 days on: nothing yet.
+    await retention.run(w.a.companyId, new Date(Date.now() + 20 * 86_400_000));
+    await expect(storage.get(clear[0])).resolves.toBeInstanceOf(Buffer);
+    // 31 days on: the clear snapshots go; the reference photo and the doubted ones stay.
+    await retention.run(w.a.companyId, new Date(Date.now() + 31 * 86_400_000));
+    for (const k of clear) await expect(storage.get(k)).rejects.toThrow(/no longer kept/);
+    await expect(storage.get(ref)).resolves.toBeInstanceOf(Buffer);
+    for (const k of doubted) await expect(storage.get(k)).resolves.toBeInstanceOf(Buffer);
+    // 13 months on: the reference photo is still there while it is the reference.
+    await retention.run(w.a.companyId, new Date(Date.now() + 13 * 31 * 86_400_000));
+    await expect(storage.get(ref)).resolves.toBeInstanceOf(Buffer);
   });
 });

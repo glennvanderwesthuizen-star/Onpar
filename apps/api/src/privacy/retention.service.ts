@@ -10,16 +10,32 @@ export interface RetentionSettings {
   boloMediaDays: number;
   /** Visitor photos, document photos and a visitor's details (visitor specification: 12 months). */
   visitorMonths: number;
+  /** Photos on tasks, closed reports and decided Wire notes (owner, 9 Oct 2026: 12 months). */
+  recordPhotoMonths: number;
+  /** A domestic worker's entry snapshot that was not in doubt (owner, 9 Oct 2026: 30 days). */
+  staffSnapshotDays: number;
 }
-export const DEFAULT_RETENTION: RetentionSettings = { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90, visitorMonths: 12 };
+export const DEFAULT_RETENTION: RetentionSettings = { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90, visitorMonths: 12, recordPhotoMonths: 12, staffSnapshotDays: 30 };
+
+/** Which kinds count as what on the Privacy page. */
+export const RETENTION_GROUPS = {
+  selfies: ['selfie'],
+  patrolPhotos: ['patrol_photo'],
+  visitorPhotos: ['visit_photo', 'visit_document', 'visit_exception_photo'],
+  visitorRecords: ['visitor_person', 'visitor_vehicle', 'visitor_pass'],
+  recordPhotos: ['task_photo', 'report_photo', 'wire_photo'],
+  staffSnapshots: ['staff_snapshot'],
+  boloMedia: ['bolo_media'],
+} as const;
 
 /** What retention removes that is a record to anonymise, not a file. */
 const RECORD_KINDS = new Set(['visitor_person', 'visitor_vehicle', 'visitor_pass']);
 
 /**
- * Removes selfies, patrol photos and BOLO media once they pass the company's retention period
- * (brief section 9: proposed 12 months, to be confirmed with legal). Off until a
- * company switches it on. The record stays; only the image is removed, and logged.
+ * Removes photos once they pass the company's retention period (brief section 9; owner,
+ * 9 Oct 2026: 12 months, domestic staff snapshots 30 days; to be confirmed with legal). Off
+ * until a company switches it on. The record stays; only the image is removed, and logged.
+ * Certificates, HR notices and disciplinary files are never removed here.
  */
 @Injectable()
 export class RetentionService implements OnModuleDestroy {
@@ -43,7 +59,7 @@ export class RetentionService implements OnModuleDestroy {
   }
 
   async settings(tx: Tx): Promise<RetentionSettings> {
-    const r = (await tx.query('SELECT enabled, selfie_months AS "selfieMonths", patrol_photo_months AS "patrolPhotoMonths", bolo_media_days AS "boloMediaDays", visitor_months AS "visitorMonths" FROM retention_settings')).rows[0];
+    const r = (await tx.query('SELECT enabled, selfie_months AS "selfieMonths", patrol_photo_months AS "patrolPhotoMonths", bolo_media_days AS "boloMediaDays", visitor_months AS "visitorMonths", record_photo_months AS "recordPhotoMonths", staff_snapshot_days AS "staffSnapshotDays" FROM retention_settings')).rows[0];
     return r ?? DEFAULT_RETENTION;
   }
 
@@ -69,7 +85,41 @@ export class RetentionService implements OnModuleDestroy {
          SELECT 'visit_photo', v.face_photo_key, v.id, v.captured_at
            FROM visits v
           WHERE v.face_photo_key IS NOT NULL AND v.captured_at < $1::timestamptz - make_interval(months => $5) AND v.status <> 'on_site'
+            -- A domestic worker's first-day photo is the reference for later checks: kept while it is.
+            AND NOT EXISTS (SELECT 1 FROM unit_staff s WHERE s.ref_photo_key = v.face_photo_key)
+            -- A clear staff snapshot has its own, shorter period (below).
+            AND NOT (v.staff_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM visit_exceptions x WHERE x.photo_key = v.face_photo_key))
             AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = v.face_photo_key)
+         UNION ALL
+         -- A domestic worker's entry snapshot that nobody doubted (no exception was raised on it).
+         SELECT 'staff_snapshot', v.face_photo_key, v.id, v.captured_at
+           FROM visits v
+          WHERE v.staff_id IS NOT NULL AND v.face_photo_key IS NOT NULL AND v.status <> 'on_site'
+            AND v.captured_at < $1::timestamptz - make_interval(days => $7)
+            AND NOT EXISTS (SELECT 1 FROM unit_staff s WHERE s.ref_photo_key = v.face_photo_key)
+            AND NOT EXISTS (SELECT 1 FROM visit_exceptions x WHERE x.photo_key = v.face_photo_key)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = v.face_photo_key)
+         UNION ALL
+         -- Photos on tasks, closed reports and decided Wire notes. The record and its words stay.
+         SELECT 'task_photo', o.photo_key, o.id, o.done_at
+           FROM task_occurrences o
+          WHERE o.photo_key IS NOT NULL AND o.done_at < $1::timestamptz - make_interval(months => $6)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = o.photo_key)
+         UNION ALL
+         SELECT 'report_photo', r.photo_key, r.id, r.reported_at
+           FROM reports r
+          WHERE r.photo_key IS NOT NULL AND r.closed_at < $1::timestamptz - make_interval(months => $6)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = r.photo_key)
+         UNION ALL
+         SELECT 'report_photo', h.photo_key, r.id, h.at
+           FROM report_history h JOIN reports r ON r.id = h.report_id
+          WHERE h.photo_key IS NOT NULL AND r.closed_at < $1::timestamptz - make_interval(months => $6)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = h.photo_key)
+         UNION ALL
+         SELECT 'wire_photo', n.photo_key, n.id, n.sent_at
+           FROM wire_notes n
+          WHERE n.photo_key IS NOT NULL AND n.status IN ('adopted','declined') AND n.sent_at < $1::timestamptz - make_interval(months => $6)
+            AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = n.photo_key)
          UNION ALL
          SELECT 'visit_document', d.storage_key, d.visit_id, v.captured_at
            FROM visit_documents d JOIN visits v ON v.id = d.visit_id
@@ -101,12 +151,15 @@ export class RetentionService implements OnModuleDestroy {
             AND (ps.status <> 'active' OR ps.kind = 'once' OR ps.end_date IS NOT NULL)
             AND NOT EXISTS (SELECT 1 FROM retention_log l WHERE l.storage_key = 'visitor_pass:' || ps.id)
           ORDER BY 4`,
-        [now, s.selfieMonths, s.patrolPhotoMonths, s.boloMediaDays, s.visitorMonths],
+        [now, s.selfieMonths, s.patrolPhotoMonths, s.boloMediaDays, s.visitorMonths, s.recordPhotoMonths, s.staffSnapshotDays],
       )
     ).rows as { kind: string; key: string; source_id: string; taken_at: Date }[];
   }
 
   async runAll(now: Date) {
+    // Old alerts, their delivery records and sign-in counters, for every company (not records; phase 1).
+    const [h] = await this.db.query<{ alerts: number; deliveries: number; sign_in_counters: number }>('SELECT * FROM housekeeping()');
+    if (h && h.alerts + h.deliveries + h.sign_in_counters > 0) this.log.log(`Cleared ${h.alerts} old alerts, ${h.deliveries} delivery records, ${h.sign_in_counters} sign-in counters.`);
     const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let removed = 0;
     for (const { scheduler_company_ids: companyId } of companies) removed += await this.run(companyId, now);
@@ -119,7 +172,11 @@ export class RetentionService implements OnModuleDestroy {
       const s = await this.settings(tx);
       if (!s.enabled) return 0;
       const items = await this.due(tx, s, now);
+      // One file can be due twice (a doubted snapshot is both the visit's photo and the exception's).
+      const seen = new Set<string>();
       for (const it of items) {
+        if (seen.has(it.key)) continue;
+        seen.add(it.key);
         // If removing a file fails, the whole run rolls back and the next run tries again (removing twice is harmless).
         await tx.query(
           `INSERT INTO retention_log (company_id, kind, storage_key, source_id, taken_at) VALUES (app_company_id(), $1, $2, $3, $4)`,
@@ -128,7 +185,7 @@ export class RetentionService implements OnModuleDestroy {
         if (RECORD_KINDS.has(it.kind)) await this.anonymise(tx, it.kind, it.source_id);
         else await this.storage.remove(it.key);
       }
-      return items.length;
+      return seen.size;
     });
   }
 

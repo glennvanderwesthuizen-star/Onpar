@@ -73,7 +73,7 @@ interface Setup {
   phones: Phone[];
   settings: VisitorSettings & { saved: boolean };
   checks: { key: VisitorCheck; label: string; about: string; notYet: string | null }[];
-  limits: Record<'noResponseSeconds' | 'overstayEscalationMinutes' | 'retentionMonths', { min: number; max: number }>;
+  limits: Record<'noResponseSeconds' | 'overstayEscalationMinutes', { min: number; max: number }>;
   categories: Category[];
   barred: Barred[];
   units: { id: string; name: string }[];
@@ -165,7 +165,7 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
     if (!removing) return;
     run('remove', () => api(`${base}/barred/${removing.id}/remove`, { method: 'POST', json: { reason: removing.reason } })).then((ok) => ok && setRemoving(null));
   };
-  const number = (key: 'noResponseSeconds' | 'overstayEscalationMinutes' | 'retentionMonths', label: string, hint: string) =>
+  const number = (key: 'noResponseSeconds' | 'overstayEscalationMinutes', label: string, hint: string) =>
     settings && (
       <Field label={label} error={errorsIn('settings')[key]} hint={hint}>
         <input type="number" inputMode="numeric" min={data?.limits[key].min} max={data?.limits[key].max} value={settings[key]} disabled={!manage} onChange={(e) => setSettings({ ...settings, [key]: Number(e.target.value) })} />
@@ -256,7 +256,6 @@ export function SiteVisitors({ siteId }: { siteId: string }) {
             <div className="grid g2">
               {number('noResponseSeconds', 'Seconds the customer has to answer an alert', 'After this the guard is offered the phone. 120 is two minutes.')}
               {number('overstayEscalationMinutes', 'Minutes before an overstay goes to the supervisor', 'The guard is alerted first.')}
-              {number('retentionMonths', 'Months visitor records are kept', 'A proposal: confirm with whoever handles POPIA for you.')}
               <label className="vis-check" style={{ alignSelf: 'center' }}>
                 <input type="checkbox" checked={settings.secondContact} disabled={!manage} onChange={(e) => setSettings({ ...settings, secondContact: e.target.checked })} />
                 <span>

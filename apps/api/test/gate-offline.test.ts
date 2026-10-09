@@ -164,4 +164,12 @@ describe('visitor management: the gate without signal', () => {
     // Not captured offline: the offline decision is ignored and the customer is asked as usual.
     expect(r.body.status).toBe('awaiting_approval');
   });
+
+  it('records the gate list download once a day per guard and phone, not every 10 minutes', async () => {
+    for (let i = 0; i < 3; i++) expect((await w.http().get('/api/device/visitors/offline-pack').set(g())).status).toBe(200);
+    const today = await ownerQuery(
+      `SELECT count(*)::int AS n FROM audit_log WHERE action = 'visitor.offline_pack' AND at >= (date_trunc('day', now() AT TIME ZONE 'Africa/Johannesburg') AT TIME ZONE 'Africa/Johannesburg')`,
+    );
+    expect(today[0].n).toBe(1);
+  });
 });

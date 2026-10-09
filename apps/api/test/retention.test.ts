@@ -16,6 +16,7 @@ describe('retention', () => {
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
   const THIRTEEN_MONTHS = 13 * 31 * 24 * 3600 * 1000;
   const later = () => new Date(Date.now() + THIRTEEN_MONTHS);
+  const NONE = { selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0, recordPhotos: 0, staffSnapshots: 0, boloMedia: 0 };
   const settings = async () => (await w.http().get('/api/privacy/retention').set(auth(manager))).body;
 
   beforeAll(async () => {
@@ -62,9 +63,9 @@ describe('retention', () => {
 
   it('is off until the company switches it on, so nothing is removed', async () => {
     expect(await settings()).toEqual({
-      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90, visitorMonths: 12 },
-      wouldRemoveNow: { selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0 },
-      removed: { selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0, last: null },
+      settings: { enabled: false, selfieMonths: 12, patrolPhotoMonths: 12, boloMediaDays: 90, visitorMonths: 12, recordPhotoMonths: 12, staffSnapshotDays: 30 },
+      wouldRemoveNow: NONE,
+      removed: { ...NONE, last: null },
     });
     expect(await retention.run(w.a.companyId, later())).toBe(0);
     expect((await storage.get(selfieKey)).equals(PNG)).toBe(true);
@@ -78,13 +79,13 @@ describe('retention', () => {
     const [a] = await ownerQuery(`SELECT reason, before->>'enabled' AS was FROM audit_log WHERE action = 'privacy.retention_update'`);
     expect(a).toEqual({ reason: 'Periods confirmed by our POPIA adviser', was: 'false' });
     // Nothing is old enough yet.
-    expect((await settings()).wouldRemoveNow).toEqual({ selfies: 0, patrolPhotos: 0, visitorPhotos: 0, visitorRecords: 0 });
+    expect((await settings()).wouldRemoveNow).toEqual(NONE);
   });
 
   it('removes photos past their period, keeps the records, and logs each removal', async () => {
     expect(await retention.run(w.a.companyId, later())).toBe(2);
-    await expect(storage.get(selfieKey)).rejects.toThrow(/ENOENT/);
-    await expect(storage.get(patrolKey)).rejects.toThrow(/ENOENT/);
+    await expect(storage.get(selfieKey)).rejects.toThrow(/no longer kept/);
+    await expect(storage.get(patrolKey)).rejects.toThrow(/no longer kept/);
     const selfie = await w.http().get(`/api/attendance/${attendanceId}/selfie/duty_on`).set(auth(supervisor));
     expect(selfie.status).toBe(410);
     expect(selfie.body.message).toMatch(/removed under the retention policy/);

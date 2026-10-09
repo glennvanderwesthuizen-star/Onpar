@@ -15,6 +15,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Camera and voice files left behind by a screen closed half-way: removed after a day.
+        Thread { runCatching { za.onpar.core.TempFiles.purge(cacheDir) } }.start()
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             MaterialTheme {

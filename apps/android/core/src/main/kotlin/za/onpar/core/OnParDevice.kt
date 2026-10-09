@@ -40,6 +40,8 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     /** Saves the setup from the Devices page QR code, after checking the server accepts the key. */
     fun applySetup(s: DeviceSetup) {
         ApiClient(s, clock, http).post("/device/heartbeat", buildJsonObject { })
+        // Set up again (perhaps for another company): the gate's visitor lists from before are not kept.
+        if (setup != null && setup != s) visitors.clear()
         store["serverUrl"] = s.serverUrl
         store["deviceToken"] = s.deviceToken
     }
@@ -47,6 +49,8 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     /** Forgets the setup (for example when the phone moves to another company). */
     fun clearSetup() {
         signOut()
+        // Expected visitors, the barred list and customers' numbers never stay on a phone that leaves (POPIA).
+        visitors.clear()
         store["sessions"] = null
         store["serverUrl"] = null
         store["deviceToken"] = null

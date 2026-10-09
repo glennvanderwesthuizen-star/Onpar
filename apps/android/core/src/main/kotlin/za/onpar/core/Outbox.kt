@@ -3,6 +3,7 @@ package za.onpar.core
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -90,6 +91,7 @@ class Outbox(private val dir: File, private val clock: TrustedClock) {
      */
     @Synchronized
     fun flush(api: ApiClient): Map<String, Submitted> {
+        purgeFailed()
         val out = mutableMapOf<String, Submitted>()
         for (file in itemFiles(dir)) {
             val item = OnParJson.decodeFromString(OutboxItem.serializer(), file.readText())
@@ -116,6 +118,30 @@ class Outbox(private val dir: File, private val clock: TrustedClock) {
             }
         }
         return out
+    }
+
+    /**
+     * Refused actions are kept a week so the guard and supervisor can see why, then removed with
+     * their photos (optimisation review, phase 1), so they never fill the phone.
+     */
+    @Synchronized
+    fun purgeFailed(now: Instant = Instant.now(), keepDays: Long = FAILED_KEEP_DAYS): Int {
+        val cutoff = now.minus(Duration.ofDays(keepDays))
+        var removed = 0
+        for (f in itemFiles(failedDir)) {
+            val item = runCatching { OnParJson.decodeFromString(OutboxItem.serializer(), f.readText()) }.getOrNull()
+            val at = item?.let { runCatching { Instant.parse(it.createdAt) }.getOrNull() } ?: Instant.ofEpochMilli(f.lastModified())
+            if (at.isBefore(cutoff)) {
+                item?.files?.forEach { File(it.path).delete() }
+                f.delete()
+                removed++
+            }
+        }
+        return removed
+    }
+
+    companion object {
+        const val FAILED_KEEP_DAYS = 7L
     }
 
     private fun nextSequence(): Long {

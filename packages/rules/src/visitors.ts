@@ -57,14 +57,11 @@ export interface VisitorSettings {
   secondContact: boolean;
   /** How long after the guard is alerted to an overstay the supervisor is told. */
   overstayEscalationMinutes: number;
-  /** How long visit records and face photos are kept. A proposal for legal to confirm. */
-  retentionMonths: number;
 }
 
 export const VISITOR_LIMITS = {
   noResponseSeconds: { min: 30, max: 600 },
   overstayEscalationMinutes: { min: 5, max: 240 },
-  retentionMonths: { min: 1, max: 120 },
   /** A category's "hours on site" limit, in minutes. */
   limitMinutes: { min: 15, max: 7 * 24 * 60 },
 } as const;
@@ -74,7 +71,6 @@ export const DEFAULT_VISITOR_SETTINGS: VisitorSettings = {
   noResponseSeconds: 120,
   secondContact: true,
   overstayEscalationMinutes: 30,
-  retentionMonths: 12,
 };
 
 /** Field-by-field problems with a site's visitor settings; empty when they are fine. */
@@ -84,13 +80,12 @@ export function visitorSettingsErrors(s: VisitorSettings): Record<string, string
     const why = VISITOR_CHECK_INFO[c].notYet;
     if (s.checks[c] && why) errors[`checks.${c}`] = `${VISITOR_CHECK_INFO[c].label} cannot be switched on yet. ${why}`;
   }
-  const range = (key: 'noResponseSeconds' | 'overstayEscalationMinutes' | 'retentionMonths', unit: string) => {
+  const range = (key: 'noResponseSeconds' | 'overstayEscalationMinutes', unit: string) => {
     const { min, max } = VISITOR_LIMITS[key];
     if (!Number.isInteger(s[key]) || s[key] < min || s[key] > max) errors[key] = `Enter a whole number from ${min} to ${max} ${unit}.`;
   };
   range('noResponseSeconds', 'seconds');
   range('overstayEscalationMinutes', 'minutes');
-  range('retentionMonths', 'months');
   return errors;
 }
 
