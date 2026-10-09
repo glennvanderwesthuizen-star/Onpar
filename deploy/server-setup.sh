@@ -20,6 +20,9 @@ sudo timedatectl set-timezone Africa/Johannesburg
 # Automatic security updates for the server itself.
 $APT install -y unattended-upgrades
 sudo dpkg-reconfigure -f noninteractive unattended-upgrades
+# Some fixes only take effect after a restart: restart by itself at 03:30 when one is needed
+# (after the 02:15 backup, at the quietest time). On Par starts again by itself.
+printf '%s\n' 'Unattended-Upgrade::Automatic-Reboot "true";' 'Unattended-Upgrade::Automatic-Reboot-Time "03:30";' | sudo tee /etc/apt/apt.conf.d/52onpar-reboot >/dev/null
 if [ ! -f ~/.ssh/onpar_deploy ]; then
   mkdir -p ~/.ssh && chmod 700 ~/.ssh
   ssh-keygen -t ed25519 -N '' -f ~/.ssh/onpar_deploy -C "onpar-server" >/dev/null

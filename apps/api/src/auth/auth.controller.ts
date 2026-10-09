@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ROLE_LABELS, Role, PERMISSIONS, can, Permission } from '@onpar/rules';
 import { AllowTemporaryPassword, CurrentUser, UserAuthGuard, UserPrincipal, SELF_SERVICE_ROLES } from '../common/auth';
 import { hashSecret, hashToken, verifySecret } from '../common/crypto';
-import { clearSessionCookie, CSRF_HEADER, CSRF_VALUE, SESSION_HOURS, setSessionCookie } from '../common/session';
+import { clearSessionCookie, CSRF_HEADER, CSRF_VALUE, SESSION_HOURS, setSessionCookie, userToken } from '../common/session';
 import { CONFIG, Config } from '../config';
 import { parseBody } from '../common/validation';
 import { DbService } from '../db/db.service';
@@ -140,7 +140,17 @@ export class AuthController {
   /** Signs out of the website by clearing the cookie. */
   @Post('logout')
   @HttpCode(200)
-  logout(@Res({ passthrough: true }) res: Response) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Ends this sign-in on every device, not only in this browser (optimisation review, phase 0).
+    let token = '';
+    try {
+      token = userToken(req);
+    } catch {
+      token = '';
+    }
+    const p = token ? await this.jwt.verifyAsync<{ sub: string; cid: string; typ: string }>(token, { algorithms: ['HS256'] }).catch(() => null) : null;
+    if (p?.typ === 'user') await this.db.withTenant(p.cid, (tx) => tx.query('UPDATE users SET sessions_from = now() WHERE id = $1', [p.sub]));
+    if (p?.typ === 'customer') await this.db.withTenant(p.cid, (tx) => tx.query('UPDATE customers SET sessions_from = now() WHERE id = $1', [p.sub]));
     clearSessionCookie(res, this.config.cookieSecure);
     return { ok: true };
   }

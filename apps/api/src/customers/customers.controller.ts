@@ -135,7 +135,7 @@ export class CustomersController {
     return this.db.withTenant(user.companyId, async (tx) => {
       await this.site(tx, user, siteId);
       const password = temporaryPassword();
-      const r = await tx.query('UPDATE customers SET password_hash = $3, must_change_password = true WHERE id = $1 AND site_id = $2', [id, siteId, await hashSecret(password)]);
+      const r = await tx.query('UPDATE customers SET password_hash = $3, must_change_password = true, sessions_from = now() WHERE id = $1 AND site_id = $2', [id, siteId, await hashSecret(password)]);
       if (!r.rowCount) throw new NotFoundException('Customer not found.');
       await this.audit.byUser(tx, user, { action: 'customer.password_reset', entityType: 'customer', entityId: id });
       return { temporaryPassword: password };

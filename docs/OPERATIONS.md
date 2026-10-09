@@ -32,6 +32,33 @@ This prints a temporary password once. Give it to the administrator privately (i
 
 Proposed targets (to confirm): lose at most **1 day** of data with the nightly portable backup (minutes with point-in-time recovery), and be back within **4 hours**.
 
+### On the single server (deploy/onpar.sh), from 9 Oct 2026
+
+- A backup runs every night at 02:15 and **before every update**. If that backup fails, the update stops and nothing changes. The newest **7** are kept in `backups/`.
+- **Off-site copies are not set up yet** (owner, 9 Oct 2026: later, to save cost). Until then, a server lost with its disk loses the backups too. Do this before real client data goes on.
+- `deploy/onpar.sh rollback` goes back to the code from before the last update. It does not change the database. If an update changed the database and the old code cannot work with it, restore the backup made just before the update (see below).
+
+## Outside monitor (UptimeRobot, free)
+
+`/api/health` answers 200 when all is well and 503 with the problem named when the database is down, the disk is 85% full or more, or the last backup is older than 30 hours.
+
+1. Create a free account at uptimerobot.com.
+2. Add a new monitor: type **HTTP(s)**, address `https://<your web address>/api/health`, every 5 minutes.
+3. Under alert contacts, add your email and the mobile app.
+4. Wait 5 minutes: it should say **Up**.
+
+## Rebuilding the server from nothing
+
+Keep these three somewhere safe, off the server: `deploy/.env` (it holds DATA_KEY), `deploy/backup-passphrase`, and the newest backup file. Without DATA_KEY, ID numbers and photos cannot be read.
+
+1. Make a new Ubuntu 24.04 server and run `deploy/server-setup.sh` (it prints the GitHub step).
+2. Clone the code to `/home/ubuntu/opt/onpar` and copy `deploy/.env` and `deploy/backup-passphrase` back in.
+3. Run `deploy/onpar.sh install <address>`.
+4. Restore the backup with `scripts/restore.sh <file>` into the new, empty database (see Backups).
+5. Point the web address at the new server, then sign in and open an officer's photo to check.
+
+Servers set up before 9 Oct 2026: run `deploy/onpar.sh server-updates` once. It switches on the server's own security updates, with a restart at 03:30 when one is needed. Docker logs are capped at 3 × 10 MB per part.
+
 ## Scheduled jobs (run inside the server)
 
 | Job | How often | What it does |

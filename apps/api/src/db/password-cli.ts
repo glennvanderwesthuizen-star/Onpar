@@ -24,7 +24,7 @@ async function main() {
     const u = (await client.query('SELECT id, company_id, full_name, active FROM users WHERE lower(email) = $1', [email])).rows[0];
     if (!u) throw new Error(`There is no On Par account for ${email}. Check the spelling.`);
     const password = temporaryPassword();
-    await client.query('UPDATE users SET password_hash = $2, must_change_password = true, active = true WHERE id = $1', [u.id, await hashSecret(password)]);
+    await client.query('UPDATE users SET password_hash = $2, must_change_password = true, active = true, sessions_from = now() WHERE id = $1', [u.id, await hashSecret(password)]);
     await client.query('SELECT auth_throttle_clear($1)', [`email:${hashToken(email)}`]);
     await client.query(
       `INSERT INTO audit_log (company_id, actor_type, actor_label, action, entity_type, entity_id, after)

@@ -1,4 +1,4 @@
-import { Controller, Get, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { CONFIG, Config, loadConfig } from './config';
 import { DbService } from './db/db.service';
@@ -68,14 +68,8 @@ import { UnitStaffService } from './visitors/unit-staff.service';
 import { CustomerStaffController, GateStaffController, SiteStaffController } from './visitors/unit-staff.controller';
 import { VisitApprovalService } from './visitors/visit-approval.service';
 import { VisitorSetupService } from './visitors/visitor-setup.service';
+import { HealthController } from './health/health.controller';
 
-@Controller('health')
-class HealthController {
-  @Get()
-  health() {
-    return { ok: true };
-  }
-}
 
 export function buildAppModule(config: Config = loadConfig()) {
   @Module({

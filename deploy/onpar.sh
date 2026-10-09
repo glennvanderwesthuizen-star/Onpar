@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # On Par on a server. Run from the repository folder, for example /opt/onpar:
 #   deploy/onpar.sh install [address]   first time: secrets, build, start (address defaults to <public-ip>.sslip.io)
-#   deploy/onpar.sh update              fetch the latest code, rebuild and restart (migrations run automatically);
-#                                       keeps going on the server even if this window closes
+#   deploy/onpar.sh update              backup first, then fetch the latest code, rebuild and restart (migrations run
+#                                       automatically); keeps going on the server even if this window closes
+#   deploy/onpar.sh rollback            go back to the version before the last update (the database stays as it is)
 #   deploy/onpar.sh progress            how the last update is going (or how it ended)
 #   deploy/onpar.sh status              what is running, and the web address
 #   deploy/onpar.sh logs                the last lines from each part
 #   deploy/onpar.sh company "Company name" "Admin full name" admin@example.co.za
 #   deploy/onpar.sh demo                load the demo company (for testing only)
 #   deploy/onpar.sh password their@email.co.za   new temporary password for a user (and lifts a sign-in lock)
-#   deploy/onpar.sh backup              encrypted backup now (kept in backups/, newest 14)
+#   deploy/onpar.sh backup              encrypted backup now (kept in backups/, newest 7)
+#   deploy/onpar.sh server-updates      switch on the server's own security updates, with a restart at 03:30 when needed
 #   deploy/onpar.sh reset               DELETES ALL DATA and makes new secrets (before real data, or if the secrets leaked)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -86,15 +88,41 @@ ENV
     fi
     echo $$ > logs/update.pid
     echo "Update started $(date)."
+    # A backup first, so a bad update can always be undone. If the backup fails, nothing is changed.
+    echo "Making a backup before updating..."
+    main backup
+    git rev-parse HEAD > logs/before-update.commit
     git pull --ff-only
+    # Fresh base images (database, front door, Node) so security fixes reach the server too.
+    compose pull db caddy
     # Plain progress lines, so the log file is easy to read.
-    BUILDKIT_PROGRESS=plain compose --profile tools build
+    BUILDKIT_PROGRESS=plain compose --profile tools build --pull
     compose up -d
     fix_uploads
     docker image prune -f >/dev/null
     # Old build leftovers fill the disk over time.
     docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
     echo "Updated. Finished $(date)."
+    ;;
+  rollback)
+    if [ ! -f logs/before-update.commit ]; then echo "There is no earlier version recorded yet."; exit 1; fi
+    previous=$(cat logs/before-update.commit)
+    echo "Going back to version $(git log -1 --format='%h %s' "$previous")."
+    echo "The database is not changed. If the update changed it, the backup made just before"
+    echo "the update is in backups/ (the newest file from before the update)."
+    git reset --hard "$previous"
+    BUILDKIT_PROGRESS=plain compose --profile tools build
+    compose up -d
+    fix_uploads
+    echo "Back on the earlier version. The next 'update' brings the latest code again."
+    ;;
+  server-updates)
+    # For servers set up before 9 Oct 2026 (new ones get this from server-setup.sh). Asks for the server password.
+    sudo apt-get -o DPkg::Lock::Timeout=600 install -y unattended-upgrades
+    printf '%s\n' 'APT::Periodic::Update-Package-Lists "1";' 'APT::Periodic::Unattended-Upgrade "1";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null
+    printf '%s\n' 'Unattended-Upgrade::Automatic-Reboot "true";' 'Unattended-Upgrade::Automatic-Reboot-Time "03:30";' | sudo tee /etc/apt/apt.conf.d/52onpar-reboot >/dev/null
+    echo "Security updates are on. The server restarts itself at 03:30 when an update needs it."
+    if [ -f /var/run/reboot-required ]; then echo "An update is already waiting for a restart: it will happen tonight at 03:30."; fi
     ;;
   progress)
     if [ ! -e logs/update-latest.log ]; then echo "No update has been run this way yet."; exit 0; fi
@@ -121,10 +149,10 @@ ENV
     ;;
   backup)
     compose --profile tools run --rm tools /scripts/backup.sh
-    ls -1t backups/onpar-*.tar.enc | tail -n +15 | while read -r old; do rm -f "$old" "$old.sha256"; done
+    ls -1t backups/onpar-*.tar.enc | tail -n +8 | while read -r old; do rm -f "$old" "$old.sha256"; done
     ;;
   *)
-    sed -n '2,10p' "$0"
+    sed -n '2,14p' "$0"
     exit 1
     ;;
 esac

@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { maskIdNumber, VISIT_STATUS_LABELS, VisitStatus, vehicleLine, visitorName } from '@onpar/rules';
 import { z } from 'zod';
 import { assertSiteAccess, CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
+import { csvCell } from '../common/csv';
 import { parseBody } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
@@ -46,12 +47,6 @@ interface SiteRow {
   rollCall: { id: string; startedAt: Date } | null;
 }
 
-/** A spreadsheet cell, safe from formulas. */
-function cell(v: unknown): string {
-  let t = v === null || v === undefined ? '' : String(v);
-  if (/^[=+\-@]/.test(t)) t = `'${t}`;
-  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-}
 
 /**
  * The visitor portal (visitor specification: dashboard, reports and emergency roll-call; the
@@ -216,7 +211,7 @@ export class VisitorPortalController {
           x.pax_out,
           x.exceptions,
         ]
-          .map(cell)
+          .map(csvCell)
           .join(','),
       ),
     ];

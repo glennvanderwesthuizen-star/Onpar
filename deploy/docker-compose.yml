@@ -14,8 +14,14 @@ x-app-env: &app-env
   TRUST_PROXY: loopback, uniquelocal
   STORAGE_DRIVER: local
 
+# Each part keeps at most 3 log files of 10 MB, so logs can never fill the disk.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
 services:
   db:
+    logging: *logging
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -32,22 +38,29 @@ services:
       retries: 20
 
   api:
+    logging: *logging
     build: { context: .., dockerfile: deploy/Dockerfile, target: api }
     image: onpar-api
     restart: unless-stopped
-    environment: *app-env
+    environment:
+      <<: *app-env
+      # Read only, so the health check can tell the outside monitor when last night's backup failed.
+      BACKUP_DIR: /backups
     volumes:
       - uploads:/data/uploads
+      - ../backups:/backups:ro
     depends_on:
       db: { condition: service_healthy }
 
   web:
+    logging: *logging
     build: { context: .., dockerfile: deploy/Dockerfile, target: web }
     image: onpar-web
     restart: unless-stopped
     depends_on: [api]
 
   caddy:
+    logging: *logging
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
@@ -63,6 +76,7 @@ services:
 
   # Backups on demand (deploy/onpar.sh backup); not a running service.
   tools:
+    logging: *logging
     build: { context: .., dockerfile: deploy/Dockerfile, target: tools }
     image: onpar-tools
     profiles: [tools]

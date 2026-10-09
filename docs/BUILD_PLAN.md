@@ -1134,3 +1134,16 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - Every override is kept with the case and shown on its page and in its history.
 - **One way only:** notices to appear and hearing outcomes can no longer be sent from the plain "New notice" form; they go through **Start a disciplinary inquiry** (any employee) or the Action needed list, so the notice period, the warnings and the representative are always checked.
 - Migration `0056_case_overrides.sql`. Tests: 1 server.
+
+## Optimisation review, phase 0: protect the server (owner, 9 Oct 2026)
+
+The owner approved phase 0 of the optimisation review ("start with zero"). Built:
+
+- **Outside monitor:** `/api/health` checks the database, the disk (85% or more) and the age of the last backup (30 hours or more). It answers 503 and names the problem. UptimeRobot setup is in OPERATIONS.md.
+- **Updates are safer:** a backup runs before every update, and the update stops if the backup fails. Base images are refreshed. `onpar.sh rollback` returns to the previous code. The server installs its own security updates and restarts at 03:30 when needed (`onpar.sh server-updates` for the existing server). Logs are capped. 7 local backups are kept.
+- **Sessions end when they should:**
+  - A suspended or dismissed guard is refused at once.
+  - Signing out ends that person's sign-in on every device.
+  - A password change or reset ends every other sign-in. This applies to users, customers and the employee portal (migration 0057, `sessions_from`).
+- **Safe exports:** every CSV cell that a spreadsheet could run as a formula is made inert (`common/csv.ts`).
+- **Deferred by the owner:** off-site backups (cost). Before real data: switch off the demo account.

@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { bobWireMonthsTo, INSIGNIA_LABELS, mergeWire, sastDate, WIRE_RULES, WireRule, wireSettingsErrors } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentGuard, CurrentUser, GuardOrSelfAuthGuard, GuardPrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
+import { csvFile } from '../common/csv';
 import { parseBody, throwIfErrors } from '../common/validation';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
@@ -192,15 +193,13 @@ export class WireController {
         )
       ).rows,
     );
-    const cell = (v: unknown) => {
-      const t = v === null || v === undefined ? '' : String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
-    const lines = [['Supplied', 'Employee number', 'Guard', 'Site', 'Employer', 'Benefit', 'Kind', 'Barbs', 'Cost (R)'].join(',')];
-    for (const r of rows) lines.push([r.supplied, r.employee_number, r.full_name, r.site, r.employer, r.item_name, r.category, r.barbs, r.cost ?? ''].map(cell).join(','));
+    const file = csvFile(
+      ['Supplied', 'Employee number', 'Guard', 'Site', 'Employer', 'Benefit', 'Kind', 'Barbs', 'Cost (R)'],
+      rows.map((r) => [r.supplied, r.employee_number, r.full_name, r.site, r.employer, r.item_name, r.category, r.barbs, r.cost ?? '']),
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="the-wire-hand-ins-${m}.csv"`);
-    res.send(lines.join('\r\n') + '\r\n');
+    res.send(file);
   }
 
   /** "What if": the real months replayed under other values. Writes nothing. */

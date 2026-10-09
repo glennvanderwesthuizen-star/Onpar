@@ -63,7 +63,7 @@ export class UserAuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const token = userToken(req);
     if (!token) throw new UnauthorizedException('Please sign in.');
-    let payload: { sub: string; cid: string; typ: string };
+    let payload: { sub: string; cid: string; typ: string; iat?: number };
     try {
       payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
@@ -74,8 +74,9 @@ export class UserAuthGuard implements CanActivate {
     // Re-read the user so a deactivated account or changed role takes effect immediately.
     let mustChange = false;
     const principal = await this.db.withTenant(payload.cid, async (tx) => {
-      const u = (await tx.query('SELECT id, role, active, full_name, must_change_password FROM users WHERE id = $1', [payload.sub])).rows[0];
+      const u = (await tx.query('SELECT id, role, active, full_name, must_change_password, sessions_from FROM users WHERE id = $1', [payload.sub])).rows[0];
       if (!u || !u.active) return null;
+      if (issuedBeforeCutoff(payload.iat, u.sessions_from)) return 'ended' as const;
       mustChange = u.must_change_password;
       let siteIds: string[] | null = null;
       if (SITE_SCOPED_ROLES.includes(u.role)) {
@@ -86,6 +87,7 @@ export class UserAuthGuard implements CanActivate {
       return { kind: 'user', userId: u.id, companyId: payload.cid, role: u.role, name: u.full_name, siteIds };
     });
     if (!principal) throw new UnauthorizedException('This account is no longer active.');
+    if (principal === 'ended') throw new UnauthorizedException('You were signed out. Please sign in again.');
     req.principal = principal;
     if (mustChange && !this.reflector.getAllAndOverride<boolean>(TEMPORARY_OK_KEY, [ctx.getHandler(), ctx.getClass()])) {
       throw new ForbiddenException('Please choose your own password first.');
@@ -124,6 +126,15 @@ export class DeviceAuthGuard implements CanActivate {
   }
 }
 
+/**
+ * A sign-in issued before the account's cut-off (a sign-out, a password change or reset) no
+ * longer counts. `iat` is in whole seconds, so the cut-off is compared to the second.
+ */
+export function issuedBeforeCutoff(iat: number | undefined, cutoff: Date | string | null | undefined): boolean {
+  if (!cutoff || iat === undefined) return false;
+  return iat < Math.floor(new Date(cutoff).getTime() / 1000);
+}
+
 /** Throws 404 (not 403, so nothing leaks) when a site-scoped user asks for a site outside their list. */
 export function assertSiteAccess(user: UserPrincipal, siteId: string) {
   if (user.siteIds && !user.siteIds.includes(siteId)) {
@@ -157,6 +168,7 @@ export class GuardAuthGuard implements CanActivate {
   constructor(
     private readonly device: DeviceAuthGuard,
     private readonly jwt: JwtService,
+    private readonly db: DbService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -174,6 +186,9 @@ export class GuardAuthGuard implements CanActivate {
     if (payload.typ !== 'guard' || payload.did !== d.deviceId || payload.cid !== d.companyId) {
       throw new UnauthorizedException('Please log in with your employee number and PIN.');
     }
+    // A guard who is suspended or has left stops at once, not when his sign-in runs out.
+    const active = await this.db.withTenant(d.companyId, async (tx) => (await tx.query(`SELECT status = 'active' AS ok FROM employees WHERE id = $1`, [payload.sub])).rows[0]?.ok === true);
+    if (!active) throw new UnauthorizedException('You can no longer sign in on this phone. See your supervisor.');
     req.principal = { kind: 'guard', employeeId: payload.sub, companyId: d.companyId, deviceId: d.deviceId, siteId: d.siteId };
     return true;
   }
@@ -248,7 +263,7 @@ export class CustomerAuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const token = userToken(req);
     if (!token) throw new UnauthorizedException('Please sign in.');
-    let payload: { sub: string; cid: string; typ: string };
+    let payload: { sub: string; cid: string; typ: string; iat?: number };
     try {
       payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
@@ -257,9 +272,10 @@ export class CustomerAuthGuard implements CanActivate {
     if (payload.typ !== 'customer') throw new UnauthorizedException('Please sign in.');
     // Re-read the customer so a deactivated account stops working at once.
     const c = await this.db.withTenant(payload.cid, async (tx) =>
-      (await tx.query('SELECT id, site_id, unit_id, kind, full_name, active, must_change_password FROM customers WHERE id = $1', [payload.sub])).rows[0],
+      (await tx.query('SELECT id, site_id, unit_id, kind, full_name, active, must_change_password, sessions_from FROM customers WHERE id = $1', [payload.sub])).rows[0],
     );
     if (!c || !c.active) throw new UnauthorizedException('This account is no longer active.');
+    if (issuedBeforeCutoff(payload.iat, c.sessions_from)) throw new UnauthorizedException('You were signed out. Please sign in again.');
     req.principal = { kind: 'customer', customerId: c.id, companyId: payload.cid, siteId: c.site_id, unitId: c.unit_id, customerKind: c.kind, name: c.full_name } satisfies CustomerPrincipal;
     if (c.must_change_password && !this.reflector.getAllAndOverride<boolean>(TEMPORARY_OK_KEY, [ctx.getHandler(), ctx.getClass()])) {
       throw new ForbiddenException('Please choose your own password first.');

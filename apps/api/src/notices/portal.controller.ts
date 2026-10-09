@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
 import { POST_DEVICE_LINE, POST_PHONE_LINE } from '@onpar/rules';
 import { z } from 'zod';
-import { CurrentGuard, GuardAuthGuard, GuardPrincipal } from '../common/auth';
+import { CurrentGuard, GuardAuthGuard, GuardPrincipal, issuedBeforeCutoff } from '../common/auth';
 import { hashSecret, hashToken, verifySecret } from '../common/crypto';
 import { clearSessionCookie, CSRF_HEADER, CSRF_VALUE, setSessionCookie, userToken } from '../common/session';
 import { CONFIG, Config } from '../config';
@@ -43,7 +43,7 @@ export class PortalAuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const token = userToken(req);
     if (!token) throw new UnauthorizedException('Please sign in.');
-    let payload: { sub: string; cid: string; typ: string };
+    let payload: { sub: string; cid: string; typ: string; iat?: number };
     try {
       payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
@@ -52,9 +52,10 @@ export class PortalAuthGuard implements CanActivate {
     if (payload.typ !== 'portal') throw new UnauthorizedException('Please sign in.');
     // Re-read, so a new code from HR or a leaver stops the old sign-in at once.
     const e = await this.db.withTenant(payload.cid, async (tx) =>
-      (await tx.query(`SELECT e.id, e.full_name, e.status, a.password_hash FROM employees e JOIN portal_accounts a ON a.employee_id = e.id WHERE e.id = $1`, [payload.sub])).rows[0],
+      (await tx.query(`SELECT e.id, e.full_name, e.status, a.password_hash, a.sessions_from FROM employees e JOIN portal_accounts a ON a.employee_id = e.id WHERE e.id = $1`, [payload.sub])).rows[0],
     );
     if (!e || e.status !== 'active' || !e.password_hash) throw new UnauthorizedException('Please sign in.');
+    if (issuedBeforeCutoff(payload.iat, e.sessions_from)) throw new UnauthorizedException('You were signed out. Please sign in again.');
     req.principal = { kind: 'portal', employeeId: e.id, companyId: payload.cid, name: e.full_name } satisfies PortalPrincipal;
     return true;
   }
@@ -114,7 +115,7 @@ export class PortalController {
     }
     const hash = await hashSecret(b.password);
     await this.db.withTenant(a.company_id, async (tx) => {
-      await tx.query(`UPDATE portal_accounts SET password_hash = $2, code_hash = NULL, code_expires_at = NULL, activated_at = now(), updated_at = now() WHERE employee_id = $1`, [a.employee_id, hash]);
+      await tx.query(`UPDATE portal_accounts SET password_hash = $2, code_hash = NULL, code_expires_at = NULL, activated_at = now(), updated_at = now(), sessions_from = now() WHERE employee_id = $1`, [a.employee_id, hash]);
       await this.audit.record(tx, { actorType: 'employee', actorId: a.employee_id, actorLabel: a.full_name, action: 'portal.activate', entityType: 'employee', entityId: a.employee_id });
     });
     return { ...(await this.session(a.employee_id, a.company_id, req, res)), login: a.login };
@@ -141,7 +142,10 @@ export class PortalController {
 
   @Post('logout')
   @HttpCode(200)
-  logout(@Res({ passthrough: true }) res: Response) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Ends this sign-in everywhere, not only in this browser.
+    const p = await this.jwt.verifyAsync<{ sub: string; cid: string; typ: string }>(userToken(req), { algorithms: ['HS256'] }).catch(() => null);
+    if (p?.typ === 'portal') await this.db.withTenant(p.cid, (tx) => tx.query('UPDATE portal_accounts SET sessions_from = now() WHERE employee_id = $1', [p.sub]));
     clearSessionCookie(res, this.config.cookieSecure);
     return { ok: true };
   }

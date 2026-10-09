@@ -1,5 +1,10 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
+import { Inject, Req, Res } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import type { Request, Response } from 'express';
+import { CSRF_HEADER, CSRF_VALUE, SESSION_HOURS, setSessionCookie } from '../common/session';
+import { CONFIG, Config } from '../config';
 import { passwordProblem, ROLE_LABELS, ROLES, Role, SITE_SCOPED_ROLES } from '@onpar/rules';
 import { AllowTemporaryPassword, CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { hashSecret, verifySecret } from '../common/crypto';
@@ -27,6 +32,8 @@ export class UsersController {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly jwt: JwtService,
+    @Inject(CONFIG) private readonly config: Config,
   ) {}
 
   @Get('users')
@@ -99,7 +106,7 @@ export class UsersController {
   reset(@CurrentUser() user: UserPrincipal, @Param('id', ParseUUIDPipe) id: string) {
     return this.db.withTenant(user.companyId, async (tx) => {
       const password = temporaryPassword();
-      const r = await tx.query('UPDATE users SET password_hash = $2, must_change_password = true WHERE id = $1', [id, await hashSecret(password)]);
+      const r = await tx.query('UPDATE users SET password_hash = $2, must_change_password = true, sessions_from = now() WHERE id = $1', [id, await hashSecret(password)]);
       if (!r.rowCount) throw new NotFoundException('User not found.');
       await this.audit.byUser(tx, user, { action: 'user.password_reset', entityType: 'user', entityId: id });
       return { temporaryPassword: password };
@@ -110,7 +117,7 @@ export class UsersController {
   @Post('auth/password')
   @AllowTemporaryPassword()
   @HttpCode(200)
-  changeOwn(@CurrentUser() user: UserPrincipal, @Body() body: unknown) {
+  changeOwn(@CurrentUser() user: UserPrincipal, @Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const p = parseBody(PasswordBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
       const u = (await tx.query('SELECT email, password_hash FROM users WHERE id = $1', [user.userId])).rows[0];
@@ -119,12 +126,15 @@ export class UsersController {
       }
       const problem = passwordProblem(p.newPassword, u.email) ?? (p.newPassword === p.currentPassword ? 'Choose a password different from the current one.' : null);
       if (problem) throw new BadRequestException({ message: problem, errors: { newPassword: problem } });
-      await tx.query('UPDATE users SET password_hash = $2, must_change_password = false, password_changed_at = now() WHERE id = $1', [
+      await tx.query('UPDATE users SET password_hash = $2, must_change_password = false, password_changed_at = now(), sessions_from = now() WHERE id = $1', [
         user.userId,
         await hashSecret(p.newPassword),
       ]);
       await this.audit.byUser(tx, user, { action: 'user.password_change', entityType: 'user', entityId: user.userId });
-      return { ok: true };
+      // Every other session ends; this one carries on with a new sign-in.
+      const token = await this.jwt.signAsync({ sub: user.userId, cid: user.companyId, typ: 'user' }, { expiresIn: `${SESSION_HOURS}h` });
+      setSessionCookie(res, token, this.config.cookieSecure);
+      return req.headers[CSRF_HEADER] === CSRF_VALUE ? { ok: true } : { ok: true, token };
     });
   }
 

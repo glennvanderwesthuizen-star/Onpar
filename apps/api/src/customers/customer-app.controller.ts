@@ -1,5 +1,11 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Post, Put, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
+import { Inject, Req, Res } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import type { Request, Response } from 'express';
+import { CSRF_HEADER, CSRF_VALUE, setSessionCookie } from '../common/session';
+import { CONFIG, Config } from '../config';
+import { CUSTOMER_SESSION_DAYS } from '../auth/auth.controller';
 import { passwordProblem } from '@onpar/rules';
 import { AllowTemporaryPassword, CurrentCustomer, CustomerAuthGuard, CustomerPrincipal } from '../common/auth';
 import { hashSecret, verifySecret } from '../common/crypto';
@@ -26,6 +32,8 @@ export class CustomerAppController {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly jwt: JwtService,
+    @Inject(CONFIG) private readonly config: Config,
   ) {}
 
   @Get('me')
@@ -74,7 +82,7 @@ export class CustomerAppController {
   @Post('password')
   @AllowTemporaryPassword()
   @HttpCode(200)
-  password(@CurrentCustomer() me: CustomerPrincipal, @Body() body: unknown) {
+  password(@CurrentCustomer() me: CustomerPrincipal, @Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const p = parseBody(PasswordBody, body);
     return this.db.withTenant(me.companyId, async (tx) => {
       const c = (await tx.query('SELECT email, password_hash FROM customers WHERE id = $1', [me.customerId])).rows[0];
@@ -83,9 +91,12 @@ export class CustomerAppController {
       }
       const problem = passwordProblem(p.newPassword, c.email) ?? (p.newPassword === p.currentPassword ? 'Choose a password different from the current one.' : null);
       if (problem) throw new BadRequestException({ message: problem, errors: { newPassword: problem } });
-      await tx.query('UPDATE customers SET password_hash = $2, must_change_password = false, password_changed_at = now() WHERE id = $1', [me.customerId, await hashSecret(p.newPassword)]);
+      await tx.query('UPDATE customers SET password_hash = $2, must_change_password = false, password_changed_at = now(), sessions_from = now() WHERE id = $1', [me.customerId, await hashSecret(p.newPassword)]);
       await this.audit.byAccount(tx, me, { action: 'customer.password_change', entityType: 'customer', entityId: me.customerId });
-      return { ok: true };
+      // Every other session ends; this one carries on with a new sign-in.
+      const token = await this.jwt.signAsync({ sub: me.customerId, cid: me.companyId, typ: 'customer' }, { expiresIn: `${CUSTOMER_SESSION_DAYS}d` });
+      setSessionCookie(res, token, this.config.cookieSecure, CUSTOMER_SESSION_DAYS * 24);
+      return req.headers[CSRF_HEADER] === CSRF_VALUE ? { ok: true } : { ok: true, token };
     });
   }
 }
