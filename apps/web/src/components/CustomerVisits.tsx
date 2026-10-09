@@ -8,6 +8,7 @@ import { PassForm } from './CustomerPasses';
 
 type PassOptions = React.ComponentProps<typeof PassForm>['options'];
 import { ErrorBanner, formatDateTime } from './ui';
+import { everyWhileVisible } from '@/lib/poll';
 
 export interface CustomerVisit {
   id: string;
@@ -192,10 +193,10 @@ export function CustomerVisits() {
   // A visitor is waiting at a gate, so this page keeps itself fresh while it is open.
   useEffect(() => {
     load();
-    const t = setInterval(load, 5000);
+    const t = everyWhileVisible(load, 5000);
     window.addEventListener('onpar:alerts', load);
     return () => {
-      clearInterval(t);
+      t();
       window.removeEventListener('onpar:alerts', load);
     };
   }, [load]);

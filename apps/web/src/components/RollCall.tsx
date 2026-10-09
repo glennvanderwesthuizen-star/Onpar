@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDateTime, useLoad } from './ui';
+import { everyWhileVisible } from '@/lib/poll';
 
 interface Person {
   key: string;
@@ -60,8 +61,8 @@ export function RollCall({ siteId, full = false }: { siteId: string; full?: bool
   useEffect(() => setCurrent(data?.current ?? null), [data]);
   useEffect(() => {
     if (!current) return;
-    const t = setInterval(reload, 10_000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(reload, 10_000);
+    return () => t();
   }, [current, reload]);
   if (!allowed) return null;
 

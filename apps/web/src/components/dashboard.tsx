@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { addDays, sastDate } from '@onpar/rules';
 import { formatDate } from './ui';
+import { everyWhileVisible } from '@/lib/poll';
 
 export interface Figures {
   attendance: { scheduled: number; onTime: number; late: number; absent: number; onDuty: number } | null;
@@ -166,8 +167,8 @@ export function dayLabel(date: string, today: string) {
 export function useAutoRefresh(reload: () => void, on: boolean) {
   useEffect(() => {
     if (!on) return;
-    const t = setInterval(reload, 60_000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(reload, 60_000);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 }

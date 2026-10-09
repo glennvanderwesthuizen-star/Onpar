@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Field, Pill, formatDateTime, useLoad } from './ui';
 import { time } from './attendance';
+import { everyWhileVisible } from '@/lib/poll';
 
 export function PatrolState({ state, review }: { state: string; review?: string | null }) {
   switch (state) {
@@ -91,8 +92,8 @@ export function PatrolAlerts({ onChange }: { onChange?: () => void }) {
   const [note, setNote] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
-    const t = setInterval(reload, 30_000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(reload, 30_000);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!data?.length) return null;

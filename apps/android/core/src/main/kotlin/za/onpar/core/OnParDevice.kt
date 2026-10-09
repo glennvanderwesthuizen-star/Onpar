@@ -2,6 +2,8 @@ package za.onpar.core
 
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
@@ -57,8 +59,8 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     }
 
     /** Tells the server the phone is alive: battery, app version and whether the kiosk lock is on. Also syncs the time. */
-    fun heartbeat(appVersion: String, batteryPct: Int?, kioskStatus: String) {
-        api.post(
+    fun heartbeat(appVersion: String, batteryPct: Int?, kioskStatus: String): CheckIn {
+        val r = api.post(
             "/device/heartbeat",
             buildJsonObject {
                 put("appVersion", appVersion)
@@ -66,6 +68,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
                 put("kioskStatus", kioskStatus)
             },
         )
+        return CheckIn(r.str("contactsTag"), (r.jsonObject["gate"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull)
     }
 
     // --- The guards signed in on this phone -----------------------------------
@@ -326,3 +329,6 @@ enum class DutyKind(val wire: String, val label: String) {
 
 /** A reply that is a JSON object, or an empty one. */
 internal fun Submitted.replyObject(): JsonObject? = (this as? Submitted.Sent)?.reply as? JsonObject
+
+/** What the once-a-minute check-in says (phase 2): whether the contacts changed, and whether this phone is at a gate. Null: an older server did not say. */
+data class CheckIn(val contactsTag: String?, val gate: Boolean?)

@@ -69,6 +69,15 @@ describe('devices and guard login', () => {
     expect((await w.http().get('/api/device/contacts')).status).toBe(401);
   });
 
+  it('tells the phone in its check-in whether the contacts changed and whether it is at a gate, so it asks for no more (phase 2)', async () => {
+    const beat = async () => (await w.http().post('/api/device/heartbeat').set('X-Device-Token', deviceToken).send({})).body;
+    const first = await beat();
+    expect(first).toMatchObject({ gate: false, contactsTag: expect.stringMatching(/^[0-9a-f]{16}$/) });
+    expect((await beat()).contactsTag).toBe(first.contactsTag);
+    await ownerQuery(`UPDATE site_contacts SET phone = '0825550199' WHERE site_id = $1 AND kind = 'supervisor'`, [w.a.siteId]);
+    expect((await beat()).contactsTag).not.toBe(first.contactsTag);
+  });
+
   it('makes a new setup code for a registered phone; the old code stops working at once', async () => {
     const r = await w
       .http()

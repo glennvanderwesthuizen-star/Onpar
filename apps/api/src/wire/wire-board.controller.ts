@@ -55,17 +55,27 @@ export class WireBoardService {
 
     // Milestones passed in the last weeks: the Wire total, entry by entry, starting from his launch credit.
     const since = sastDate(new Date(Date.now() - MILESTONE_DAYS * 86_400_000));
+    // Phase 2: each guard's total before the period in one sum, then only the recent entries (not his whole history).
+    const before = new Map(
+      (await tx.query(`SELECT employee_id, sum(barbs)::int AS n FROM wire_entries WHERE kind = 'earned' AND entry_date < $1 GROUP BY employee_id`, [since])).rows.map((r) => [r.employee_id as string, r.n as number]),
+    );
     const entries = (
-      await tx.query(`SELECT employee_id, to_char(entry_date, 'YYYY-MM-DD') AS date, barbs FROM wire_entries WHERE kind = 'earned' ORDER BY employee_id, entry_date, id`)
+      await tx.query(`SELECT employee_id, to_char(entry_date, 'YYYY-MM-DD') AS date, barbs FROM wire_entries WHERE kind = 'earned' AND entry_date >= $1 ORDER BY employee_id, entry_date, id`, [since])
     ).rows as { employee_id: string; date: string; barbs: number }[];
     const milestones: { display: string; hidden: boolean; label: string; date: string }[] = [];
     const byGuard = new Map<string, { date: string; barbs: number }[]>();
-    for (const e of entries) byGuard.set(e.employee_id, [...(byGuard.get(e.employee_id) ?? []), e]);
+    for (const e of entries) {
+      const list = byGuard.get(e.employee_id);
+      if (list) list.push(e);
+      else byGuard.set(e.employee_id, [e]);
+    }
+    for (const id of before.keys()) if (!byGuard.has(id)) byGuard.set(id, []);
     for (const [id, list] of byGuard) {
       const p = people.get(id);
       if (!p) continue;
-      let total = completedYears(p.joined, startedOn) * settings.launchCreditPerYear;
-      for (const m of milestonesCrossed(-1, total, settings)) if (startedOn >= since) milestones.push({ ...show(p), label: m.label, date: startedOn });
+      const launch = completedYears(p.joined, startedOn) * settings.launchCreditPerYear;
+      for (const m of milestonesCrossed(-1, launch, settings)) if (startedOn >= since) milestones.push({ ...show(p), label: m.label, date: startedOn });
+      let total = launch + (before.get(id) ?? 0);
       for (const e of list) {
         const next = total + e.barbs;
         for (const m of milestonesCrossed(total, next, settings)) if (e.date >= since) milestones.push({ ...show(p), label: m.label, date: e.date });

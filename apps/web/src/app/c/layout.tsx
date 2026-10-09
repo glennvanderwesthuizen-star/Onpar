@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { keepInStep } from '@/lib/push';
 import { ChangePassword } from '@/components/ChangePassword';
 import { CustomerProvider, useCustomer } from '@/lib/customer';
+import { everyWhileVisible } from '@/lib/poll';
 
 const TABS = [
   { href: '/c', label: 'Home', icon: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10' },
@@ -30,11 +31,11 @@ function Shell({ children }: { children: React.ReactNode }) {
         .then((r) => live && setUnread(r.unread))
         .catch(() => undefined);
     check();
-    const t = setInterval(check, 30_000);
+    const t = everyWhileVisible(check, 30_000);
     window.addEventListener('onpar:alerts', check);
     return () => {
       live = false;
-      clearInterval(t);
+      t();
       window.removeEventListener('onpar:alerts', check);
     };
   }, [path, me.mustChangePassword]);

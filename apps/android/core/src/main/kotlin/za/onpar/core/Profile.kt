@@ -288,6 +288,19 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
     /** The approved contacts, kept on the phone so calls work with no data. */
     fun contacts(): List<Contact> = fetch<Contact>("/device/contacts", contactsFile, null).also { runCatching { syncArmedLogo(it) } }
 
+    private val contactsTagFile = File(dataDir, "contacts.tag")
+
+    /**
+     * The contacts, fetched only when the check-in says they changed (phase 2). With no tag
+     * (an older server) they are fetched as before.
+     */
+    fun contactsIfChanged(tag: String?): List<Contact> {
+        if (tag != null && contactsFile.exists() && contactsTagFile.exists() && contactsTagFile.readText() == tag) return cachedContacts()
+        val list = contacts()
+        if (tag != null) contactsTagFile.writeText(tag)
+        return list
+    }
+
     private val logoFile = File(dataDir, "armed-logo.img")
     private val logoTagFile = File(dataDir, "armed-logo.tag")
 

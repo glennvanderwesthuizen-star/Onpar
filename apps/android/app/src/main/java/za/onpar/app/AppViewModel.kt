@@ -206,11 +206,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
-        // Every minute: check in, send anything waiting, refresh the home screen.
+        // Every minute while a guard is signed in: check in, send anything waiting, refresh the home screen.
+        // Every 5 minutes when nobody is (phase 2: less mobile data and battery). Signing in refreshes at once.
         viewModelScope.launch {
             while (isActive) {
                 background()
-                delay(60_000)
+                val idle = device.guardToken == null && device.outbox.pending().isEmpty()
+                var waited = 0L
+                while (isActive && waited < (if (idle) 300_000L else 60_000L)) {
+                    delay(15_000)
+                    waited += 15_000
+                    // Someone signed in meanwhile: back to every minute straight away.
+                    if (idle && device.guardToken != null) break
+                }
             }
         }
     }
@@ -226,13 +234,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         lockedGuards = device.lockedGuards(),
     )
 
+    /** Whether this phone stands at a gate, from the last check-in. Null until the server has said. */
+    private var atGate: Boolean? = null
+    private var ticks = 0
+
     private suspend fun background() = withContext(Dispatchers.IO) {
         if (device.setup == null) return@withContext
-        val online = runCatching { device.heartbeat(version, battery(), Kiosk.status(getApplication())) }.isSuccess
-        runCatching { device.profile.contacts() }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list, armedLogo = device.profile.armedLogo()?.let(::PhotoBytes)) } }
+        val checkIn = runCatching { device.heartbeat(version, battery(), Kiosk.status(getApplication())) }.getOrNull()
+        val online = checkIn != null
+        checkIn?.gate?.let { atGate = it }
+        // The contacts only when they changed (or the first time, so the list shows).
+        val needContacts = _state.value.contacts.isEmpty() || checkIn != null
+        if (needContacts) runCatching { device.profile.contactsIfChanged(checkIn?.contactsTag) }.getOrNull()?.let { list -> _state.update { it.copy(contacts = list, armedLogo = device.profile.armedLogo()?.let(::PhotoBytes)) } }
         runCatching { device.sync() }
-        // A locked guard whose shift has ended (for example a supervisor released him) is forgotten.
-        if (online) {
+        // A locked guard whose shift has ended (for example a supervisor released him) is forgotten. Checked every 5 minutes.
+        if (online && ticks++ % 5 == 0) {
             for (g in device.lockedGuards()) {
                 val off = try {
                     val st = device.stateOf(g)
@@ -253,7 +269,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val s = device.state()
             _state.update { it.copy(home = s, online = true, owed = device.owedDeclaration(s)) }
-            // Whether this phone stands at a gate, so the home screen can show Visitors.
+            // Whether this phone stands at a gate, so the home screen can show Visitors. A phone the server says is not at a gate does not ask.
+            if (atGate == false) {
+                if (_state.value.gate != null) _state.update { it.copy(gate = null) }
+                return@withContext
+            }
             runCatching { device.visitors.setup() }.getOrNull()?.let { g ->
                 _state.update {
                     // A visitor has newly gone past their time: the phone sounds, once.

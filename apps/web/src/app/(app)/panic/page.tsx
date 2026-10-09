@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ErrorBanner, Pill, formatDateTime, useLoad } from '@/components/ui';
 import { PanicAlert, emergencyCallText, panicPlace } from '@/components/PanicBanner';
+import { everyWhileVisible } from '@/lib/poll';
 
 export default function PanicPage() {
   const { can } = useSession();
@@ -12,8 +13,8 @@ export default function PanicPage() {
   const { data, error, reload } = useLoad(() => api<PanicAlert[]>(`/panic?status=${status}`), [status]);
   // Keep the list fresh while the page is open.
   useEffect(() => {
-    const t = setInterval(reload, 15_000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(reload, 15_000);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 

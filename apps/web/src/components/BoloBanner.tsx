@@ -2,40 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useBanners } from '@/lib/poll';
 import { formatDateTime } from '@/components/ui';
 
-interface OpenBolo {
-  id: string;
-  reportedAt: string;
-  acknowledgedAt: string | null;
-  siteName: string | null;
-  postName: string | null;
-  deviceLabel: string;
-  employeeName: string | null;
-}
 
 /**
  * An orange banner on every page while a BOLO is open (red stays for panic only), checked
  * every 15 seconds, flashing until someone acknowledges it.
  */
 export function BoloBanner() {
-  const [open, setOpen] = useState<OpenBolo[]>([]);
   const path = usePathname();
-  useEffect(() => {
-    let live = true;
-    const check = () =>
-      api<OpenBolo[]>('/bolos?status=open')
-        .then((rows) => live && setOpen(rows))
-        .catch(() => undefined);
-    check();
-    const t = setInterval(check, 15_000);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, [path]);
+  const open = useBanners(path)?.bolos ?? [];
   if (!open.length) return null;
   const n = open[0];
   const waiting = open.filter((b) => !b.acknowledgedAt).length;

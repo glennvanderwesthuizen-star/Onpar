@@ -65,6 +65,23 @@ class ProfileTest {
     }
 
     @Test
+    fun `fetches the contacts again only when the check-in says they changed`() {
+        server.enqueue(MockResponse().setBody("""{"serverTime":"2026-10-09T10:00:00Z","contactsTag":"aaaa","gate":false}"""))
+        val checkIn = device.heartbeat("0.1", 80, "locked_task")
+        assertEquals(CheckIn("aaaa", false), checkIn)
+        server.takeRequest()
+        server.enqueue(MockResponse().setBody("""[{"kind":"supervisor","label":"Supervisor","name":"Thabo","phone":"082 555 0101"}]"""))
+        assertEquals(1, device.profile.contactsIfChanged("aaaa").size)
+        assertEquals("/api/device/contacts", server.takeRequest().path)
+        // Same tag: no request at all.
+        assertEquals(1, device.profile.contactsIfChanged("aaaa").size)
+        assertEquals(4, server.requestCount)
+        // Changed: fetched again.
+        server.enqueue(MockResponse().setBody("""[{"kind":"supervisor","label":"Supervisor","name":"Thabo","phone":"082 555 0101"},{"kind":"control_room","label":"Control room","phone":"011 555 0100"}]"""))
+        assertEquals(2, device.profile.contactsIfChanged("bbbb").size)
+    }
+
+    @Test
     fun `the emergency panel has police with two numbers, keeps the armed response logo on the phone, and records a tapped call`() {
         val list = """[{"kind":"control_room","label":"Control room","phone":"011 555 0100"},
           {"kind":"police_national","label":"Police 10111","name":"National emergency number","phone":"10111","emergency":"police","national":true},

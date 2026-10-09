@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useEffect } from 'react';
+import { useBanners } from '@/lib/poll';
 import { formatDateTime } from '@/components/ui';
 
 export interface PanicAlert {
@@ -42,8 +42,6 @@ export function emergencyCallText(c: EmergencyCall): string {
   return `${SERVICE[c.service]} (${c.national ? 'national number' : c.service === 'police' ? 'local station' : 'local number'})`;
 }
 
-const POLL_MS = 15_000;
-
 /** Where a panic came from, in one line. */
 export function panicPlace(p: PanicAlert) {
   return [p.siteName ?? 'No site', p.postName, p.deviceLabel].filter(Boolean).join(' · ');
@@ -54,21 +52,8 @@ export function panicPlace(p: PanicAlert) {
  * Shown only to people who may see panics (managers and supervisors).
  */
 export function PanicBanner() {
-  const [open, setOpen] = useState<PanicAlert[]>([]);
   const path = usePathname();
-  useEffect(() => {
-    let live = true;
-    const check = () =>
-      api<PanicAlert[]>('/panic')
-        .then((rows) => live && setOpen(rows))
-        .catch(() => undefined);
-    check();
-    const t = setInterval(check, POLL_MS);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, [path]);
+  const open = useBanners(path)?.panics ?? [];
 
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\) PANIC · /, '');

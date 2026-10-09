@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { ErrorBanner, formatDateTime } from '@/components/ui';
 import { ago, clock, tel } from '@/lib/supervisor';
 import { EmergencyCall, emergencyCallText } from '@/components/PanicBanner';
+import { everyWhileVisible } from '@/lib/poll';
 
 interface Panic {
   id: string;
@@ -46,8 +47,8 @@ export default function MobilePanic() {
       .catch(setError);
   useEffect(() => {
     load();
-    const t = setInterval(load, 15_000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(load, 15_000);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 

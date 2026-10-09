@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
 import { keepInStep } from '@/lib/push';
 import { useSession } from '@/lib/session';
+import { everyWhileVisible } from '@/lib/poll';
+import { fetchHome } from '@/lib/supervisor';
 
 const TABS = [
   { href: '/m', label: 'Home', icon: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10' },
@@ -30,15 +31,15 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let live = true;
     const check = () =>
-      api<{ alerts: unknown[] }>('/supervisor/home')
+      fetchHome()
         .then((h) => live && setOpen(h.alerts.length))
         .catch(() => undefined);
     check();
-    const t = setInterval(check, 15_000);
+    const t = everyWhileVisible(check, 15_000);
     window.addEventListener('onpar:alerts', check);
     return () => {
       live = false;
-      clearInterval(t);
+      t();
       window.removeEventListener('onpar:alerts', check);
     };
   }, [path]);

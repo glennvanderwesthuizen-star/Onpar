@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { everyWhileVisible } from '@/lib/poll';
 
 /** The supervisor app (plan of 6 Oct 2026, phase 2): what the phone screens show. */
 
@@ -50,6 +51,24 @@ export interface Home {
 
 const POLL_MS = 15_000;
 
+// One request shared by the page and the Alerts badge (phase 2: they used to ask twice).
+let lastHome: { at: number; home: Home } | null = null;
+let homeInFlight: Promise<Home> | null = null;
+
+/** The supervisor home, from the server at most every 10 seconds unless `force`d (after an action). */
+export function fetchHome(force = false): Promise<Home> {
+  if (!force && lastHome && Date.now() - lastHome.at < 10_000) return Promise.resolve(lastHome.home);
+  if (!homeInFlight) {
+    homeInFlight = api<Home>('/supervisor/home')
+      .then((home: Home) => {
+        lastHome = { at: Date.now(), home };
+        return home;
+      })
+      .finally(() => (homeInFlight = null));
+  }
+  return homeInFlight;
+}
+
 /**
  * The supervisor's sites and open alerts, refreshed every 15 seconds and whenever the phone
  * comes back to On Par. Keeps showing the last good answer if one refresh fails.
@@ -60,8 +79,8 @@ export function useHome() {
   const [stale, setStale] = useState(false);
   const live = useRef(true);
 
-  const reload = () =>
-    api<Home>('/supervisor/home')
+  const reload = (force = true) =>
+    fetchHome(force)
       .then((h) => {
         if (!live.current) return;
         setData(h);
@@ -76,14 +95,11 @@ export function useHome() {
 
   useEffect(() => {
     live.current = true;
-    reload();
-    const t = setInterval(reload, POLL_MS);
-    const onShow = () => document.visibilityState === 'visible' && reload();
-    document.addEventListener('visibilitychange', onShow);
+    reload(false);
+    const t = everyWhileVisible(() => reload(false), POLL_MS);
     return () => {
       live.current = false;
-      clearInterval(t);
-      document.removeEventListener('visibilitychange', onShow);
+      t();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

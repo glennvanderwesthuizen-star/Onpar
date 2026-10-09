@@ -21,7 +21,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
-import { can, EMERGENCY_OPTION_KINDS, emergencyOptions, reconcileTime, sastDate } from '@onpar/rules';
+import { can, EMERGENCY_OPTION_KINDS, emergencyOptions, reconcileTime, Role, sastDate } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentDevice, CurrentUser, DeviceAuthGuard, DevicePrincipal, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
@@ -270,6 +270,21 @@ export class PanicBoloController {
     private readonly storage: StorageService,
     private readonly scoring: ScoringService,
   ) {}
+
+  /**
+   * What every page's banners and the Alerts count need, in one call (phase 2: before, three
+   * calls every 15 to 30 seconds per open page). Null where the person's role may not see it.
+   */
+  @Get('banners')
+  async banners(@CurrentUser() user: UserPrincipal) {
+    const panics = can(user.role as Role, 'panic.view') ? await this.list(user) : null;
+    const bolos = can(user.role as Role, 'reports.view') ? await this.bolos(user, undefined, 'open') : null;
+    const unread = await this.db.withTenant(
+      user.companyId,
+      async (tx) => (await tx.query('SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND read_at IS NULL', [user.userId])).rows[0].n as number,
+    );
+    return { panics, bolos, unread };
+  }
 
   /** Open panics (not yet resolved), or all of the last 30 days with `status=all`. */
   @Get('panic')

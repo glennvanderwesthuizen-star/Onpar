@@ -5,6 +5,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { CustomerVisit, VisitRequest } from '@/components/CustomerVisits';
 import { ErrorBanner } from '@/components/ui';
+import { everyWhileVisible } from '@/lib/poll';
 
 /** One visitor (visitor management, step 3): where the alert "A visitor is at the gate" lands. */
 export default function CustomerVisitPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,8 +18,8 @@ export default function CustomerVisitPage({ params }: { params: Promise<{ id: st
   // While it waits, someone else in the unit or the guard by phone may answer it.
   useEffect(() => {
     load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    const t = everyWhileVisible(load, 5000);
+    return () => t();
   }, [load]);
 
   return (

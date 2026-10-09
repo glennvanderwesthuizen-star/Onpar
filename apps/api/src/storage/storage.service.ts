@@ -4,6 +4,7 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { CONFIG, Config } from '../config';
+import { onRollback } from '../common/tx-files';
 
 /** Where the encrypted bytes live: the server's disk in development, S3 in production. */
 export interface StorageDriver {
@@ -114,6 +115,8 @@ export class StorageService {
     const key = `${companyId}/${folder}/${randomUUID()}${ext}`;
     const stored = KEEP_ORIGINAL.test(folder) ? data : await shrinkImage(data, ext);
     await this.driver.write(key, this.seal(stored));
+    // Inside a database step: removed again if that step fails.
+    onRollback(() => this.remove(key));
     return key;
   }
 

@@ -66,11 +66,13 @@ export class ReportsService {
   async create(tx: Tx, companyId: string, r: NewReport, actor: Actor): Promise<string> {
     if (!REPORT_CATEGORIES[r.category]) throw new BadRequestException('Choose a category.');
     if (r.photo && !IMAGE_TYPES[r.photo.mimetype]) throw new BadRequestException('Photos must be JPEG, PNG or WebP images.');
+    // The photo is stored first, so the next report number never waits while a photo uploads (phase 2).
+    // If saving the report fails, the photo is removed again.
+    const photoKey = r.photo ? await this.storage.put(companyId, 'reports', r.photo.buffer, IMAGE_TYPES[r.photo.mimetype]) : null;
     // Numbers are per company and never reused; the lock stops two reports taking the same one.
     await tx.query(`SELECT pg_advisory_xact_lock(hashtext('report-number:' || app_company_id()::text))`);
     const number = (await tx.query('SELECT coalesce(max(number), 0) + 1 AS n FROM reports')).rows[0].n as number;
     const open = (await tx.query(`SELECT colour_slot FROM reports WHERE stage <> 'closed'`)).rows.map((x) => x.colour_slot);
-    const photoKey = r.photo ? await this.storage.put(companyId, 'reports', r.photo.buffer, IMAGE_TYPES[r.photo.mimetype]) : null;
 
     // An injury report links to the reporter's shift, so management can see what was declared at Duty On (section 6.2).
     let linkedAttendance: string | null = null;

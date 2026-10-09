@@ -97,16 +97,20 @@ export class VisitorPortalController {
       ).rows;
       const exceptions = (await tx.query(`SELECT site_id, count(*)::int AS n FROM visit_exceptions WHERE cleared_at IS NULL GROUP BY site_id`)).rows;
       const calls = (await tx.query(`SELECT site_id, id, started_at FROM roll_calls WHERE closed_at IS NULL`)).rows;
+      // Phase 2: every site in a few look-ups, not several per site.
+      const lists = await this.onSite.listFor(tx, sites.map((s) => s.id), now);
+      const expected = await this.passes.expectedCounts(tx, sites.map((s) => s.id));
       const rows: SiteRow[] = [];
       for (const s of sites) {
-        const counts = await this.onSite.counts(tx, s.id, now);
+        const list = lists.get(s.id) ?? [];
+        const counts = { onSite: list.length, overstays: list.filter((v) => v.overdue).length, needAction: list.filter((v) => v.needsAction).length };
         const t = today.find((r) => r.site_id === s.id);
         const call = calls.find((r) => r.site_id === s.id);
         rows.push({
           siteId: s.id,
           site: s.name,
           ...counts,
-          expected: (await this.passes.expectedToday(tx, s.id)).length,
+          expected: expected.get(s.id) ?? 0,
           openExceptions: exceptions.find((r) => r.site_id === s.id)?.n ?? 0,
           today: { visits: t?.visits ?? 0, letIn: t?.letIn ?? 0, turnedAway: t?.turnedAway ?? 0, waiting: t?.waiting ?? 0, noSignal: t?.noSignal ?? 0 },
           rollCall: call ? { id: call.id, startedAt: call.started_at } : null,

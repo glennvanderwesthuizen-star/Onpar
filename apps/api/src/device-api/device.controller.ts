@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, Body, UnauthorizedException, Controller, Get, HttpCode, NotFoundException, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { StorageService } from '../storage/storage.service';
@@ -8,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { CurrentDevice, DeviceAuthGuard, DevicePrincipal } from '../common/auth';
 import { parseBody } from '../common/validation';
-import { DbService } from '../db/db.service';
+import { DbService, Tx } from '../db/db.service';
 import { PinService } from './pin.service';
 
 const HeartbeatBody = z.object({
@@ -44,11 +45,15 @@ export class DeviceController {
   @Get('contacts')
   contacts(@CurrentDevice() device: DevicePrincipal) {
     if (!device.siteId) return [];
-    return this.db.withTenant(device.companyId, async (tx) => {
+    return this.db.withTenant(device.companyId, (tx) => this.contactList(tx, device.siteId!));
+  }
+
+  private async contactList(tx: Tx, siteId: string) {
+    {
       const labels: Record<string, string> = { supervisor: 'Supervisor', site_manager: 'Site manager', control_room: 'Control room' };
       const order = ['supervisor', 'site_manager', 'control_room'];
-      const rows = (await tx.query('SELECT kind, name, phone FROM site_contacts WHERE site_id = $1', [device.siteId])).rows as { kind: string; name: string; phone: string }[];
-      const logo = (await tx.query('SELECT armed_response_logo_key AS key, updated_at FROM sites WHERE id = $1', [device.siteId])).rows[0];
+      const rows = (await tx.query('SELECT kind, name, phone FROM site_contacts WHERE site_id = $1', [siteId])).rows as { kind: string; name: string; phone: string }[];
+      const logo = (await tx.query('SELECT armed_response_logo_key AS key, updated_at FROM sites WHERE id = $1', [siteId])).rows[0];
       const site = rows
         .filter((c) => order.includes(c.kind))
         .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
@@ -65,7 +70,7 @@ export class DeviceController {
         logo: o.kind === 'armed_response' && logo?.key ? String(logo.key).split('/').pop() : null,
       }));
       return [...site, ...emergency];
-    });
+    }
   }
 
   /** The armed response company's logo for this phone's site. */
@@ -84,16 +89,21 @@ export class DeviceController {
   @HttpCode(200)
   async heartbeat(@CurrentDevice() device: DevicePrincipal, @Body() body: unknown) {
     const b = parseBody(HeartbeatBody, body);
-    await this.db.withTenant(device.companyId, (tx) =>
-      tx.query(
-        `UPDATE devices SET last_seen_at = now(), status = CASE WHEN status = 'registered' THEN 'active' ELSE status END,
-                app_version = coalesce($2, app_version), battery_pct = coalesce($3, battery_pct),
-                kiosk_status = coalesce($4, kiosk_status)
-          WHERE id = $1`,
-        [device.deviceId, b.appVersion ?? null, b.batteryPct ?? null, b.kioskStatus ?? null],
-      ),
-    );
-    return { serverTime: new Date().toISOString() };
+    return this.db.withTenant(device.companyId, async (tx) => {
+      const r = (
+        await tx.query(
+          `UPDATE devices SET last_seen_at = now(), status = CASE WHEN status = 'registered' THEN 'active' ELSE status END,
+                  app_version = coalesce($2, app_version), battery_pct = coalesce($3, battery_pct),
+                  kiosk_status = coalesce($4, kiosk_status)
+            WHERE id = $1
+           RETURNING EXISTS (SELECT 1 FROM site_gates g WHERE g.id = devices.gate_id AND g.site_id = devices.site_id AND g.active) AS gate`,
+          [device.deviceId, b.appVersion ?? null, b.batteryPct ?? null, b.kioskStatus ?? null],
+        )
+      ).rows[0];
+      // Phase 2: the phone fetches the contacts only when this changes, and asks for gate data only at a gate.
+      const contactsTag = device.siteId ? createHash('sha256').update(JSON.stringify(await this.contactList(tx, device.siteId))).digest('hex').slice(0, 16) : '';
+      return { serverTime: new Date().toISOString(), contactsTag, gate: !!r?.gate };
+    });
   }
 
   /**

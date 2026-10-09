@@ -190,6 +190,22 @@ export class VisitPassService implements OnModuleDestroy {
   }
 
   /** The gate's "Expected today" list: every pass that applies some time today, soonest first. */
+  /** How many are expected today at each site, in one look-up (phase 2: the visitors dashboard). */
+  async expectedCounts(tx: Tx, siteIds: string[]): Promise<Map<string, number>> {
+    const rows = (
+      await tx.query(
+        `SELECT p.site_id, count(*)::int AS n FROM ${FROM}
+          WHERE p.site_id = ANY($1::uuid[]) AND p.status = 'active'
+            AND ((p.kind = 'once' AND p.visit_date = ${LOCAL}::date)
+              OR (p.kind = 'ongoing' AND (p.start_date IS NULL OR p.start_date <= ${LOCAL}::date) AND (p.end_date IS NULL OR p.end_date >= ${LOCAL}::date)
+                  AND (p.days IS NULL OR extract(isodow FROM ${LOCAL})::int = ANY(p.days))))
+          GROUP BY p.site_id`,
+        [siteIds],
+      )
+    ).rows;
+    return new Map(rows.map((r) => [r.site_id as string, Math.min(r.n as number, 200)]));
+  }
+
   async expectedToday(tx: Tx, siteId: string) {
     return (
       await tx.query(

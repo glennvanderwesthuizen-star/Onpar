@@ -1168,3 +1168,21 @@ The owner approved phase 0 of the optimisation review ("start with zero"). Built
   - Refused actions and their photos are removed after 7 days.
   - Camera files left behind are removed after a day.
 - **Not done (cost):** moving files to Amazon S3, and small preview copies for lists.
+
+## Optimisation review, phase 2: speed and running cost (owner, 9 Oct 2026)
+
+- **Background jobs:**
+  - The Wire pays only shifts not yet fully paid, in one write. Before, it rewrote 35 days of shifts every 15 minutes.
+  - The overstay check reads every site of a company in a few look-ups and writes only when something changed.
+  - The task scheduler looks only at tasks that need new days (about once a day each).
+  - One job runner (`common/jobs.ts`) runs all nine jobs: no overlaps, one server at a time (database lock), the same logging. One company's error no longer stops the companies after it.
+- **Phones:**
+  - The check-in returns a contacts fingerprint and whether the phone is at a gate. Contacts are fetched only when they change, and phones not at a gate no longer ask for gate data.
+  - With nobody signed in, the phone checks in every 5 minutes instead of every minute. Locked guards are checked every 5 minutes.
+- **Website:**
+  - Refreshing pauses while the tab is hidden.
+  - The panic and BOLO banners and the Alerts count share one `/api/banners` call.
+  - The supervisor phone view shares one request between the page and its badge.
+- **Uploads:** a file stored during a database step is removed again if that step fails, everywhere (`common/tx-files.ts`). The report photo is stored before the report-number lock, so a slow upload no longer holds up other reports.
+- **One look-up instead of many:** the visitors dashboard (all sites at once) and The Wire board (one sum per guard plus recent entries). The HR attention list only loops over the few employees at the warning threshold, so it is left as it is.
+- **Later:** loading long lists page by page.
