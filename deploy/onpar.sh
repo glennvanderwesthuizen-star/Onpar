@@ -68,6 +68,8 @@ ENV
       compose exec -T api node -e "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null && break
       sleep 2
     done
+    # A first backup now, so the outside monitor does not report "no backup found" until tonight.
+    main backup || echo "The first backup did not work: run deploy/onpar.sh backup and look at the message."
     echo
     echo "On Par is running at https://$(grep ^ONPAR_DOMAIN= "$ENV_FILE" | cut -d= -f2)"
     echo "The first visit can take a minute while the HTTPS certificate is fetched."

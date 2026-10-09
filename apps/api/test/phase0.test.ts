@@ -21,19 +21,21 @@ describe('phase 0: protect the server', () => {
 
   it('reports the database, and last night\'s backup, to the outside monitor', async () => {
     delete process.env.BACKUP_DIR;
-    expect((await w.http().get('/api/health')).body).toEqual({ ok: true, problems: [] });
+    expect((await w.http().get('/api/health/monitor')).body).toEqual({ ok: true, problems: [] });
     const dir = mkdtempSync(join(tmpdir(), 'onpar-backups-'));
     process.env.BACKUP_DIR = dir;
-    const none = await w.http().get('/api/health');
+    const none = await w.http().get('/api/health/monitor');
     expect(none.status).toBe(503);
+    // The plain check (used while a new server starts) does not wait for a first backup.
+    expect((await w.http().get('/api/health')).status).toBe(200);
     expect(none.body.problems).toEqual(['no backup found']);
     const file = join(dir, 'onpar-20261008-021500.tar.enc');
     writeFileSync(file, 'x');
     const old = new Date(Date.now() - 40 * 3600_000);
     utimesSync(file, old, old);
-    expect((await w.http().get('/api/health')).body.problems).toEqual(['last backup 40 hours ago']);
+    expect((await w.http().get('/api/health/monitor')).body.problems).toEqual(['last backup 40 hours ago']);
     utimesSync(file, new Date(), new Date());
-    expect((await w.http().get('/api/health')).status).toBe(200);
+    expect((await w.http().get('/api/health/monitor')).status).toBe(200);
   });
 
   it('stops a guard who is suspended at once, not when his sign-in runs out', async () => {

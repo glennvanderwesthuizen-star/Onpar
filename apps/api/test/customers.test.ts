@@ -182,8 +182,8 @@ describe('customers: the client and tenants of a site', () => {
       expect((await w.http().get('/api/notifications/preferences').set(auth(thabo.token))).body).toEqual([]);
       expect((await list()).customers.find((c) => c.id === thabo.id)!.alertsOn).toBe(true);
       // Another tenant of the same site sees none of it, and cannot touch it.
-      const other = (await signIn('lerato@home.test', lerato.temp)).body.token as string;
-      await w.http().post('/api/customer/password').set(auth(other)).send({ currentPassword: lerato.temp, newPassword: 'green gate at dawn' });
+      const first = (await signIn('lerato@home.test', lerato.temp)).body.token as string;
+      const other = (await w.http().post('/api/customer/password').set(auth(first)).send({ currentPassword: lerato.temp, newPassword: 'green gate at dawn' })).body.token as string;
       expect((await w.http().get('/api/notifications').set(auth(other))).body).toEqual({ unread: 0, alerts: [] });
       expect((await w.http().get('/api/notifications/push').set(auth(other))).body.devices).toEqual([]);
       expect((await w.http().post(`/api/notifications/${mine.alerts[0].id}/read`).set(auth(other)).send({})).status).toBe(404);

@@ -40,10 +40,10 @@ Proposed targets (to confirm): lose at most **1 day** of data with the nightly p
 
 ## Outside monitor (UptimeRobot, free)
 
-`/api/health` answers 200 when all is well and 503 with the problem named when the database is down, the disk is 85% full or more, or the last backup is older than 30 hours.
+`/api/health/monitor` answers 200 when all is well and 503 with the problem named when the database is down, the disk is 85% full or more, or the last backup is older than 30 hours.
 
 1. Create a free account at uptimerobot.com.
-2. Add a new monitor: type **HTTP(s)**, address `https://<your web address>/api/health`, every 5 minutes.
+2. Add a new monitor: type **HTTP(s)**, address `https://<your web address>/api/health/monitor`, every 5 minutes.
 3. Under alert contacts, add your email and the mobile app.
 4. Wait 5 minutes: it should say **Up**.
 

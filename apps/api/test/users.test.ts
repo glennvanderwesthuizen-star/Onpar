@@ -26,7 +26,7 @@ describe('companies and management users', () => {
     });
 
     it('makes the administrator choose their own password before anything else', async () => {
-      const t = await signIn(created.email, created.password);
+      let t = await signIn(created.email, created.password);
       expect((await w.http().get('/api/auth/me').set(auth(t))).body).toMatchObject({ mustChangePassword: true, company: { name: 'Umbrella Guarding' } });
       const blocked = await w.http().get('/api/sites').set(auth(t));
       expect(blocked.status).toBe(403);
@@ -35,7 +35,10 @@ describe('companies and management users', () => {
       expect(weak.status).toBe(400);
       const wrong = await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: 'not-it', newPassword: 'green gate at dawn' });
       expect(wrong.body.errors).toEqual({ currentPassword: 'Not right.' });
-      expect((await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: created.password, newPassword: 'green gate at dawn' })).status).toBe(200);
+      const changed = await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: created.password, newPassword: 'green gate at dawn' });
+      expect(changed.status).toBe(200);
+      // A password change ends the old sign-in; this session carries on with the new one it was given.
+      t = changed.body.token;
       expect((await w.http().get('/api/sites').set(auth(t))).status).toBe(200);
       // The new company sees none of company A's data.
       expect((await w.http().get('/api/sites').set(auth(t))).body).toEqual([]);
@@ -81,7 +84,7 @@ describe('companies and management users', () => {
     it('changes a role and sites, and deactivating signs the user out at once', async () => {
       const newPw = 'walking the east fence';
       let t = await signIn('lindiwe@a.test', temp);
-      await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: temp, newPassword: newPw });
+      t = (await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: temp, newPassword: newPw })).body.token;
       expect((await w.http().get('/api/sites').set(auth(t))).body.map((s: { id: string }) => s.id)).toEqual([w.a.siteId]);
       const up = await w.http().put(`/api/users/${supervisorId}`).set(auth(admin)).send({ fullName: 'Lindiwe Dlamini', role: 'company_manager', siteIds: [w.a.siteId], active: true });
       expect(up.body).toMatchObject({ fullName: 'Lindiwe Dlamini', role: 'company_manager', siteIds: [] });

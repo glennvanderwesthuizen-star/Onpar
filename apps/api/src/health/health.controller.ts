@@ -22,14 +22,18 @@ export class HealthController {
     @Inject(CONFIG) private readonly config: Config,
   ) {}
 
+  /** Is it running? Used by the server's own start-up checks; a new server has no backup yet. */
   @Get()
   async health(@Res({ passthrough: true }) res: Response) {
-    const problems: string[] = [];
-    try {
-      await this.db.query('SELECT 1');
-    } catch {
-      problems.push('database not answering');
-    }
+    const problems = await this.database();
+    if (problems.length) res.status(503);
+    return { ok: problems.length === 0, problems };
+  }
+
+  /** The full check for the outside monitor (UptimeRobot): the database, the disk and last night's backup. */
+  @Get('monitor')
+  async monitor(@Res({ passthrough: true }) res: Response) {
+    const problems = await this.database();
     try {
       const s = await statfs(this.config.uploadDir);
       // The same sum as `df`: space used out of the space this server may use.
@@ -47,6 +51,15 @@ export class HealthController {
     }
     if (problems.length) res.status(503);
     return { ok: problems.length === 0, problems };
+  }
+
+  private async database(): Promise<string[]> {
+    try {
+      await this.db.query('SELECT 1');
+      return [];
+    } catch {
+      return ['database not answering'];
+    }
   }
 }
 

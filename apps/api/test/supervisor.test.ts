@@ -261,8 +261,8 @@ describe('the supervisor app', () => {
 
     it('is closed to roles that may not see attendance or panics', async () => {
       const made = await w.http().post('/api/users').set(auth(admin)).send({ fullName: 'Carol Client', email: 'client@a.test', role: 'client_manager', siteIds: [w.a.siteId] });
-      const t = (await w.http().post('/api/auth/login').send({ email: 'client@a.test', password: made.body.temporaryPassword })).body.token;
-      await w.http().post('/api/auth/password').set(auth(t)).send({ currentPassword: made.body.temporaryPassword, newPassword: 'green gate at dawn' });
+      const first = (await w.http().post('/api/auth/login').send({ email: 'client@a.test', password: made.body.temporaryPassword })).body.token;
+      const t = (await w.http().post('/api/auth/password').set(auth(first)).send({ currentPassword: made.body.temporaryPassword, newPassword: 'green gate at dawn' })).body.token;
       expect((await w.http().get('/api/supervisor/home').set(auth(t))).status).toBe(403);
       expect((await w.http().get(`/api/supervisor/panic/${randomUUID()}`).set(auth(t))).status).toBe(403);
       // And no panic or other alert was ever written to a client's alerts list.
