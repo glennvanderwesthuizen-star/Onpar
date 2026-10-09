@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { NotFoundException } from '@nestjs/common';
 import { ACK_TEXT, DEFAULT_ACK_HOURS, DEFAULT_DISCIPLINE, WARNING_LADDER, warningsNeedAction, needsHandDelivery, NoticeEventKind, noticeStatus, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeType } from '@onpar/rules';
@@ -169,9 +170,7 @@ export class NoticesService implements OnModuleDestroy {
 
   async sweepAll(now: Date) {
     let n = 0;
-    for (const { scheduler_company_ids: id } of await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()')) {
-      n += await this.db.withTenant(id, (tx) => this.sweep(tx, now));
-    }
+    await forEachCompany(this.db, 'Notice sweep', async (id) => (n += await this.db.withTenant(id, (tx) => this.sweep(tx, now))));
     return n;
   }
 

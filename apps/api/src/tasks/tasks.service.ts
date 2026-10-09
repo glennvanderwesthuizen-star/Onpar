@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import {
   BadRequestException,
   ConflictException,
@@ -69,16 +70,18 @@ export class TasksService implements OnModuleDestroy {
    * calendar alone, so a missed one never stops the next (scenario 9).
    */
   async runSchedule(now: Date) {
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let created = 0;
     let missed = 0;
-    for (const { scheduler_company_ids: companyId } of companies) {
-      await this.db.withTenant(companyId, async (tx) => {
-        const tasks = (await tx.query('SELECT id FROM tasks WHERE active')).rows;
+    await forEachCompany(this.db, 'Task scheduler', (companyId) =>
+      this.db.withTenant(companyId, async (tx) => {
+        // Only tasks whose days are not yet made up to a week ahead: about once a day each (phase 2).
+        const tasks = (
+          await tx.query('SELECT id FROM tasks WHERE active AND (generated_through IS NULL OR generated_through < $1::date)', [addDays(sastDate(now), GENERATE_AHEAD_DAYS)])
+        ).rows;
         for (const t of tasks) created += await this.generate(tx, t.id, now);
         missed += await this.sweepMissed(tx, now);
-      });
-    }
+      }),
+    );
     return { created, missed };
   }
 

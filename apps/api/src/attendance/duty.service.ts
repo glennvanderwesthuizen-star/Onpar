@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import {
   BadRequestException,
   ConflictException,
@@ -117,10 +118,9 @@ export class DutyService implements OnModuleDestroy {
 
   /** Alerts the people responsible for a site, once, when a guard's relief has not arrived within the waiting time. */
   async reliefTick(now: Date): Promise<number> {
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let raised = 0;
-    for (const { scheduler_company_ids: companyId } of companies) {
-      await this.db.withTenant(companyId, async (tx) => {
+    await forEachCompany(this.db, 'Relief check', (companyId) =>
+      this.db.withTenant(companyId, async (tx) => {
         for (const a of await this.overdueShifts(tx, now)) {
           if (a.outcome !== 'no_relief' || (await this.notifications.alreadyRaised(tx, 'post_uncovered', 'attendance', a.attendanceId))) continue;
           const told = await this.notifications.recordForSite(tx, a.siteId, {
@@ -134,8 +134,8 @@ export class DutyService implements OnModuleDestroy {
           });
           if (told.length) raised++;
         }
-      });
-    }
+      }),
+    );
     return raised;
   }
 

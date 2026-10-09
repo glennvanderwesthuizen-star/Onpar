@@ -1,3 +1,4 @@
+import { JobRunner } from './common/jobs';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -30,15 +31,18 @@ if (require.main === module) {
   const config = loadConfig();
   createApp(config).then(async (app) => {
     await app.listen(config.port);
-    app.get(TasksService).startScheduler();
-    app.get(PatrolsService).startTimer();
-    app.get(RetentionService).startTimer();
-    app.get(DutyService).startReliefTimer();
-    app.get(NotificationsService).startTimer();
-    app.get(VisitPassService).startTimer();
-    app.get(VisitOnSiteService).startTimer();
-    app.get(WireService).startTimer();
-    app.get(NoticesService).startTimer();
+    // Every background job through one runner: no overlaps, one server at a time, the same logging (phase 2).
+    const jobs = new JobRunner(config.databaseUrl);
+    const MIN = 60_000;
+    jobs.every('Tasks', 5 * MIN, () => app.get(TasksService).runSchedule(new Date()), { now: true });
+    jobs.every('Patrols', MIN, () => app.get(PatrolsService).tick(new Date()), { now: true });
+    jobs.every('Retention', 24 * 60 * MIN, () => app.get(RetentionService).runAll(new Date()), { now: true });
+    jobs.every('Relief', MIN, () => app.get(DutyService).reliefTick(new Date()), { now: true });
+    jobs.every('Alerts', 30_000, () => app.get(NotificationsService).dispatchAll());
+    jobs.every('Visitor passes', 30 * MIN, () => app.get(VisitPassService).endingTick(), { now: true });
+    jobs.every('Overstays', MIN, () => app.get(VisitOnSiteService).tick(new Date()));
+    jobs.every('The Wire', 15 * MIN, () => app.get(WireService).sweepAll(), { now: true });
+    jobs.every('Notices', 15 * MIN, () => app.get(NoticesService).sweepAll(new Date()));
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }

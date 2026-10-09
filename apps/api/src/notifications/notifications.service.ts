@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as webpush from 'web-push';
 import { ALERT_INFO, AlertKind, Role, SITE_SCOPED_ROLES, wantsAlert } from '@onpar/rules';
@@ -225,11 +226,13 @@ export class NotificationsService implements OnModuleDestroy {
   }
 
   /** A safety net: every half minute, send anything a restart or a hiccup left unsent. */
+  /** Sends anything recorded and not yet sent, for every company (the 30-second job). */
+  async dispatchAll() {
+    await forEachCompany(this.db, 'Alert sweep', (companyId) => this.dispatch(companyId));
+  }
+
   startTimer(everyMs = 30_000) {
-    const tick = async () => {
-      const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
-      for (const { scheduler_company_ids: companyId } of companies) await this.dispatch(companyId);
-    };
+    const tick = () => this.dispatchAll();
     this.sweep = setInterval(() => tick().catch((e) => this.log.error(`Alert sweep failed: ${e.message}`)), everyMs);
   }
 

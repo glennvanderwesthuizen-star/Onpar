@@ -20,11 +20,24 @@ export interface CategoryRow {
 @Injectable()
 export class VisitorSetupService {
   async settings(tx: Tx, siteId: string): Promise<VisitorSettings & { saved: boolean }> {
-    const r = (await tx.query('SELECT checks, no_response_seconds, second_contact, overstay_escalation_minutes FROM site_visitor_settings WHERE site_id = $1', [siteId])).rows[0];
-    if (!r) return { ...DEFAULT_VISITOR_SETTINGS, saved: false };
-    // A check added to On Par after this site saved its settings starts on its default.
-    const checks = Object.fromEntries(VISITOR_CHECKS.map((c) => [c, typeof r.checks[c] === 'boolean' ? r.checks[c] : DEFAULT_VISITOR_SETTINGS.checks[c]])) as VisitorChecks;
-    return { checks, noResponseSeconds: r.no_response_seconds, secondContact: r.second_contact, overstayEscalationMinutes: r.overstay_escalation_minutes, saved: true };
+    return (await this.settingsFor(tx, [siteId])).get(siteId)!;
+  }
+
+  /** Several sites' settings in one look-up (phase 2: the overstay check reads every site at once). */
+  async settingsFor(tx: Tx, siteIds: string[]): Promise<Map<string, VisitorSettings & { saved: boolean }>> {
+    const rows = (await tx.query('SELECT site_id, checks, no_response_seconds, second_contact, overstay_escalation_minutes FROM site_visitor_settings WHERE site_id = ANY($1::uuid[])', [siteIds])).rows;
+    const out = new Map<string, VisitorSettings & { saved: boolean }>();
+    for (const id of siteIds) {
+      const r = rows.find((x) => x.site_id === id);
+      if (!r) {
+        out.set(id, { ...DEFAULT_VISITOR_SETTINGS, saved: false });
+        continue;
+      }
+      // A check added to On Par after this site saved its settings starts on its default.
+      const checks = Object.fromEntries(VISITOR_CHECKS.map((c) => [c, typeof r.checks[c] === 'boolean' ? r.checks[c] : DEFAULT_VISITOR_SETTINGS.checks[c]])) as VisitorChecks;
+      out.set(id, { checks, noResponseSeconds: r.no_response_seconds, secondContact: r.second_contact, overstayEscalationMinutes: r.overstay_escalation_minutes, saved: true });
+    }
+    return out;
   }
 
   async categories(tx: Tx, siteId: string): Promise<CategoryRow[]> {

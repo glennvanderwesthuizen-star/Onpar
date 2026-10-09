@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { GoneException, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { DbService, Tx } from '../db/db.service';
 import { StorageService } from '../storage/storage.service';
@@ -160,9 +161,8 @@ export class RetentionService implements OnModuleDestroy {
     // Old alerts, their delivery records and sign-in counters, for every company (not records; phase 1).
     const [h] = await this.db.query<{ alerts: number; deliveries: number; sign_in_counters: number }>('SELECT * FROM housekeeping()');
     if (h && h.alerts + h.deliveries + h.sign_in_counters > 0) this.log.log(`Cleared ${h.alerts} old alerts, ${h.deliveries} delivery records, ${h.sign_in_counters} sign-in counters.`);
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let removed = 0;
-    for (const { scheduler_company_ids: companyId } of companies) removed += await this.run(companyId, now);
+    await forEachCompany(this.db, 'Retention', async (companyId) => (removed += await this.run(companyId, now)));
     return removed;
   }
 

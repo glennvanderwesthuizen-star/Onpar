@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, UnprocessableEntityException } from '@nestjs/common';
 import {
   canStartPatrol,
@@ -71,10 +72,9 @@ export class PatrolsService implements OnModuleDestroy {
   }
 
   async tick(now: Date) {
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     const out = { raised: 0, escalated: 0, missed: 0 };
-    for (const { scheduler_company_ids: companyId } of companies) {
-      await this.db.withTenant(companyId, async (tx) => {
+    await forEachCompany(this.db, 'Patrol timer', (companyId) =>
+      this.db.withTenant(companyId, async (tx) => {
         // The server can only run the timer once it has the first scan (section 6.5).
         const raised = await tx.query(
           `INSERT INTO patrol_alerts (company_id, patrol_id, site_id, employee_id, raised_at)
@@ -113,8 +113,8 @@ export class PatrolsService implements OnModuleDestroy {
         );
         out.escalated += escalated.rowCount ?? 0;
         out.missed += await this.recordMissedWindows(tx, now);
-      });
-    }
+      }),
+    );
     return out;
   }
 

@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { maskIdNumber, normaliseCell, normaliseIdNumber, normalisePlate, passErrors, PassKind, passWhen } from '@onpar/rules';
 import { CustomerPrincipal } from '../common/auth';
@@ -312,10 +313,9 @@ export class VisitPassService implements OnModuleDestroy {
 
   /** Tells the customer once when a fixed-period contractor has three days or fewer left (spec: notifications). */
   async endingTick(): Promise<number> {
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let told = 0;
-    for (const { scheduler_company_ids: companyId } of companies) {
-      await this.db.withTenant(companyId, async (tx) => {
+    await forEachCompany(this.db, 'Pass check', (companyId) =>
+      this.db.withTenant(companyId, async (tx) => {
         const ending = (
           await tx.query(
             `SELECT p.id, p.site_id AS "siteId", p.unit_id AS "unitId", p.visitor_name AS "visitorName", to_char(p.end_date, 'YYYY-MM-DD') AS "endDate"
@@ -344,8 +344,8 @@ export class VisitPassService implements OnModuleDestroy {
           });
           told++;
         }
-      });
-    }
+      }),
+    );
     return told;
   }
 

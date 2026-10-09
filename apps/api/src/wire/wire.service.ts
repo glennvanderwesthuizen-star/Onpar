@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import {
   addDays,
@@ -85,7 +86,9 @@ export class WireService implements OnModuleDestroy {
   // --- What happened ------------------------------------------------------------------------
 
   /** Worked shifts (on and off duty) between two dates, with what The Wire looks at for each. */
-  async workedShifts(tx: Tx, s: WireSettings, from: string, to: string, employeeIds: string[] | null = null): Promise<WorkedShift[]> {
+  async workedShifts(tx: Tx, s: WireSettings, from: string, to: string, employeeIds: string[] | null = null, unsettledOnly = false): Promise<WorkedShift[]> {
+    // A shift that has already been paid every shift rule that pays anything has nothing left to earn (phase 2).
+    const paying = shiftBarbs({ readyForDuty: true, dutiesComplete: true, cleanHandover: true }, s).length;
     const rows = (
       await tx.query(
         `SELECT a.id, a.employee_id, a.site_id, to_char(a.shift_date, 'YYYY-MM-DD') AS date, a.duty_on_at, a.duty_from_at, a.scheduled_start,
@@ -111,8 +114,9 @@ export class WireService implements OnModuleDestroy {
                     count(*) FILTER (WHERE rp.closed_at IS NULL AND rp.stage = 'reported' AND rp.assignee_person_id IS NULL)::int AS unhandled
                FROM reports rp WHERE rp.reported_by_employee = a.employee_id AND rp.reported_at BETWEEN a.duty_on_at AND a.duty_from_at
            ) r ON true
-          WHERE a.duty_from_at IS NOT NULL AND a.shift_date BETWEEN $1 AND $2 AND ($3::uuid[] IS NULL OR a.employee_id = ANY($3::uuid[]))`,
-        [from, to, employeeIds, s.fastResponseMinutes],
+          WHERE a.duty_from_at IS NOT NULL AND a.shift_date BETWEEN $1 AND $2 AND ($3::uuid[] IS NULL OR a.employee_id = ANY($3::uuid[]))
+            AND (NOT $5::boolean OR (SELECT count(*) FROM wire_entries we WHERE we.employee_id = a.employee_id AND we.source_key = 'shift:' || a.id) < $6::int)`,
+        [from, to, employeeIds, s.fastResponseMinutes, unsettledOnly, paying],
       )
     ).rows;
     return rows.map((r) => ({
@@ -226,14 +230,23 @@ export class WireService implements OnModuleDestroy {
     return this.payShifts(tx, settings, from, today);
   }
 
+  /**
+   * Pays what is newly due on shifts not yet fully paid, in one write (phase 2: before, every
+   * shift of the last 35 days was written again every 15 minutes, one row at a time).
+   */
   private async payShifts(tx: Tx, settings: WireSettings, from: string, to: string) {
-    let written = 0;
-    for (const x of await this.workedShifts(tx, settings, from, to)) {
-      for (const b of shiftBarbs(x.facts, settings)) {
-        if (await this.earn(tx, { employeeId: x.employeeId, siteId: x.siteId, date: x.date, rule: b.rule, barbs: b.barbs, key: `shift:${x.attendanceId}` })) written++;
-      }
-    }
-    return written;
+    const due = (await this.workedShifts(tx, settings, from, to, null, true)).flatMap((x) =>
+      shiftBarbs(x.facts, settings).map((b) => ({ employeeId: x.employeeId, siteId: x.siteId, date: x.date, rule: b.rule, barbs: b.barbs, key: `shift:${x.attendanceId}` })),
+    );
+    if (!due.length) return 0;
+    const r = await tx.query(
+      `INSERT INTO wire_entries (company_id, employee_id, site_id, entry_date, rule, barbs, source_key, note, created_by)
+       SELECT app_company_id(), e, s, d, r, b, k, '', NULL
+         FROM unnest($1::uuid[], $2::uuid[], $3::date[], $4::text[], $5::int[], $6::text[]) AS x(e, s, d, r, b, k)
+       ON CONFLICT (employee_id, rule, source_key) DO NOTHING`,
+      [due.map((d) => d.employeeId), due.map((d) => d.siteId), due.map((d) => d.date), due.map((d) => d.rule), due.map((d) => d.barbs), due.map((d) => d.key)],
+    );
+    return r.rowCount ?? 0;
   }
 
   /** The month-end run for every finished month since The Wire started that has not been run yet. */
@@ -377,16 +390,13 @@ export class WireService implements OnModuleDestroy {
     return { shifts, months };
   }
 
+  /** Everything due, for every company (the 15-minute job). */
+  async sweepAll() {
+    await forEachCompany(this.db, 'The Wire', (id) => this.db.withTenant(id, (tx) => this.sweep(tx)));
+  }
+
   startTimer(everyMs = 15 * 60_000) {
-    const tick = async () => {
-      try {
-        for (const { scheduler_company_ids: id } of await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()')) {
-          await this.db.withTenant(id, (tx) => this.sweep(tx));
-        }
-      } catch (e) {
-        console.error(`The Wire sweep failed: ${(e as Error).message}`);
-      }
-    };
+    const tick = () => this.sweepAll().catch((e) => console.error(`The Wire sweep failed: ${(e as Error).message}`));
     void tick();
     this.timer = setInterval(tick, everyMs);
   }

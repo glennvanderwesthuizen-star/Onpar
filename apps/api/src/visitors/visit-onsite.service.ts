@@ -1,3 +1,4 @@
+import { forEachCompany } from '../common/jobs';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { OVERSTAY_ACTION_LABELS, OverstayAction, overstayActionError, overstayDealtWith, PassKind, sastTime, StayAnswer, stayText, stayUntil, vehicleLine, visitDueAt, visitorName } from '@onpar/rules';
 import { DbService, Tx } from '../db/db.service';
@@ -69,18 +70,26 @@ export class VisitOnSiteService implements OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** When the site's last completed handover began: a confirmation from before it no longer counts. */
-  private async lastHandover(tx: Tx, siteId: string): Promise<Date | null> {
-    return (await tx.query('SELECT started_at FROM visit_handovers WHERE site_id = $1 AND signed_off_at IS NOT NULL ORDER BY signed_off_at DESC LIMIT 1', [siteId])).rows[0]?.started_at ?? null;
+  /** When each site's last completed handover began: a confirmation from before it no longer counts. */
+  private async lastHandovers(tx: Tx, siteIds: string[]): Promise<Map<string, Date>> {
+    const rows = (
+      await tx.query('SELECT DISTINCT ON (site_id) site_id, started_at FROM visit_handovers WHERE site_id = ANY($1::uuid[]) AND signed_off_at IS NOT NULL ORDER BY site_id, signed_off_at DESC', [siteIds])
+    ).rows;
+    return new Map(rows.map((r) => [r.site_id as string, r.started_at as Date]));
   }
 
   /** Everyone on site, overstays first (longest over at the top), then longest on site. `unit` narrows it to one customer's visitors. */
   async list(tx: Tx, siteId: string, now: Date, unit?: { unitId: string | null }): Promise<OnSiteRow[]> {
-    const { checks } = await this.setup.settings(tx, siteId);
-    const since = await this.lastHandover(tx, siteId);
+    return (await this.listFor(tx, [siteId], now, unit)).get(siteId) ?? [];
+  }
+
+  /** The same for several sites in three look-ups, whatever the number of sites (phase 2). */
+  async listFor(tx: Tx, siteIds: string[], now: Date, unit?: { unitId: string | null }): Promise<Map<string, OnSiteRow[]>> {
+    const settings = await this.setup.settingsFor(tx, siteIds);
+    const handovers = await this.lastHandovers(tx, siteIds);
     const rows = (
       await tx.query(
-        `SELECT v.id, v.type, p.surname, p.names, ve.registration, ve.make, ve.model, ve.colour, v.pax_in AS pax, v.unit_id AS "unitId", u.name AS "unitName", c.name AS category,
+        `SELECT v.site_id AS "siteId", v.id, v.type, p.surname, p.names, ve.registration, ve.make, ve.model, ve.colour, v.pax_in AS pax, v.unit_id AS "unitId", u.name AS "unitName", c.name AS category,
                 g.name AS "gateName", COALESCE(v.entry_at, v.captured_at) AS "enteredAt", c.limit_minutes AS "limitMinutes", to_char(c.limit_until, 'HH24:MI') AS "limitUntil",
                 ps.kind AS "passKind", to_char(ps.visit_date, 'YYYY-MM-DD') AS "visitDate", to_char(ps.hours_to, 'HH24:MI') AS "hoursTo", to_char(ps.end_date, 'YYYY-MM-DD') AS "endDate",
                 to_char(ps.leave_by, 'HH24:MI') AS "leaveBy", COALESCE(ps.contractor, false) AS contractor, v.leave_by AS "extendedTo", v.stay_asked_at AS "askedAt",
@@ -92,18 +101,21 @@ export class VisitOnSiteService implements OnModuleDestroy {
            LEFT JOIN employees e ON e.id = a.guard_id
            LEFT JOIN unit_staff st ON st.id = v.staff_id
            LEFT JOIN LATERAL (SELECT s.answer, s.until FROM visit_stay_answers s WHERE s.visit_id = v.id ORDER BY s.at DESC, s.id DESC LIMIT 1) sa ON true
-          WHERE v.site_id = $1 AND v.status = 'on_site' AND ($2::boolean IS NOT TRUE OR v.unit_id IS NOT DISTINCT FROM $3::uuid)`,
-        [siteId, !!unit, unit?.unitId ?? null],
+          WHERE v.site_id = ANY($1::uuid[]) AND v.status = 'on_site' AND ($2::boolean IS NOT TRUE OR v.unit_id IS NOT DISTINCT FROM $3::uuid)`,
+        [siteIds, !!unit, unit?.unitId ?? null],
       )
     ).rows;
-    const out = rows.map((r): OnSiteRow => {
+    const bySite = new Map<string, OnSiteRow[]>(siteIds.map((id) => [id, []]));
+    for (const r of rows) {
+      const { checks } = settings.get(r.siteId)!;
+      const since = handovers.get(r.siteId) ?? null;
       const enteredAt = new Date(r.enteredAt);
       const dueAt = checks.overstayAlert
         ? visitDueAt({ entryAt: enteredAt, limitMinutes: r.limitMinutes, limitUntil: r.limitUntil, pass: r.passKind ? { kind: r.passKind as PassKind, visitDate: r.visitDate, hoursTo: r.hoursTo, endDate: r.endDate, leaveBy: r.leaveBy } : r.staffHoursTo ? { kind: 'ongoing', visitDate: null, hoursTo: r.staffHoursTo, endDate: null } : null, extendedTo: r.extendedTo ? new Date(r.extendedTo) : null })
         : null;
       const overdue = !!dueAt && dueAt.getTime() <= now.getTime();
       const action = r.action ? { action: r.action as OverstayAction, label: OVERSTAY_ACTION_LABELS[r.action as OverstayAction], note: r.note as string, at: new Date(r.actionAt), by: r.actionBy as string, handoverId: r.handoverId as string | null } : null;
-      return {
+      const row: OnSiteRow = {
         id: r.id,
         type: r.type,
         visitor: r.staffName ?? visitorName(r.surname, r.names),
@@ -126,8 +138,12 @@ export class VisitOnSiteService implements OnModuleDestroy {
         customerSays: r.stayAnswer === 'should_have_left' ? 'Should have left' : r.stayAnswer === 'extended' ? `Still busy until ${sastTime(new Date(r.stayUntil))}` : null,
         askedAt: r.askedAt ? new Date(r.askedAt) : null,
       };
-    });
-    return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.overdue ? a.dueAt!.getTime() - b.dueAt!.getTime() : a.enteredAt.getTime() - b.enteredAt.getTime()));
+      bySite.get(r.siteId)!.push(row);
+    }
+    for (const list of bySite.values()) {
+      list.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.overdue ? a.dueAt!.getTime() - b.dueAt!.getTime() : a.enteredAt.getTime() - b.enteredAt.getTime()));
+    }
+    return bySite;
   }
 
   /** The numbers for the gate phone's home screen. */
@@ -377,25 +393,42 @@ export class VisitOnSiteService implements OnModuleDestroy {
    * the supervisor about any the guard has not dealt with within the site's escalation time.
    */
   async tick(now: Date): Promise<number> {
-    const companies = await this.db.query<{ scheduler_company_ids: string }>('SELECT * FROM scheduler_company_ids()');
     let told = 0;
-    for (const { scheduler_company_ids: companyId } of companies) {
-      await this.db.withTenant(companyId, async (tx) => {
+    await forEachCompany(this.db, 'Overstay check', (companyId) =>
+      this.db.withTenant(companyId, async (tx) => {
+        // Phase 2: every site of the company in a few look-ups, and writes only when something changed.
         const sites = (await tx.query(`SELECT DISTINCT v.site_id AS id, s.name FROM visits v JOIN sites s ON s.id = v.site_id WHERE v.status = 'on_site'`)).rows as { id: string; name: string }[];
-        for (const site of sites) {
-          const settings = await this.setup.settings(tx, site.id);
-          if (!settings.checks.overstayAlert) continue;
-          const over = (await this.list(tx, site.id, now)).filter((v) => v.overdue);
+        if (!sites.length) return;
+        const settingsBySite = await this.setup.settingsFor(tx, sites.map((s) => s.id));
+        const watched = sites.filter((s) => settingsBySite.get(s.id)!.checks.overstayAlert);
+        if (!watched.length) return;
+        const lists = await this.listFor(tx, watched.map((s) => s.id), now);
+        const overIds = [...lists.values()].flat().filter((v) => v.overdue).map((v) => v.id);
+        if (!overIds.length) return;
+        const known = new Map(
+          (await tx.query('SELECT visit_id, due_at, flagged_at, supervisor_alerted_at FROM visit_overstays WHERE visit_id = ANY($1::uuid[])', [overIds])).rows.map((r) => [
+            r.visit_id as string,
+            { dueAt: new Date(r.due_at), flaggedAt: new Date(r.flagged_at), alerted: !!r.supervisor_alerted_at },
+          ]),
+        );
+        for (const site of watched) {
+          const settings = settingsBySite.get(site.id)!;
+          const over = lists.get(site.id)!.filter((v) => v.overdue);
           for (const v of over) {
             // Noted afresh when the customer gave a later time and that has passed too.
-            await tx.query(
-              `INSERT INTO visit_overstays (visit_id, company_id, site_id, due_at, flagged_at) VALUES ($1, app_company_id(), $2, $3, $4)
-               ON CONFLICT (visit_id) DO UPDATE SET due_at = excluded.due_at, flagged_at = excluded.flagged_at, supervisor_alerted_at = NULL WHERE visit_overstays.due_at <> excluded.due_at`,
-              [v.id, site.id, v.dueAt, now],
-            );
+            let k = known.get(v.id);
+            if (!k || k.dueAt.getTime() !== v.dueAt!.getTime()) {
+              await tx.query(
+                `INSERT INTO visit_overstays (visit_id, company_id, site_id, due_at, flagged_at) VALUES ($1, app_company_id(), $2, $3, $4)
+                 ON CONFLICT (visit_id) DO UPDATE SET due_at = excluded.due_at, flagged_at = excluded.flagged_at, supervisor_alerted_at = NULL WHERE visit_overstays.due_at <> excluded.due_at`,
+                [v.id, site.id, v.dueAt, now],
+              );
+              k = { dueAt: v.dueAt!, flaggedAt: now, alerted: false };
+            }
             // First the customer is asked, automatically: is the visitor still busy? (owner, 7 Oct 2026: no phone calls by guards)
             if (!v.askedAt || v.askedAt.getTime() < v.dueAt!.getTime()) await this.askCustomer(tx, site.id, v, now);
             if (!v.needsAction) continue;
+            if (k.alerted || k.flaggedAt.getTime() > now.getTime() - settings.overstayEscalationMinutes * 60_000) continue;
             const due = await tx.query(
               `UPDATE visit_overstays SET supervisor_alerted_at = $2 WHERE visit_id = $1 AND supervisor_alerted_at IS NULL AND flagged_at <= $2::timestamptz - make_interval(mins => $3) RETURNING visit_id`,
               [v.id, now, settings.overstayEscalationMinutes],
@@ -413,8 +446,8 @@ export class VisitOnSiteService implements OnModuleDestroy {
             });
           }
         }
-      });
-    }
+      }),
+    );
     return told;
   }
 }
