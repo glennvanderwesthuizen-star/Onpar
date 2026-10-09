@@ -35,7 +35,14 @@ const IssueBody = z.object({
   evidence: z.array(z.string().uuid()).max(50).default([]),
 });
 const HandBody = z.object({ note: z.string().trim().min(3, 'Say who delivered it, where, and whether the employee signed.').max(1000) });
-const SettingsBody = z.object({ noticeAckHours: z.number().int().min(1).max(720), noticesOnPostPhone: z.boolean().default(true), reason: z.string().trim().min(3, 'Say why.') });
+const SettingsBody = z.object({
+  noticeAckHours: z.number().int().min(1).max(720),
+  noticesOnPostPhone: z.boolean().default(true),
+  warningThreshold: z.number().int().min(2).max(10).optional(),
+  warningMonths: z.number().int().min(1).max(60).optional(),
+  hearingMinDays: z.number().int().min(1).max(30).optional(),
+  reason: z.string().trim().min(3, 'Say why.'),
+});
 
 /** One-time portal codes: no confusable letters, 10 characters. */
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -105,7 +112,7 @@ export class HrNoticesController {
       if (!n) throw new NotFoundException('Notice not found.');
       const events = (await this.notices.events(tx, id)).map(({ photo_key, ...e }) => ({ ...e, hasPhoto: !!photo_key }));
       await this.audit.byUser(tx, user, { action: 'notice.view', entityType: 'notice', entityId: id });
-      return { ...n.view, body: n.row.body, details: n.row.details, evidence: n.row.evidence, ackHours: n.row.ack_hours, events };
+      return { ...n.view, body: n.row.body, details: n.row.details, documents: n.row.documents ?? [], evidence: n.row.evidence, ackHours: n.row.ack_hours, events };
     });
   }
 
@@ -164,7 +171,9 @@ export class HrNoticesController {
       ).rows[0].id as string;
       await this.notices.event(tx, id, 'sent', { type: 'user', id: user.userId, label: user.name });
       await this.audit.byUser(tx, user, { action: 'notice.issue', entityType: 'notice', entityId: id, after: { employeeId: b.employeeId, type: b.type } });
-      return { id };
+      // The third warning (by default): management is alerted to choose what to do next (D-53).
+      const actionNeeded = WARNING_LADDER.includes(b.type) ? await this.notices.checkWarnings(tx, b.employeeId, id) : false;
+      return { id, actionNeeded };
     });
   }
 
@@ -201,6 +210,40 @@ export class HrNoticesController {
     res.send(await this.storage.get(p.key));
   }
 
+  /**
+   * Employees who have reached the set number of warnings and for whom nothing has been done
+   * since the last one (no end of line memorandum and no disciplinary inquiry): the manager
+   * chooses what to do next (owner, 9 Oct 2026; D-53).
+   */
+  @Get('attention')
+  @RequirePermission('notices.view')
+  attention(@CurrentUser() user: UserPrincipal) {
+    return this.db.withTenant(user.companyId, async (tx) => {
+      const d = await this.notices.discipline(tx);
+      const candidates = (
+        await tx.query(
+          `SELECT e.id, e.full_name AS name, e.employee_number AS "employeeNumber", s.name AS site FROM employees e LEFT JOIN sites s ON s.id = e.home_site_id
+            WHERE e.status = 'active' AND (SELECT count(*) FROM notices n WHERE n.employee_id = e.id AND n.type = ANY($1::text[]) AND n.issued_at > now() - make_interval(months => $2)) >= $3`,
+          [WARNING_LADDER, d.warningMonths, d.warningThreshold],
+        )
+      ).rows;
+      const out = [];
+      for (const c of candidates) {
+        const warnings = await this.notices.warningsOnFile(tx, c.id, d.warningMonths);
+        const last = warnings[warnings.length - 1].issuedAt;
+        const handled = (
+          await tx.query(
+            `SELECT EXISTS (SELECT 1 FROM notices WHERE employee_id = $1 AND type = 'end_of_line_memo' AND issued_at >= $2)
+                 OR EXISTS (SELECT 1 FROM disciplinary_cases WHERE employee_id = $1 AND opened_at >= $2) AS done`,
+            [c.id, last],
+          )
+        ).rows[0].done as boolean;
+        if (!handled) out.push({ employeeId: c.id as string, name: c.name as string, employeeNumber: c.employeeNumber as string, site: (c.site ?? null) as string | null, warnings });
+      }
+      return out;
+    });
+  }
+
   /** Patterns HR may want to look at. A suggestion only fills in the form; it never sends anything. */
   @Get('suggestions')
   @RequirePermission('notices.issue')
@@ -225,7 +268,7 @@ export class HrNoticesController {
   @Get('settings')
   @RequirePermission('notices.view')
   settings(@CurrentUser() user: UserPrincipal) {
-    return this.db.withTenant(user.companyId, async (tx) => ({ noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx) }));
+    return this.db.withTenant(user.companyId, async (tx) => ({ noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx), ...(await this.notices.discipline(tx)) }));
   }
 
   @Put('settings')
@@ -233,13 +276,21 @@ export class HrNoticesController {
   saveSettings(@CurrentUser() user: UserPrincipal, @Body() body: unknown) {
     const b = parseBody(SettingsBody, body);
     return this.db.withTenant(user.companyId, async (tx) => {
-      const before = { noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx) };
+      const d = await this.notices.discipline(tx);
+      const before = { noticeAckHours: await this.notices.ackHours(tx), noticesOnPostPhone: await this.notices.onPostPhone(tx), ...d };
+      const after = {
+        noticeAckHours: b.noticeAckHours,
+        noticesOnPostPhone: b.noticesOnPostPhone,
+        warningThreshold: b.warningThreshold ?? d.warningThreshold,
+        warningMonths: b.warningMonths ?? d.warningMonths,
+        hearingMinDays: b.hearingMinDays ?? d.hearingMinDays,
+      };
       await tx.query(
-        `INSERT INTO hr_settings (company_id, notice_ack_hours, notices_on_post_phone, updated_by, updated_at) VALUES (app_company_id(), $1, $3, $2, now())
-         ON CONFLICT (company_id) DO UPDATE SET notice_ack_hours = $1, notices_on_post_phone = $3, updated_by = $2, updated_at = now()`,
-        [b.noticeAckHours, user.userId, b.noticesOnPostPhone],
+        `INSERT INTO hr_settings (company_id, notice_ack_hours, notices_on_post_phone, warning_threshold, warning_months, hearing_min_days, updated_by, updated_at)
+         VALUES (app_company_id(), $1, $3, $4, $5, $6, $2, now())
+         ON CONFLICT (company_id) DO UPDATE SET notice_ack_hours = $1, notices_on_post_phone = $3, warning_threshold = $4, warning_months = $5, hearing_min_days = $6, updated_by = $2, updated_at = now()`,
+        [after.noticeAckHours, user.userId, after.noticesOnPostPhone, after.warningThreshold, after.warningMonths, after.hearingMinDays],
       );
-      const after = { noticeAckHours: b.noticeAckHours, noticesOnPostPhone: b.noticesOnPostPhone };
       await this.audit.byUser(tx, user, { action: 'hr.settings', entityType: 'company', entityId: user.companyId, before, after, reason: b.reason });
       return after;
     });

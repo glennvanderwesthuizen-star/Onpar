@@ -57,6 +57,14 @@ fun MessageScreen(vm: AppViewModel, state: UiState, id: String) {
         Text("${n.typeLabel} · ${date(n.issuedAt)}", color = Color.DarkGray, fontSize = 13.sp)
         Text(n.subject, style = MaterialTheme.typography.titleLarge)
         Card(Modifier.fillMaxWidth()) { Text(n.body, Modifier.padding(12.dp)) }
+        n.documents.forEach { d ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(d.title, fontWeight = FontWeight.Bold)
+                    Text(d.body)
+                }
+            }
+        }
         if (n.acknowledged != null) {
             Text("You acknowledged receipt.", Modifier.background(Color(0xFFDFF3E7)).padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
         } else {

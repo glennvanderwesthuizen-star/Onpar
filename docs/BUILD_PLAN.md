@@ -1115,3 +1115,13 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - The home screen line stays generic: "You have a message from HR. Open MY MESSAGES to read it."
 - **HR → Settings:** "Guards read their notices on the post phone" (on by default). Off: only "You have a personal message…" shows, as in brief section 6.14. The own-phone page (`/p`) stays as it is for later.
 - Migration `0054_notices_on_post_phone.sql`. Tests: 1 server.
+
+## Repeated warnings and the disciplinary inquiry (owner, 9 Oct 2026; D-53)
+
+- **The third warning** (verbal, written, severe or final written; counted over 12 months): management (HR, company manager, administrator) gets an alert straight away listing all the warnings and saying what can be done next. The employee also appears under **Action needed** on the HR page until something is done. Nothing is sent by itself.
+- **Option 1, end of line memorandum:** opens the notice form with the memorandum filled in, quoting every warning ("you have reached the end of the line with us…"). HR checks and sends it.
+- **Option 2, proceed to disciplinary action:** a form with the warnings (ticked), the charge, the inquiry date (at least 3 days ahead; earlier dates are refused), time, venue, chairperson, initiator, company witnesses and the employee's representative. Three documents fill themselves in from the case: *Your rights as an employee facing a disciplinary inquiry*, *Your right to call witnesses*, *Your right to an interpreter*. The notice to appear lists the warnings, the rights and the documents; HR edits it and sends it. The employee reads the notice and the three documents under MY MESSAGES and acknowledges as usual.
+- **After the inquiry:** the case page holds our own **disciplinary inquiry form** (held on, chairperson, initiator, present, representative, interpreter, plea, witnesses, the company's case, the employee's case, mitigating and aggravating factors, finding with reasons, sanction), saved as it is filled in. HR uploads the signed form, statements or other evidence (PDF or photo). Then **Publish the decision**: the outcome notice fills itself from the form, HR edits it, and it goes to the employee. The case then closes for good (the database refuses changes). An inquiry can be withdrawn with a reason.
+- **HR → Settings** (drafts for the labour lawyer): warnings that call for action (3), months they count over (12), days' notice of an inquiry (3).
+- The right to an interpreter replaces the brief's "no interpreter" line (owner, 9 Oct 2026).
+- Migration `0055_disciplinary_cases.sql`. Tests: 5 rules, 4 server. The owner may send the company's own inquiry form to replace ours.

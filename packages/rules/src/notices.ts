@@ -36,7 +36,7 @@ export const INQUIRY_RIGHTS = [
   'To be told of the charge in a language and terms you understand.',
   'To have reasonable time to prepare.',
   'To be represented by a fellow employee or a shop steward.',
-  'The inquiry is conducted in English; no interpreter is provided.',
+  'To have an interpreter if you need one (owner, 9 Oct 2026; tell HR before the inquiry).',
   'To state your case and to question the witnesses.',
   'To receive the outcome in writing, with reasons, and to appeal.',
 ];
@@ -63,7 +63,21 @@ export interface NoticeDetails {
   representative?: string;
   outcome?: string;
   sanction?: string;
+  /** The warnings on file, for an end of line memorandum or a notice to appear. */
+  warnings?: WarningLine[];
+  /** The documents that go with a notice to appear (listed in it). */
+  attachments?: string[];
 }
+
+/** One warning on file, as it is quoted in later notices. */
+export interface WarningLine {
+  label: string;
+  /** When it was issued, YYYY-MM-DD. */
+  date: string;
+  charge: string;
+}
+
+const warningList = (ws: WarningLine[]) => ws.map((w, i) => `${i + 1}. ${w.label}, ${w.date}: ${w.charge}`).join('\n');
 
 export interface NoticeContext {
   companyName: string;
@@ -104,7 +118,9 @@ export function noticeTemplate(type: NoticeType, c: NoticeContext): { subject: s
     case 'end_of_line_memo':
       return {
         subject: `End of line memorandum: ${d.charge?.trim() || 'conduct'}`,
-        body: `${head}You have reached the end of the warning ladder for the following${when}: ${charge}.${prior}\n\nThe next step is a disciplinary inquiry. You will receive a separate notice to appear.${sign}`,
+        body: d.warnings?.length
+          ? `${head}You have received the following warnings:\n${warningList(d.warnings)}\n\nYou have reached the end of the line with us. Any further misconduct will lead to a disciplinary inquiry, which may result in your dismissal. If you would like help to improve, speak to your supervisor or HR.${sign}`
+          : `${head}You have reached the end of the warning ladder for the following${when}: ${charge}.${prior}\n\nThe next step is a disciplinary inquiry. You will receive a separate notice to appear.${sign}`,
       };
     case 'notice_to_appear': {
       const witnesses = (d.witnesses ?? []).filter((w) => w.trim());
@@ -115,7 +131,9 @@ export function noticeTemplate(type: NoticeType, c: NoticeContext): { subject: s
           `Charge: ${charge}${when}.\n` +
           `Date: ${d.hearingDate || '[date]'}\nTime: ${d.hearingTime || '[time]'}\nVenue: ${d.venue || '[venue]'}\n` +
           (d.chairperson ? `Chairperson: ${d.chairperson}\n` : '') +
+          (d.warnings?.length ? `\nWarnings on your file:\n${warningList(d.warnings)}\n` : '') +
           `\nYour rights:\n${INQUIRY_RIGHTS.map((r) => `- ${r}`).join('\n')}\n` +
+          (d.attachments?.length ? `\nAttached, to read before the inquiry:\n${d.attachments.map((a) => `- ${a}`).join('\n')}\n` : '') +
           (witnesses.length ? `\nWitnesses the company intends to call:\n${witnesses.map((w) => `- ${w}`).join('\n')}\n` : '') +
           `\nYour representative: ${d.representative?.trim() || 'please tell HR before the inquiry'}.${sign}`,
       };
@@ -196,4 +214,127 @@ export function suggestedActions(f: SuggestionFacts): { pattern: string; suggest
   if (f.missedTasks30 >= SUGGESTION_RULES.missedTasks)
     out.push({ pattern: `${f.missedTasks30} tasks missed in the last ${SUGGESTION_RULES.days} days and no warning on file`, suggest: 'verbal_warning', charge: `${f.missedTasks30} duties not done in the last ${SUGGESTION_RULES.days} days` });
   return out;
+}
+
+
+// --- Repeated warnings and the disciplinary inquiry (owner, 9 Oct 2026; D-53) --------------------
+
+/** Draft defaults for the owner and the labour lawyer: how many warnings call for action, over how long, and the notice for an inquiry. */
+export const DEFAULT_DISCIPLINE = { warningThreshold: 3, warningMonths: 12, hearingMinDays: 3 } as const;
+
+/** Whether this many warnings in the period calls for the manager to act (an alert and a choice; never automatic). */
+export function warningsNeedAction(count: number, threshold: number): boolean {
+  return count >= threshold;
+}
+
+/** The inquiry must be at least the set number of days after the notice is sent. Dates YYYY-MM-DD. */
+export function hearingDateError(hearingDate: string | undefined, today: string, minDays: number): string | null {
+  if (!hearingDate) return 'Choose the date of the inquiry.';
+  const days = (Date.parse(`${hearingDate}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000;
+  if (days < minDays) return `The inquiry must be at least ${minDays} days from today, so the employee has time to prepare.`;
+  return null;
+}
+
+export interface CaseContext {
+  companyName: string;
+  employeeName: string;
+  employeeNumber: string;
+  date: string;
+  charge: string;
+  hearingDate: string;
+  hearingTime: string;
+  venue: string;
+  chairperson?: string;
+}
+
+/**
+ * The documents that go with a notice to appear (owner, 9 Oct 2026): the employee's rights at a
+ * disciplinary inquiry, his right to call witnesses, and his right to an interpreter. Drafts for
+ * the labour lawyer, filled in from the case.
+ */
+export function inquiryDocuments(c: CaseContext): { title: string; body: string }[] {
+  const head = `${c.companyName}\nEmployee: ${c.employeeName} (employee number ${c.employeeNumber})\nInquiry: ${c.hearingDate} at ${c.hearingTime}, ${c.venue}\nCharge: ${c.charge}\n\n`;
+  return [
+    {
+      title: 'Your rights as an employee facing a disciplinary inquiry',
+      body:
+        head +
+        'At the inquiry you have the right:\n' +
+        INQUIRY_RIGHTS.map((r, i) => `${i + 1}. ${r}`).join('\n') +
+        `\n\nThe inquiry will be chaired by ${c.chairperson?.trim() || 'a person who was not involved in the matter'}. If you do not attend without a good reason, the inquiry may go ahead without you.`,
+    },
+    {
+      title: 'Your right to call witnesses',
+      body:
+        head +
+        'You may call witnesses to support your side. Give HR their names before the inquiry so that they can be released from duty to attend. ' +
+        'You or your representative may question the company\'s witnesses, and the company may question yours. A witness only tells what he or she saw or knows.',
+    },
+    {
+      title: 'Your right to an interpreter',
+      body:
+        head +
+        'If you are not comfortable with the language of the inquiry, you may ask for an interpreter. Tell HR before the inquiry, and say which language you need. ' +
+        'The interpreter repeats what is said, word for word, and takes no side.',
+    },
+  ];
+}
+
+/** The findings and sanctions on the inquiry form. Drafts: the lawyer confirms which sanctions apply. */
+export const HEARING_FINDINGS = { guilty: 'Guilty', not_guilty: 'Not guilty' } as const;
+export type HearingFinding = keyof typeof HEARING_FINDINGS;
+export const HEARING_SANCTIONS = {
+  none: 'No sanction',
+  written_warning: 'Written warning',
+  final_written_warning: 'Final written warning',
+  suspension: 'Suspension without pay',
+  dismissal: 'Dismissal',
+  other: 'Other (described)',
+} as const;
+export type HearingSanction = keyof typeof HEARING_SANCTIONS;
+
+/** The disciplinary inquiry form (owner, 9 Oct 2026: our own form for now). */
+export interface HearingRecord {
+  heldOn?: string;
+  chairperson?: string;
+  initiator?: string;
+  employeePresent?: boolean;
+  representative?: string;
+  interpreter?: string;
+  witnesses?: string;
+  plea?: 'guilty' | 'not_guilty' | '';
+  companyCase?: string;
+  employeeCase?: string;
+  mitigating?: string;
+  aggravating?: string;
+  finding?: HearingFinding | '';
+  reasons?: string;
+  sanction?: HearingSanction | '';
+  sanctionNote?: string;
+}
+
+/** What is still missing before a decision can be published; null when it can be. */
+export function hearingRecordErrors(h: HearingRecord): Record<string, string> | null {
+  const e: Record<string, string> = {};
+  if (!h.heldOn) e.heldOn = 'Enter the date the inquiry was held.';
+  if (!h.chairperson?.trim()) e.chairperson = 'Enter the chairperson.';
+  if (!h.finding) e.finding = 'Choose the finding.';
+  if (!h.reasons?.trim() || h.reasons.trim().length < 10) e.reasons = 'Give the reasons for the finding.';
+  if (h.finding === 'guilty' && !h.sanction) e.sanction = 'Choose the sanction.';
+  if (h.sanction === 'other' && !h.sanctionNote?.trim()) e.sanctionNote = 'Describe the sanction.';
+  return Object.keys(e).length ? e : null;
+}
+
+/** The outcome notice, filled from the inquiry form. HR edits it before it is published. */
+export function outcomeNotice(c: { companyName: string; employeeName: string; employeeNumber: string; date: string; charge: string; issuedBy: string }, h: HearingRecord): { subject: string; body: string } {
+  const sanction = h.finding === 'guilty' ? (h.sanction === 'other' ? h.sanctionNote ?? '' : h.sanction ? HEARING_SANCTIONS[h.sanction] : '') : 'None';
+  return {
+    subject: `Outcome of the disciplinary inquiry of ${h.heldOn ?? ''}`.trim(),
+    body:
+      `${c.companyName}\nTo: ${c.employeeName} (employee number ${c.employeeNumber})\nDate: ${c.date}\n\n` +
+      `The disciplinary inquiry held on ${h.heldOn ?? '[date]'}, chaired by ${h.chairperson ?? '[chairperson]'}, considered the charge: ${c.charge}.\n\n` +
+      `Finding: ${h.finding ? HEARING_FINDINGS[h.finding] : '[finding]'}\nReasons: ${h.reasons ?? '[reasons]'}\n` +
+      `Sanction: ${sanction}${h.sanction && h.sanction !== 'other' && h.sanctionNote ? ` (${h.sanctionNote})` : ''}\n\n` +
+      `You may appeal in writing to HR within [appeal period] of receiving this outcome.\n\n${c.issuedBy}`,
+  };
 }

@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { NOTICE_TYPE_LABELS, NOTICE_TYPES, NoticeDetails, NoticeType, noticeErrors, noticeTemplate } from '@onpar/rules';
+import Link from 'next/link';
+import { NOTICE_TYPE_LABELS, NOTICE_TYPES, NoticeDetails, NoticeType, noticeErrors, noticeTemplate, WarningLine } from '@onpar/rules';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { AuthPhoto } from '@/components/AuthPhoto';
@@ -33,6 +34,7 @@ interface NoticeRow {
 }
 interface NoticeFull extends NoticeRow {
   body: string;
+  documents: { title: string; body: string }[];
   events: { id: string; kind: string; at: string; actor_label: string; note: string; hasPhoto: boolean }[];
 }
 interface Suggestion {
@@ -43,6 +45,23 @@ interface Suggestion {
   suggest: NoticeType;
   charge: string;
 }
+interface Attention {
+  employeeId: string;
+  name: string;
+  employeeNumber: string;
+  site: string | null;
+  warnings: (WarningLine & { id: string })[];
+}
+interface CaseRow {
+  id: string;
+  status: 'notice_sent' | 'published' | 'withdrawn';
+  charge: string;
+  hearingDate: string;
+  hearingTime: string;
+  employee: string;
+  finding: string | null;
+}
+type Start = { employeeId: string; type: NoticeType; charge: string; warnings?: WarningLine[] };
 interface Context {
   companyName: string;
   employeeName: string;
@@ -84,8 +103,12 @@ function Hr() {
   const notices = useLoad(() => api<NoticeRow[]>('/hr/notices'));
   const suggestions = useLoad(() => (mayIssue ? api<Suggestion[]>('/hr/suggestions') : Promise.resolve([])), [mayIssue]);
   const [open, setOpen] = useState<string | null>(params.get('notice'));
-  const [draft, setDraft] = useState<{ employeeId: string; type: NoticeType; charge: string } | null>(null);
+  const [draft, setDraft] = useState<Start | null>(null);
+  const attention = useLoad(() => api<Attention[]>('/hr/attention'));
+  const cases = useLoad(() => api<CaseRow[]>('/hr/cases'));
   const reload = () => {
+    attention.reload();
+    cases.reload();
     notices.reload();
     employees.reload();
     suggestions.reload();
@@ -99,6 +122,73 @@ function Hr() {
         On Par never sends a warning by itself.
       </div>
       <ErrorBanner error={notices.error ?? employees.error} />
+      {!!attention.data?.length && (
+        <div className="card" style={{ borderLeft: '6px solid var(--red, #b3261e)' }}>
+          <h2>Action needed: repeated warnings</h2>
+          <p className="mute small">Nothing has been done since the last warning. Choose what to do next; nothing is sent until you send it.</p>
+          {attention.data.map((a) => (
+            <div key={a.employeeId} style={{ borderTop: '1px solid var(--line)', padding: '10px 0' }}>
+              <b>{a.name}</b>
+              <span className="mute">
+                {' '}
+                · {a.employeeNumber}
+                {a.site ? ` · ${a.site}` : ''} · {a.warnings.length} warnings
+              </span>
+              <ol className="small" style={{ margin: '6px 0' }}>
+                {a.warnings.map((w) => (
+                  <li key={w.id}>
+                    {w.label}, {w.date}: {w.charge}
+                  </li>
+                ))}
+              </ol>
+              {mayIssue && (
+                <div className="row">
+                  <button
+                    className="btn ghost"
+                    onClick={() => setDraft({ employeeId: a.employeeId, type: 'end_of_line_memo', charge: `${a.warnings.length} warnings on file`, warnings: a.warnings.map(({ label, date, charge }) => ({ label, date, charge })) })}
+                  >
+                    1. Send an end of line memorandum
+                  </button>
+                  <Link className="btn" href={`/hr/cases/new?employee=${a.employeeId}`}>
+                    2. Proceed to disciplinary action
+                  </Link>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {!!cases.data?.length && (
+        <div className="card scroll">
+          <h2>Disciplinary inquiries</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Charge</th>
+                <th>Inquiry</th>
+                <th>Where it stands</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cases.data.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <Link href={`/hr/cases/${c.id}`}>{c.employee}</Link>
+                  </td>
+                  <td>{c.charge}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {c.hearingDate} {c.hearingTime}
+                  </td>
+                  <td>
+                    {c.status === 'notice_sent' ? <Pill tone="amber">Waiting for the inquiry</Pill> : c.status === 'published' ? <Pill tone="green">Decision published{c.finding === 'guilty' ? ': guilty' : c.finding === 'not_guilty' ? ': not guilty' : ''}</Pill> : <Pill tone="grey">Withdrawn</Pill>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {mayIssue && !!suggestions.data?.length && (
         <div className="card">
           <h2>Patterns you may want to look at</h2>
@@ -118,7 +208,7 @@ function Hr() {
       )}
       {mayIssue && employees.data && (
         <NewNotice
-          key={draft ? `${draft.employeeId}${draft.type}` : 'blank'}
+          key={draft ? `${draft.employeeId}${draft.type}${draft.warnings?.length ?? 0}` : 'blank'}
           employees={employees.data}
           start={draft}
           done={(id) => {
@@ -172,11 +262,11 @@ function Hr() {
   );
 }
 
-function NewNotice({ employees, start, done }: { employees: Employee[]; start: { employeeId: string; type: NoticeType; charge: string } | null; done: (id: string) => void }) {
+function NewNotice({ employees, start, done }: { employees: Employee[]; start: Start | null; done: (id: string) => void }) {
   const [open, setOpen] = useState(!!start);
   const [employeeId, setEmployeeId] = useState(start?.employeeId ?? '');
   const [type, setType] = useState<NoticeType>(start?.type ?? 'written_warning');
-  const [d, setD] = useState<NoticeDetails>({ charge: start?.charge ?? '' });
+  const [d, setD] = useState<NoticeDetails>({ charge: start?.charge ?? '', warnings: start?.warnings });
   const [witness, setWitness] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -417,6 +507,13 @@ function NoticeView({ id, mayIssue, close, changed }: { id: string; mayIssue: bo
             <Pill tone={TONE[data.status]}>{data.statusLabel}</Pill> <span className="mute small">To {data.employee} · sent {formatDateTime(data.issuedAt)} by {data.issuedBy}</span>
           </p>
           <div style={{ whiteSpace: 'pre-wrap', border: '1px solid var(--line)', borderRadius: 8, padding: 12, lineHeight: 1.5 }}>{data.body}</div>
+          {data.documents.map((doc) => (
+            <div key={doc.title} style={{ whiteSpace: 'pre-wrap', border: '1px solid var(--line)', borderRadius: 8, padding: 12, lineHeight: 1.5, marginTop: 10, breakBefore: 'page' }}>
+              <b>{doc.title}</b>
+              {'\n\n'}
+              {doc.body}
+            </div>
+          ))}
           <div className="only-print" style={{ marginTop: 40 }}>
             Received by: ______________________ Signature: ______________________ Date: ____________
             <p className="small">Signing shows that I received this notice. It does not mean I agree with it or admit anything.</p>
@@ -500,17 +597,22 @@ function PortalAccess({ employees, changed }: { employees: Employee[]; changed: 
 }
 
 function Settings() {
-  const { data, reload } = useLoad(() => api<{ noticeAckHours: number; noticesOnPostPhone: boolean }>('/hr/settings'));
+  const { data, reload } = useLoad(() => api<{ noticeAckHours: number; noticesOnPostPhone: boolean; warningThreshold: number; warningMonths: number; hearingMinDays: number }>('/hr/settings'));
   const [hours, setHours] = useState('');
   const [onPhone, setOnPhone] = useState<boolean | null>(null);
+  const [threshold, setThreshold] = useState('');
+  const [months, setMonths] = useState('');
+  const [minDays, setMinDays] = useState('');
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<unknown>(null);
   if (!data) return null;
   const phone = onPhone ?? data.noticesOnPostPhone;
-  const changed = !!hours || phone !== data.noticesOnPostPhone;
+  const changed = !!hours || !!threshold || !!months || !!minDays || phone !== data.noticesOnPostPhone;
+  const num = (f: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => f(e.target.value.replace(/\D/g, ''));
   return (
     <div className="card">
       <h2>Settings</h2>
+      <p className="mute small">Drafts for your labour lawyer to confirm. Each change is kept in the audit log with your reason.</p>
       <ErrorBanner error={err} />
       <label className="row" style={{ gap: 6, marginBottom: 8 }}>
         <input type="checkbox" style={{ width: 'auto' }} checked={phone} onChange={(e) => setOnPhone(e.target.checked)} />
@@ -523,10 +625,21 @@ function Settings() {
           </span>
         </span>
       </label>
-      <div className="row">
+      <div className="grid g4">
         <Field label={`Hours to acknowledge before hand delivery (now ${data.noticeAckHours})`}>
-          <input inputMode="numeric" value={hours} onChange={(e) => setHours(e.target.value.replace(/\D/g, ''))} placeholder={String(data.noticeAckHours)} />
+          <input inputMode="numeric" value={hours} onChange={num(setHours)} placeholder={String(data.noticeAckHours)} />
         </Field>
+        <Field label={`Warnings that call for action (now ${data.warningThreshold})`}>
+          <input inputMode="numeric" value={threshold} onChange={num(setThreshold)} placeholder={String(data.warningThreshold)} />
+        </Field>
+        <Field label={`Counted over this many months (now ${data.warningMonths})`}>
+          <input inputMode="numeric" value={months} onChange={num(setMonths)} placeholder={String(data.warningMonths)} />
+        </Field>
+        <Field label={`Days' notice of an inquiry, at least (now ${data.hearingMinDays})`}>
+          <input inputMode="numeric" value={minDays} onChange={num(setMinDays)} placeholder={String(data.hearingMinDays)} />
+        </Field>
+      </div>
+      <div className="row">
         <Field label="Why the change">
           <input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
@@ -536,8 +649,21 @@ function Settings() {
           onClick={async () => {
             setErr(null);
             try {
-              await api('/hr/settings', { method: 'PUT', json: { noticeAckHours: Number(hours || data.noticeAckHours), noticesOnPostPhone: phone, reason } });
+              await api('/hr/settings', {
+                method: 'PUT',
+                json: {
+                  noticeAckHours: Number(hours || data.noticeAckHours),
+                  noticesOnPostPhone: phone,
+                  warningThreshold: Number(threshold || data.warningThreshold),
+                  warningMonths: Number(months || data.warningMonths),
+                  hearingMinDays: Number(minDays || data.hearingMinDays),
+                  reason,
+                },
+              });
               setHours('');
+              setThreshold('');
+              setMonths('');
+              setMinDays('');
               setOnPhone(null);
               setReason('');
               reload();

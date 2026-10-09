@@ -25,10 +25,15 @@ data class NoticeOpen(
     val typeLabel: String = "",
     val subject: String = "",
     val body: String = "",
+    /** Sent with it: the rights documents with a notice to appear (D-53). */
+    val documents: List<NoticeDocument> = emptyList(),
     val issuedAt: String? = null,
     val acknowledged: String? = null,
     val ackText: String = "",
 )
+
+@Serializable
+data class NoticeDocument(val title: String = "", val body: String = "")
 
 /**
  * The guard's own HR notices on the post phone: only for the guard signed in with his own PIN

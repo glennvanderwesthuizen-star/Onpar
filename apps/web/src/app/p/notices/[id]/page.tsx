@@ -11,6 +11,7 @@ interface Notice {
   typeLabel: string;
   subject: string;
   body: string;
+  documents?: { title: string; body: string }[];
   issuedAt: string;
   acknowledged: string | null;
   ackText: string;
@@ -56,6 +57,12 @@ export default function PortalNotice({ params }: { params: Promise<{ id: string 
             <h2>{n.subject}</h2>
             <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{n.body}</div>
           </div>
+          {(n.documents ?? []).map((d) => (
+            <div key={d.title} className="card">
+              <h3>{d.title}</h3>
+              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{d.body}</div>
+            </div>
+          ))}
           {n.acknowledged ? (
             <div className="banner ok">You acknowledged receipt on {formatDateTime(n.acknowledged)}.</div>
           ) : (

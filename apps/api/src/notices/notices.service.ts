@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { NotFoundException } from '@nestjs/common';
-import { ACK_TEXT, DEFAULT_ACK_HOURS, needsHandDelivery, NoticeEventKind, noticeStatus, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeType } from '@onpar/rules';
+import { ACK_TEXT, DEFAULT_ACK_HOURS, DEFAULT_DISCIPLINE, WARNING_LADDER, warningsNeedAction, needsHandDelivery, NoticeEventKind, noticeStatus, NOTICE_EVENT_LABELS, NOTICE_TYPE_LABELS, NoticeType } from '@onpar/rules';
 import { AuditService } from '../audit/audit.service';
 import { DbService, Tx } from '../db/db.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -36,9 +36,48 @@ export class NoticesService implements OnModuleDestroy {
     return ((await tx.query('SELECT notices_on_post_phone AS v FROM hr_settings')).rows[0]?.v as boolean | undefined) ?? true;
   }
 
+  /** How many warnings call for action, over how many months, and the notice for an inquiry (D-53). */
+  async discipline(tx: Tx): Promise<{ warningThreshold: number; warningMonths: number; hearingMinDays: number }> {
+    const r = (await tx.query('SELECT warning_threshold, warning_months, hearing_min_days FROM hr_settings')).rows[0];
+    return r ? { warningThreshold: r.warning_threshold, warningMonths: r.warning_months, hearingMinDays: r.hearing_min_days } : { ...DEFAULT_DISCIPLINE };
+  }
+
+  /** The employee's warnings in the period, oldest first, as later notices quote them. */
+  async warningsOnFile(tx: Tx, employeeId: string, months: number) {
+    return (
+      await tx.query(
+        `SELECT id, type, issued_at, to_char(issued_at AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD') AS date, coalesce(nullif(details->>'charge', ''), subject) AS charge
+           FROM notices WHERE employee_id = $1 AND type = ANY($2::text[]) AND issued_at > now() - make_interval(months => $3) ORDER BY issued_at`,
+        [employeeId, WARNING_LADDER, months],
+      )
+    ).rows.map((r) => ({ id: r.id as string, type: r.type as NoticeType, label: NOTICE_TYPE_LABELS[r.type as NoticeType], date: r.date as string, charge: r.charge as string, issuedAt: r.issued_at as Date }));
+  }
+
+  /**
+   * After a warning is sent: at the set number of warnings in the period, management is alerted
+   * with all of them, to choose what to do next. Nothing else happens by itself.
+   */
+  async checkWarnings(tx: Tx, employeeId: string, noticeId: string) {
+    const d = await this.discipline(tx);
+    const ws = await this.warningsOnFile(tx, employeeId, d.warningMonths);
+    if (!warningsNeedAction(ws.length, d.warningThreshold)) return false;
+    const name = (await tx.query('SELECT full_name FROM employees WHERE id = $1', [employeeId])).rows[0]?.full_name ?? '';
+    const ordinal = ws.length === 3 ? 'third' : `${ws.length}th`;
+    await this.notifications.recordForSite(tx, null, {
+      kind: 'warning_threshold',
+      title: `${name}: ${ordinal} warning`,
+      body: `${name} has received ${ws.length} warnings in ${d.warningMonths} months:\n${ws.map((w, i) => `${i + 1}. ${w.label}, ${w.date}: ${w.charge}`).join('\n')}\nAction is needed: send an end of line memorandum, or proceed to a disciplinary inquiry. Open the HR page.`,
+      lockScreen: 'An HR matter needs your attention.',
+      url: `/hr?attention=${employeeId}`,
+      entityType: 'notice',
+      entityId: noticeId,
+    });
+    return true;
+  }
+
   /** An employee's own notices, newest first. */
   async forEmployee(tx: Tx, employeeId: string, id?: string) {
-    const rows = (await tx.query(`SELECT n.id, n.type, n.subject, n.body, n.issued_at FROM notices n WHERE n.employee_id = $1 AND ($2::uuid IS NULL OR n.id = $2::uuid) ORDER BY n.issued_at DESC`, [employeeId, id ?? null])).rows;
+    const rows = (await tx.query(`SELECT n.id, n.type, n.subject, n.body, n.issued_at, n.documents FROM notices n WHERE n.employee_id = $1 AND ($2::uuid IS NULL OR n.id = $2::uuid) ORDER BY n.issued_at DESC`, [employeeId, id ?? null])).rows;
     const events = rows.length ? (await tx.query(`SELECT notice_id, kind, at FROM notice_events WHERE notice_id = ANY($1::uuid[])`, [rows.map((r) => r.id)])).rows : [];
     return rows.map((n) => {
       const ev = events.filter((e) => e.notice_id === n.id) as { kind: NoticeEventKind; at: Date }[];
@@ -48,6 +87,8 @@ export class NoticesService implements OnModuleDestroy {
         typeLabel: NOTICE_TYPE_LABELS[n.type as NoticeType],
         subject: n.subject as string,
         body: n.body as string,
+        /** Documents sent with it (the rights documents with a notice to appear). */
+        documents: (n.documents ?? []) as { title: string; body: string }[],
         issuedAt: n.issued_at as Date,
         acknowledged: ev.find((e) => e.kind === 'acknowledged')?.at ?? null,
         status,

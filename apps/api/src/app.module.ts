@@ -54,6 +54,7 @@ import { VisitorPortalController } from './visitors/visitor-portal.controller';
 import { EobController } from './eob/eob.controller';
 import { CustomerEobController, GuardEobController } from './eob/eob-others.controller';
 import { HrNoticesController } from './notices/hr-notices.controller';
+import { DisciplinaryController } from './notices/disciplinary.controller';
 import { PersonalMessageController, PortalAuthGuard, PortalController } from './notices/portal.controller';
 import { NoticesService } from './notices/notices.service';
 import { GateController } from './visitors/gate.controller';
@@ -133,6 +134,7 @@ export function buildAppModule(config: Config = loadConfig()) {
       GuardEobController,
       CustomerEobController,
       HrNoticesController,
+      DisciplinaryController,
       PortalController,
       PersonalMessageController,
       PostingsController,
