@@ -1090,3 +1090,21 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - **Written entries:** for anything On Par did not record by itself, with the time it happened. An entry can never be changed or removed (the database refuses); a correction is a new entry marked "Correction".
 - **Not yet:** firearm entries (they come with firearm allocation, step 8), notices and queries (step 7), PDF export, and entries written by guards on the phone. Retention: the book is assembled from the records, so it is kept as long as they are; the legal retention period of an OB is for the owner's advisers (D-51).
 - Migration `0051_occurrence_book.sql`; rules `packages/rules/src/eob.ts`. Tests: 4 server.
+
+### 9 Oct 2026: the owner's answers on the Occurrence Book (D-51)
+
+- **Guards write entries on the post phone:** WRITE IN THE OCCURRENCE BOOK on the home screen while on duty. The time is the phone's trusted time; with no signal it waits on the phone and is sent later (marked "sent later"). Never changed; a correction is a new entry.
+- **The client (estate manager) reads the book** in the customer app, on a new **Book** tab: one day at a time, read only, without photos. Tenants do not see it. Each look is in the audit trail.
+- Migration `0053_ob_guard_entries.sql`. Tests: 2 server, 1 phone-logic.
+
+## HR notices with delivery tracking, and the employee portal (brief sections 6.14, 6.16 and 28; milestones 12 (first part), 13 and 18; owner's step 7, 9 Oct 2026)
+
+- **HR** in the menu (system administrator, company manager, HR administrator; **not** site supervisors). The banner says every template is a draft for the labour lawyer and that On Par never sends a warning by itself.
+- **New notice:** choose the employee and the kind (verbal warning record, written, severe written, final written warning, end of line memorandum, notice to appear for a disciplinary inquiry, hearing outcome, general message). The text fills itself from the employee's record (name, number, site, date) and counts how many of that kind are already on file. A notice to appear adds the date, time, venue, chairperson, the employee's rights, the witnesses (added one by one) and his representative. HR may cite recent performance events as evidence. HR edits the text freely; it cannot be sent while any "[part in square brackets]" is still there. Once sent it can never be changed.
+- **Delivery tracking:** Sent, Delivered (he saw it in his list), Opened, Acknowledged, each with its time. Acknowledging says plainly that it does not mean agreeing or admitting anything.
+- **The post phone** shows only "You have a personal message. Open it on your own phone or see your supervisor.", never the content.
+- **Not acknowledged in time** (48 hours by default, set on the HR page): HR is alerted, once, to deliver it by hand. **Print for hand delivery** adds signature lines; HR records who delivered it, where, and a photo of the signed copy.
+- **Suggestions:** when an employee has 3 late arrivals (or 5 missed tasks) in 30 days and no warning on file in the last 90 days, HR sees the pattern with a button that only fills in the form.
+- **The employee portal ("My messages")** at `/p`, on the guard's own phone or any browser. HR gives a **one-time code** (shown once, valid 7 days; there is no SMS yet). The guard opens the page with the code and chooses his own password; after that he signs in with his TSF number. A new code stops the old password. Five wrong tries lock sign-in for 15 minutes. The session lasts a week.
+- Migration `0052_notices_portal.sql`; rules `packages/rules/src/notices.ts`. Tests: 5 rules, 8 server.
+- **Not yet:** queries (section 6.15), his roster and score on the portal, notifications to his own phone, the later stages (investigation, hearing record, appeal, warning expiry).

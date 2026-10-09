@@ -59,6 +59,8 @@ sealed interface Page {
     data object WireBoard : Page
     /** The shift handover (D-45): equipment and note out, and received by the next guard. */
     data object ShiftHandover : Page
+    /** Write in the Occurrence Book (owner, 9 Oct 2026, D-51). */
+    data object BookEntry : Page
     data object ReceiveHandover : Page
     data object Training : Page
     data object Roster : Page
@@ -170,6 +172,8 @@ data class UiState(
     val handover: za.onpar.core.HandoverView? = null,
     val handoverDone: Boolean = false,
     val shiftHandover: za.onpar.core.ShiftHandoverState? = null,
+    /** "You have a personal message…": the generic line only (brief section 6.14). */
+    val personalMessage: String? = null,
     /** Goes up each time a new overstay needs the guard, so the phone sounds once for it. */
     val overstayAlarm: Int = 0,
     val panic: PanicStatus? = null,
@@ -365,13 +369,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         device.signOut()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), lockedGuards = device.lockedGuards()) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
     }
 
     /** Lock: the guard stays on duty; the phone goes back to the front screen (D-33). */
     fun lock() {
         device.lock()
-        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), lockedGuards = device.lockedGuards()) }
+        _state.update { it.copy(screen = Screen.Login, guardName = null, home = null, owed = null, page = Page.Home, tasks = emptyList(), personalMessage = null, shiftHandover = null, lockedGuards = device.lockedGuards()) }
     }
 
     /** Unlocks a locked guard with his PIN (works without signal). */
@@ -700,6 +704,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadShiftHandover() {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { device.handover.state() }.getOrNull()?.let { h -> _state.update { it.copy(shiftHandover = h) } }
+            runCatching { device.profile.personalMessage() }.getOrNull()?.let { m -> _state.update { it.copy(personalMessage = m.text) } }
+        }
+    }
+
+    /** An Occurrence Book entry; with no signal it waits on the phone. */
+    fun writeInBook(text: String) = run {
+        try {
+            val r = device.book.write(text)
+            _state.update {
+                it.copy(
+                    page = Page.Home,
+                    message = if (r is za.onpar.core.Submitted.Refused) null else "Written in the Occurrence Book.",
+                    error = (r as? za.onpar.core.Submitted.Refused)?.message,
+                )
+            }
+        } catch (e: IllegalArgumentException) {
+            _state.update { it.copy(error = e.message) }
         }
     }
 

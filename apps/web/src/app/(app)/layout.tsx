@@ -20,6 +20,7 @@ const NAV = [
   { href: '/reports', label: 'Reports', permission: 'reports.view' },
   { href: '/visitors', label: 'Visitors', permission: 'visitors.view' },
   { href: '/occurrence-book', label: 'Occurrence Book', permission: 'eob.view' },
+  { href: '/hr', label: 'HR', permission: 'notices.view' },
   { href: '/uniform', label: 'Uniform', permission: 'uniform.view' },
   { href: '/reorders', label: 'Re-orders', permission: 'reorders.view' },
   { href: '/scores', label: 'Scores', permission: 'scores.view' },

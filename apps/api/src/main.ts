@@ -13,6 +13,7 @@ import { WireService } from './wire/wire.service';
 import { VisitOnSiteService } from './visitors/visit-onsite.service';
 import { VisitPassService } from './visitors/visit-pass.service';
 import { NotificationsService } from './notifications/notifications.service';
+import { NoticesService } from './notices/notices.service';
 
 export async function createApp(config: Config = loadConfig()): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(buildAppModule(config), { logger: ['error', 'warn'] });
@@ -37,6 +38,7 @@ if (require.main === module) {
     app.get(VisitPassService).startTimer();
     app.get(VisitOnSiteService).startTimer();
     app.get(WireService).startTimer();
+    app.get(NoticesService).startTimer();
     console.log(`On Par API listening on http://localhost:${config.port}/api`);
   });
 }

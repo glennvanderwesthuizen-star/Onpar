@@ -140,4 +140,14 @@ class GateOfflineTest {
         assertEquals(2, device.outbox.pending().size)
         assertTrue(device.visitors.pack()!!.onSite.isEmpty())
     }
+
+    @Test
+    fun `an Occurrence Book entry from the post phone waits on the phone with no signal`() {
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { device.book.write("x") }
+        server.shutdown()
+        device.book.write("Gate 3 light out, told the supervisor by radio.")
+        val item = device.outbox.pending().single()
+        assertEquals("/device/occurrence-book", item.path)
+        assertEquals("Gate 3 light out, told the supervisor by radio.", item.body.jsonObject["text"]!!.jsonPrimitive.content)
+    }
 }

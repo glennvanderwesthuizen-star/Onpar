@@ -139,4 +139,32 @@ describe('the Electronic Occurrence Book', () => {
     expect((await w.http().post(`${site()}/occurrence-book`).set(auth(bAdmin)).send({ text: 'Not my site' })).status).toBe(404);
     expect((await w.http().get(`${site()}/occurrence-book`).set(g())).status).toBe(401);
   });
+
+  it('takes entries written by a guard on the post phone, once, at the time he wrote them (owner, D-51)', async () => {
+    const eventId = randomUUID();
+    const at = new Date(Date.now() - 10 * 60_000).toISOString();
+    const send = () => w.http().post('/api/device/occurrence-book').set(g()).send({ eventId, text: 'Gate 3 light out, reported to the supervisor by radio.', trustedAt: at, deviceClock: at });
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200);
+    expect((await w.http().post('/api/device/occurrence-book').set(g()).send({ eventId: randomUUID(), text: 'x', trustedAt: now(), deviceClock: now() })).status).toBe(400);
+    const mine = (await book()).entries.filter((e: { text: string }) => e.text.startsWith('Gate 3 light'));
+    expect(mine).toHaveLength(1);
+    expect(Math.abs(Date.parse(mine[0].at) - Date.parse(at))).toBeLessThan(2000);
+  });
+
+  it('lets the client of the site read the book, without photos; not tenants (owner, D-51)', async () => {
+    const mk = async (body: Record<string, unknown>) => {
+      const r = await w.http().post(`${site()}/customers`).set(auth(admin)).send(body);
+      await ownerQuery('UPDATE customers SET must_change_password = false WHERE id = $1', [r.body.id]);
+      return w.login(body.email as string, r.body.temporaryPassword);
+    };
+    const client = await mk({ kind: 'client', fullName: 'Carol Client', email: 'carol@estate.test', phone: '011 555 0100' });
+    const tenant = await mk({ kind: 'tenant', fullName: 'Thabo Tenant', email: 'thabo@home.test', unitId: unit14, phone: '082 555 0140' });
+    const r = await w.http().get(`/api/customer/occurrence-book?date=${today}`).set(auth(client));
+    expect(r.status).toBe(200);
+    expect(r.body.banner).toMatch(/not the official/);
+    expect(r.body.entries.length).toBeGreaterThan(3);
+    expect(r.body.entries.every((e: { photo: string | null }) => e.photo === null)).toBe(true);
+    expect((await w.http().get('/api/customer/occurrence-book').set(auth(tenant))).status).toBe(403);
+  });
 });

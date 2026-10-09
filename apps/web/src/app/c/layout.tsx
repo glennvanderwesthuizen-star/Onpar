@@ -11,6 +11,7 @@ import { CustomerProvider, useCustomer } from '@/lib/customer';
 const TABS = [
   { href: '/c', label: 'Home', icon: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10' },
   { href: '/c/visitors', label: 'Visitors', icon: 'M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11ZM3 19.5a6 6 0 0 1 12 0M16 4.8a3.2 3.2 0 0 1 0 6.2M17.5 14a6 6 0 0 1 3.5 5.5' },
+  { href: '/c/book', label: 'Book', icon: 'M5 4.5h11a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3v-12ZM5 16.5a3 3 0 0 1 3-3h11M9 8.5h6', client: true },
   { href: '/c/alerts', label: 'Alerts', icon: 'M12 3.5a6 6 0 0 0-6 6V14l-1.8 3h15.6L18 14V9.5a6 6 0 0 0-6-6ZM9.5 19.5a2.5 2.5 0 0 0 5 0' },
   { href: '/c/account', label: 'My account', icon: 'M12 12a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM4.5 20a7.5 7.5 0 0 1 15 0' },
 ];
@@ -75,7 +76,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="m-page">{children}</main>
       <nav className="m-tabs c-tabs" aria-label="Customer app">
-        {TABS.map((t) => {
+        {TABS.filter((t) => !('client' in t) || me.kind === 'client').map((t) => {
           const on = t.href === '/c' ? path === '/c' : path.startsWith(t.href);
           return (
             <Link key={t.href} href={t.href} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>

@@ -4,7 +4,7 @@ describe('alerts', () => {
   it('offers each role only the alerts its permissions allow', () => {
     expect(alertKindsFor('site_supervisor')).toEqual(['panic', 'bolo', 'patrol_overdue', 'post_uncovered', 'wrong_post', 'red_report', 'visitor_barred', 'visitor_exception', 'visitor_overstay', 'visitor_handover', 'roll_call']);
     expect(alertKindsFor('client_manager')).toEqual([]);
-    expect(alertKindsFor('hr_admin')).toEqual([]);
+    expect(alertKindsFor('hr_admin')).toEqual(['notice_unacknowledged']);
     expect(alertKindsFor('stores_clerk')).toEqual([]);
   });
 

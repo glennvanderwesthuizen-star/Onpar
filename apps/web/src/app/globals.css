@@ -439,7 +439,7 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 }
 
 /* Customer app (phase 3) and the units-and-tenants section of a site */
-.m-tabs.c-tabs { grid-template-columns: repeat(4, 1fr); }
+.m-tabs.c-tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .secret-sm { font: 700 15px ui-monospace, Menlo, Consolas, monospace; padding: 2px 6px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); user-select: all; }
 .cust-table { width: 100%; border-collapse: collapse; }
 .cust-table th, .cust-table td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
@@ -458,3 +458,7 @@ table.roster tr.sect td { background: var(--bg); font-size: 12px; font-weight: 7
 .vis-check.off b { color: var(--mute); }
 .vis-form { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
 
+
+/* Shown only on paper (for example the signature lines on a notice delivered by hand). */
+.only-print { display: none; }
+@media print { .only-print { display: block; } }

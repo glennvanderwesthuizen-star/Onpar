@@ -52,6 +52,10 @@ import { CustomerAppController } from './customers/customer-app.controller';
 import { VisitorSetupController } from './visitors/visitor-setup.controller';
 import { VisitorPortalController } from './visitors/visitor-portal.controller';
 import { EobController } from './eob/eob.controller';
+import { CustomerEobController, GuardEobController } from './eob/eob-others.controller';
+import { HrNoticesController } from './notices/hr-notices.controller';
+import { PersonalMessageController, PortalAuthGuard, PortalController } from './notices/portal.controller';
+import { NoticesService } from './notices/notices.service';
 import { GateController } from './visitors/gate.controller';
 import { CustomerVisitsController } from './visitors/customer-visits.controller';
 import { CustomerPassesController } from './visitors/customer-passes.controller';
@@ -126,6 +130,11 @@ export function buildAppModule(config: Config = loadConfig()) {
       VisitorSetupController,
       VisitorPortalController,
       EobController,
+      GuardEobController,
+      CustomerEobController,
+      HrNoticesController,
+      PortalController,
+      PersonalMessageController,
       PostingsController,
       CustomerStaffController,
       SiteStaffController,
@@ -151,6 +160,8 @@ export function buildAppModule(config: Config = loadConfig()) {
       WireService,
       WireStoreService,
       WireBoardService,
+      NoticesService,
+      PortalAuthGuard,
       FaceMatchService,
       NotificationsService,
       VisitorSetupService,

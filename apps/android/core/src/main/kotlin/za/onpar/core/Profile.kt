@@ -154,6 +154,10 @@ data class MyWire(
 data class StandardBearer(val name: String, val year: Int)
 
 /** The guard's own score, training, and the site's approved contacts. */
+/** A personal message is waiting: the generic line to show, never the content. */
+@Serializable
+data class PersonalMessage(val waiting: Boolean = false, val text: String? = null)
+
 class ProfileActions(private val device: OnParDevice, dataDir: File) {
     private val scoreFile = File(dataDir, "score.json")
     private val trainingFile = File(dataDir, "training.json")
@@ -300,6 +304,12 @@ class ProfileActions(private val device: OnParDevice, dataDir: File) {
         logoFile.writeBytes(device.client().getBytes("/device/armed-response-logo"))
         logoTagFile.writeText(tag)
     }
+
+    /**
+     * Whether a personal message (an HR notice) is waiting for the guard. The shared post phone
+     * gets only a generic line, never what it says (brief section 6.14).
+     */
+    fun personalMessage(): PersonalMessage = OnParJson.decodeFromJsonElement(PersonalMessage.serializer(), device.client().get("/device/personal-message", device.requireGuard()))
 
     /** The armed response logo kept on the phone, if any. */
     fun armedLogo(): ByteArray? = if (logoFile.exists() && logoTagFile.exists()) runCatching { logoFile.readBytes() }.getOrNull() else null

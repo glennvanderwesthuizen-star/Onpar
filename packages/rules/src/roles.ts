@@ -98,6 +98,9 @@ export const PERMISSIONS = {
   // The Electronic Occurrence Book (brief section 27): read, and add a written entry.
   'eob.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
   'eob.write': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor'],
+  // HR notices (brief sections 6.16 and 28): personal and disciplinary, so HR and management only; never site supervisors by default.
+  'notices.view': ['system_admin', 'company_manager', 'hr_admin'],
+  'notices.issue': ['system_admin', 'company_manager', 'hr_admin'],
   'dashboard.view': ['system_admin', 'company_manager', 'site_manager', 'site_supervisor', 'client_manager', 'hr_admin'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Permission = keyof typeof PERMISSIONS;

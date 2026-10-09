@@ -22,6 +22,7 @@ class OnParDevice(dataDir: File, val clock: TrustedClock = TrustedClock(), priva
     val profile = ProfileActions(this, dataDir)
     val alerts = AlertActions(this)
     val handover = HandoverActions(this)
+    val book = OccurrenceBookActions(this)
     val uniform = UniformActions(this, dataDir)
     val visitors = VisitorActions(this, dataDir)
 
