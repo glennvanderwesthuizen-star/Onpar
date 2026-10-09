@@ -88,7 +88,7 @@ describe('visitor management: staff of a unit', () => {
     expect((await w.http().post(`/api/customer/staff/${graceId}/remove`).set(auth(nomsa.token))).status).toBe(404);
     const [a] = await ownerQuery(`SELECT actor_type, after FROM audit_log WHERE action = 'unit_staff.add'`);
     expect(a.actor_type).toBe('customer');
-    expect(JSON.stringify(a.after)).not.toMatch(/0147/);
+    expect(JSON.stringify(a.after).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '')).not.toMatch(/0147/);
   });
 
   it('lets only the administrator register staff for a unit on the website', async () => {
