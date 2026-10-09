@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { randomBytes } from 'node:crypto';
-import { hearingDateError, NOTICE_TYPES, NoticeEventKind, noticeErrors, NoticeType, suggestedActions, WARNING_LADDER } from '@onpar/rules';
+import { NOTICE_TYPES, NoticeEventKind, noticeErrors, NoticeType, suggestedActions, WARNING_LADDER } from '@onpar/rules';
 import { z } from 'zod';
 import { CurrentUser, RequirePermission, UserAuthGuard, UserPrincipal } from '../common/auth';
 import { hashToken } from '../common/crypto';
@@ -160,16 +160,14 @@ export class HrNoticesController {
   @RequirePermission('notices.issue')
   issue(@CurrentUser() user: UserPrincipal, @Body() body: unknown) {
     const b = parseBody(IssueBody, body);
+    // One way only for an inquiry, so every check (notice period, warnings, representative) always applies.
+    if (b.type === 'notice_to_appear' || b.type === 'hearing_outcome') {
+      throw new BadRequestException({ message: 'A disciplinary inquiry and its outcome go through "Start a disciplinary inquiry" on the HR page.', errors: { type: 'Use the disciplinary inquiry.' } });
+    }
     const problems = noticeErrors(b.type, b.subject, b.body, b.details);
     if (problems) throw new BadRequestException({ message: Object.values(problems)[0], errors: problems });
     return this.db.withTenant(user.companyId, async (tx) => {
       if (!(await tx.query(`SELECT 1 FROM employees WHERE id = $1`, [b.employeeId])).rowCount) throw new NotFoundException('Employee not found.');
-      // An inquiry needs the set notice (3 days by default) however the notice is sent (owner, 9 Oct 2026).
-      if (b.type === 'notice_to_appear') {
-        const today = (await tx.query(`SELECT to_char(now() AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD') AS d`)).rows[0].d as string;
-        const tooSoon = hearingDateError(b.details.hearingDate, today, (await this.notices.discipline(tx)).hearingMinDays);
-        if (tooSoon) throw new BadRequestException({ message: tooSoon, errors: { hearingDate: tooSoon } });
-      }
       const id = (
         await tx.query(
           `INSERT INTO notices (company_id, employee_id, type, subject, body, details, evidence, ack_hours, issued_by) VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,

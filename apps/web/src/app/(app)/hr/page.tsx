@@ -219,6 +219,7 @@ function Hr() {
           }}
         />
       )}
+      {mayIssue && employees.data && <StartInquiry employees={employees.data} />}
       {open && <NoticeView id={open} mayIssue={mayIssue} close={() => setOpen(null)} changed={reload} />}
       <div className="card scroll">
         <h2>Notices sent</h2>
@@ -329,7 +330,7 @@ function NewNotice({ employees, start, done }: { employees: Employee[]; start: S
         </Field>
         <Field label="Kind of notice">
           <select value={type} onChange={(e) => setType(e.target.value as NoticeType)}>
-            {NOTICE_TYPES.map((t) => (
+            {NOTICE_TYPES.filter((t) => t !== 'notice_to_appear' && t !== 'hearing_outcome').map((t) => (
               <option key={t} value={t}>
                 {NOTICE_TYPE_LABELS[t]}
                 {ctx.data?.prior[t] ? ` (${ctx.data.prior[t]} on file)` : ''}
@@ -676,6 +677,30 @@ function Settings() {
           Save
         </button>
       </div>
+    </div>
+  );
+}
+
+/** A disciplinary inquiry for anyone (the attention list covers those with repeated warnings). */
+function StartInquiry({ employees }: { employees: Employee[] }) {
+  const [id, setId] = useState('');
+  return (
+    <div className="card row">
+      <b>Start a disciplinary inquiry</b>
+      <select value={id} onChange={(e) => setId(e.target.value)} style={{ maxWidth: 360 }}>
+        <option value="">Choose the employee…</option>
+        {employees.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.name} ({e.employeeNumber})
+          </option>
+        ))}
+      </select>
+      {id && (
+        <Link className="btn ghost" href={`/hr/cases/new?employee=${id}`}>
+          Continue
+        </Link>
+      )}
+      <span className="mute small">Notices to appear and hearing outcomes go only this way, so every check applies.</span>
     </div>
   );
 }

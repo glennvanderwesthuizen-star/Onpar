@@ -30,6 +30,7 @@ interface Case {
   witnesses: string[];
   hearing: HearingRecord;
   warnings: { id: string; label: string; date: string; charge: string }[];
+  overrides: { what: string; reason: string }[];
   notice: Notice | null;
   outcome: Notice | null;
   events: { id: string; kind: string; at: string; actor_label: string; note: string }[];
@@ -78,6 +79,11 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
             </li>
           ))}
         </ol>
+        {data.overrides.map((o) => (
+          <div key={o.what} className="banner warn small">
+            <b>Gone ahead against the usual practice:</b> {o.what}. Reason: {o.reason}
+          </div>
+        ))}
         {data.notice && (
           <p className="small">
             Notice to appear: <Pill tone={data.notice.status === 'acknowledged' ? 'green' : 'blue'}>{data.notice.statusLabel}</Pill>{' '}

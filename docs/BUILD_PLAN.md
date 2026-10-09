@@ -1125,3 +1125,12 @@ Follows the visitor specification's offline section: with no signal the gate goe
 - **HR → Settings** (drafts for the labour lawyer): warnings that call for action (3), months they count over (12), days' notice of an inquiry (3).
 - The right to an interpreter replaces the brief's "no interpreter" line (owner, 9 Oct 2026).
 - Migration `0055_disciplinary_cases.sql`. Tests: 5 rules, 4 server. The owner may send the company's own inquiry form to replace ours.
+
+### 9 Oct 2026: "are you aware?" checks on a disciplinary inquiry (owner, D-53)
+
+- **Fewer warnings than the set number** (3) ticked on a new inquiry: a yellow box asks "Are you aware?" and the manager may go ahead with a reason (for example serious misconduct). Without a reason it cannot be sent.
+- **A representative who is not an employee** (checked against the active employees; the field suggests their names): the same box, explaining that a representative is normally a fellow employee or a shop steward, and an outsider only if the employee asked beforehand and the company agreed.
+- **Witnesses** may be anyone with evidence, employee or not; an outside witness is only labelled, never blocked.
+- Every override is kept with the case and shown on its page and in its history.
+- **One way only:** notices to appear and hearing outcomes can no longer be sent from the plain "New notice" form; they go through **Start a disciplinary inquiry** (any employee) or the Action needed list, so the notice period, the warnings and the representative are always checked.
+- Migration `0056_case_overrides.sql`. Tests: 1 server.

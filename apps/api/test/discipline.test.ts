@@ -80,11 +80,11 @@ describe('repeated warnings and the disciplinary inquiry', () => {
     const tooSoon = await w.http().post('/api/hr/cases').set(auth(admin)).send(body(day(2)));
     expect(tooSoon.status).toBe(400);
     expect(tooSoon.body.message).toMatch(/at least 3 days/);
-    // The plain notice form cannot set an inquiry for tomorrow either.
+    // The plain notice form cannot send an inquiry notice: there is one way, with every check.
     const plain = (date: string) =>
       w.http().post('/api/hr/notices').set(auth(admin)).send({ employeeId, type: 'notice_to_appear', subject: 'Notice to appear', body: 'You are required to attend a disciplinary inquiry at Head office.', details: { charge: 'Misconduct', hearingDate: date, hearingTime: '10:00', venue: 'Head office' } });
-    expect((await plain(day(1))).status).toBe(400);
-    expect((await plain(day(1))).body.message).toMatch(/at least 3 days/);
+    expect((await plain(day(5))).status).toBe(400);
+    expect((await plain(day(5))).body.message).toMatch(/Start a disciplinary inquiry/);
     const r = await w.http().post('/api/hr/cases').set(auth(admin)).send(body(day(3)));
     expect(r.status).toBe(201);
     caseId = r.body.id;
@@ -129,5 +129,39 @@ describe('repeated warnings and the disciplinary inquiry', () => {
     const b = await w.login('admin@b.test');
     expect((await w.http().get(`/api/hr/cases/${caseId}`).set(auth(b))).status).toBe(404);
     expect((await w.http().get('/api/hr/cases').set(auth(b))).body).toEqual([]);
+  });
+
+  it('asks "are you aware?" for fewer than three warnings or an outside representative, and keeps the reason when the manager goes ahead', async () => {
+    const o = await enrol(w, admin, enrolmentData(w.a.siteId, { idNumber: '9202204720083', fullName: 'Second Guard' }));
+    const other = o.body.officer.id;
+    const one = await w.http().post('/api/hr/notices').set(auth(admin)).send({ employeeId: other, type: 'written_warning', subject: 'Warning: Assault', body: 'You were warned about assault. Valid for six months.', details: { charge: 'Assault' } });
+    const base = {
+      employeeId: other,
+      charge: 'Assault on a visitor at the gate',
+      warningIds: [one.body.id],
+      hearingDate: day(4),
+      hearingTime: '09:00',
+      venue: 'Head office',
+      subject: 'Notice to appear for a disciplinary inquiry',
+      body: 'You are required to attend a disciplinary inquiry at Head office about the assault.',
+    };
+    const first = await w.http().post('/api/hr/cases').set(auth(admin)).send(base);
+    expect(first.status).toBe(400);
+    expect(first.body.needsOverride).toBe('warnings');
+    const second = await w.http().post('/api/hr/cases').set(auth(admin)).send({ ...base, overrideWarnings: 'Serious misconduct: assault', representative: 'Outside Lawyer' });
+    expect(second.status).toBe(400);
+    expect(second.body.needsOverride).toBe('representative');
+    // A fellow employee as representative needs no override.
+    const fellow = await w.http().post('/api/hr/cases').set(auth(admin)).send({ ...base, overrideWarnings: 'Serious misconduct: assault', representative: 'john smith', hearingDate: day(4) });
+    expect(fellow.status).toBe(201);
+    await w.http().post(`/api/hr/cases/${fellow.body.id}/withdraw`).set(auth(admin)).send({ reason: 'Opened again with the outside representative' });
+    const ok = await w.http().post('/api/hr/cases').set(auth(admin)).send({ ...base, overrideWarnings: 'Serious misconduct: assault', representative: 'Outside Lawyer', overrideRepresentative: 'The employee asked in writing and the company agreed' });
+    expect(ok.status).toBe(201);
+    const c = (await w.http().get(`/api/hr/cases/${ok.body.id}`).set(auth(admin))).body;
+    expect(c.overrides).toEqual([
+      { what: 'Fewer than 3 warnings (1)', reason: 'Serious misconduct: assault' },
+      { what: 'Representative not an employee: Outside Lawyer', reason: 'The employee asked in writing and the company agreed' },
+    ]);
+    expect(c.events[0].note).toContain('Override: Representative not an employee');
   });
 });

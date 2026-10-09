@@ -14,6 +14,8 @@ interface Draft {
   issuedBy: string;
   today: string;
   hearingMinDays: number;
+  warningThreshold: number;
+  employees: string[];
   warnings: { id: string; label: string; date: string; charge: string }[];
 }
 
@@ -44,6 +46,8 @@ function NewCase() {
   const [witness, setWitness] = useState('');
   const [witnesses, setWitnesses] = useState<string[]>([]);
   const [representative, setRepresentative] = useState('');
+  const [overrideWarnings, setOverrideWarnings] = useState('');
+  const [overrideRepresentative, setOverrideRepresentative] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [edited, setEdited] = useState(false);
@@ -75,6 +79,10 @@ function NewCase() {
   if (!data) return <p className="mute">Loading…</p>;
   const dateProblem = hearingDateError(hearingDate || undefined, data.today, data.hearingMinDays);
   const problems = noticeErrors('notice_to_appear', subject, body, details);
+  const isEmployee = (name: string) => data.employees.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase());
+  const fewWarnings = warnings.length < data.warningThreshold;
+  const outsideRep = !!representative.trim() && !isEmployee(representative);
+  const overridesMissing = (fewWarnings && overrideWarnings.trim().length < 5) || (outsideRep && overrideRepresentative.trim().length < 5);
   const earliest = new Date(Date.parse(`${data.today}T12:00:00Z`) + data.hearingMinDays * 86_400_000).toISOString().slice(0, 10);
 
   async function send() {
@@ -83,7 +91,7 @@ function NewCase() {
     try {
       const r = await api<{ id: string }>('/hr/cases', {
         method: 'POST',
-        json: { employeeId, charge, warningIds: picked, hearingDate, hearingTime, venue, chairperson, initiator, witnesses, representative, subject, body },
+        json: { employeeId, charge, warningIds: picked, hearingDate, hearingTime, venue, chairperson, initiator, witnesses, representative, overrideWarnings, overrideRepresentative, subject, body },
       });
       router.push(`/hr/cases/${r.id}`);
     } catch (e) {
@@ -108,6 +116,15 @@ function NewCase() {
             {w.label}, {w.date}: {w.charge}
           </label>
         ))}
+        {fewWarnings && (
+          <div className="banner warn">
+            <b>Are you aware?</b> Only {warnings.length} warning{warnings.length === 1 ? '' : 's'} {warnings.length === 1 ? 'is' : 'are'} ticked; the usual number before an inquiry is {data.warningThreshold}. You may still go ahead, for example for serious
+            misconduct, with your reason. It is kept with the case.
+            <Field label="Why you are going ahead">
+              <input value={overrideWarnings} onChange={(e) => setOverrideWarnings(e.target.value)} placeholder="For example: serious misconduct (assault)" />
+            </Field>
+          </div>
+        )}
         <Field label="The charge" error={problems?.charge}>
           <textarea rows={2} value={charge} onChange={(e) => setCharge(e.target.value)} />
         </Field>
@@ -133,12 +150,26 @@ function NewCase() {
             <input value={initiator} onChange={(e) => setInitiator(e.target.value)} />
           </Field>
           <Field label="The employee's representative (if known)">
-            <input value={representative} onChange={(e) => setRepresentative(e.target.value)} />
+            <input list="onpar-employees" value={representative} onChange={(e) => setRepresentative(e.target.value)} placeholder="A fellow employee or a shop steward" />
           </Field>
         </div>
+        <datalist id="onpar-employees">
+          {data.employees.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+        {outsideRep && (
+          <div className="banner warn">
+            <b>Are you aware?</b> {representative} is not an employee of the company. A representative is normally a fellow employee or a shop steward. An outsider (for example a union official or a
+            lawyer) only if the employee asked beforehand and the company agreed. You may allow it, with your reason.
+            <Field label="Why you allow it">
+              <input value={overrideRepresentative} onChange={(e) => setOverrideRepresentative(e.target.value)} placeholder="For example: the employee asked in writing and we agreed" />
+            </Field>
+          </div>
+        )}
         <Field label="Witnesses the company will call">
           <div className="row">
-            <input value={witness} onChange={(e) => setWitness(e.target.value)} placeholder="Name" />
+            <input list="onpar-employees" value={witness} onChange={(e) => setWitness(e.target.value)} placeholder="Name" />
             <button
               type="button"
               className="btn ghost sm"
@@ -153,7 +184,8 @@ function NewCase() {
           </div>
           {witnesses.map((x, i) => (
             <div key={i} className="small">
-              {x}{' '}
+              {x}
+              {!isEmployee(x) && <span className="mute"> (not an employee: that is allowed for a witness)</span>}{' '}
               <button type="button" className="btn ghost sm" onClick={() => setWitnesses((y) => y.filter((_, j) => j !== i))}>
                 Remove
               </button>
@@ -197,7 +229,8 @@ function NewCase() {
           </button>
         )}
         <p className="mute small">The notice and the three documents go to the employee (MY MESSAGES on the post phone). If he does not acknowledge in time, you are asked to deliver them by hand.</p>
-        <button className="btn" disabled={busy || !!dateProblem || !!problems || !picked} onClick={send}>
+        {overridesMissing && <p className="small" style={{ color: 'var(--red, #b3261e)' }}>Give your reason in the yellow box above before sending.</p>}
+        <button className="btn" disabled={busy || !!dateProblem || !!problems || !picked || overridesMissing} onClick={send}>
           {busy ? 'Sending…' : 'Send the notice to appear'}
         </button>
       </div>

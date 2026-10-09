@@ -22,6 +22,9 @@ const OpenBody = z.object({
   initiator: z.string().trim().max(120).default(''),
   witnesses: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
   representative: z.string().trim().max(120).default(''),
+  // Going ahead against the usual practice, with the manager's reason (owner, 9 Oct 2026).
+  overrideRepresentative: z.string().trim().max(500).default(''),
+  overrideWarnings: z.string().trim().max(500).default(''),
   // The notice to appear, as HR edited it.
   subject: z.string().trim().max(200),
   body: z.string().trim().max(20000),
@@ -96,6 +99,11 @@ export class DisciplinaryController {
     return { id: n.id as string, typeLabel: NOTICE_TYPE_LABELS[n.type as NoticeType], subject: n.subject as string, issuedAt: n.issued_at as Date, status, statusLabel: NOTICE_EVENT_LABELS[status] };
   }
 
+  /** Whether a name is an active employee of the company (for the representative check). */
+  private async isEmployee(tx: Tx, name: string) {
+    return !!(await tx.query(`SELECT 1 FROM employees WHERE status = 'active' AND lower(trim(full_name)) = lower(trim($1))`, [name])).rowCount;
+  }
+
   /** What the "Proceed to disciplinary action" form starts from: the warnings and the settings. */
   @Get('case-draft/:employeeId')
   @RequirePermission('notices.issue')
@@ -110,7 +118,10 @@ export class DisciplinaryController {
         issuedBy: user.name,
         today: await this.today(tx),
         hearingMinDays: d.hearingMinDays,
+        warningThreshold: d.warningThreshold,
         warnings: (await this.notices.warningsOnFile(tx, employeeId, d.warningMonths)).map(({ issuedAt: _i, ...w }) => w),
+        // To check the representative and the witnesses against while typing.
+        employees: (await tx.query(`SELECT full_name FROM employees WHERE status = 'active' AND id <> $1 ORDER BY lower(full_name)`, [employeeId])).rows.map((r) => r.full_name as string),
       };
     });
   }
@@ -158,6 +169,7 @@ export class DisciplinaryController {
         witnesses: c.witnesses as string[],
         hearing: c.hearing as HearingRecord,
         warnings,
+        overrides: (c.overrides ?? []) as { what: string; reason: string }[],
         notice: await this.noticeState(tx, c.notice_id),
         outcome: await this.noticeState(tx, c.outcome_notice_id),
         events,
@@ -185,6 +197,23 @@ export class DisciplinaryController {
         throw new ConflictException('An inquiry is already open for this employee. Finish or withdraw it first.');
       }
       const warnings = (await this.notices.warningsOnFile(tx, b.employeeId, 120)).filter((w) => b.warningIds.includes(w.id));
+      // Are you aware? Fewer warnings than the set number, or a representative who is not an employee:
+      // allowed only with the manager's reason, which is kept with the case.
+      const overrides: { what: string; reason: string }[] = [];
+      if (warnings.length < d.warningThreshold) {
+        if (b.overrideWarnings.length < 5) {
+          const m = `Only ${warnings.length} warning${warnings.length === 1 ? '' : 's'} on file (the usual number is ${d.warningThreshold}). Say why you are going ahead, for example serious misconduct.`;
+          throw new BadRequestException({ message: m, errors: { overrideWarnings: m }, needsOverride: 'warnings' });
+        }
+        overrides.push({ what: `Fewer than ${d.warningThreshold} warnings (${warnings.length})`, reason: b.overrideWarnings });
+      }
+      if (b.representative && !(await this.isEmployee(tx, b.representative))) {
+        if (b.overrideRepresentative.length < 5) {
+          const m = `${b.representative} is not an employee of the company. A representative is normally a fellow employee or a shop steward; an outsider only if the employee asked beforehand and the company agreed. Say why you allow it.`;
+          throw new BadRequestException({ message: m, errors: { overrideRepresentative: m }, needsOverride: 'representative' });
+        }
+        overrides.push({ what: `Representative not an employee: ${b.representative}`, reason: b.overrideRepresentative });
+      }
       const documents = inquiryDocuments({
         companyName: e.company,
         employeeName: e.full_name,
@@ -218,12 +247,12 @@ export class DisciplinaryController {
       await this.notices.event(tx, noticeId, 'sent', { type: 'user', id: user.userId, label: user.name });
       const id = (
         await tx.query(
-          `INSERT INTO disciplinary_cases (company_id, employee_id, charge, warning_ids, hearing_date, hearing_time, venue, chairperson, initiator, witnesses, notice_id, opened_by)
-           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-          [b.employeeId, b.charge, JSON.stringify(warnings.map((w) => w.id)), b.hearingDate, b.hearingTime, b.venue, b.chairperson, b.initiator, JSON.stringify(b.witnesses), noticeId, user.userId],
+          `INSERT INTO disciplinary_cases (company_id, employee_id, charge, warning_ids, hearing_date, hearing_time, venue, chairperson, initiator, witnesses, notice_id, opened_by, overrides)
+           VALUES (app_company_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+          [b.employeeId, b.charge, JSON.stringify(warnings.map((w) => w.id)), b.hearingDate, b.hearingTime, b.venue, b.chairperson, b.initiator, JSON.stringify(b.witnesses), noticeId, user.userId, JSON.stringify(overrides)],
         )
       ).rows[0].id as string;
-      await this.event(tx, id, 'opened', user, b.charge);
+      await this.event(tx, id, 'opened', user, b.charge + overrides.map((o) => ` Override: ${o.what}. Reason: ${o.reason}`).join(''));
       await this.event(tx, id, 'notice_sent', user, `Notice to appear, with: ${documents.map((x) => x.title).join('; ')}.`);
       await this.audit.byUser(tx, user, { action: 'case.open', entityType: 'disciplinary_case', entityId: id, after: { employeeId: b.employeeId, hearingDate: b.hearingDate, noticeId } });
       return { id, noticeId };
